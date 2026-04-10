@@ -1,0 +1,207 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Noto Sans Bengali", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans;
+  }
+}
+
+/* Custom Court Case Styles */
+.court-container {
+    margin: 20px 0;
+    padding: 15px;
+    background: #fff;
+    border: 2px solid #0b5394;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.court-header {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0b5394;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.court-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+.court-table th, .court-table td {
+    border: 1px solid #000;
+    padding: 8px;
+    text-align: center;
+    font-weight: 600;
+}
+
+.court-table th {
+    background: #f8fafc;
+}
+
+.text-red {
+    color: #ef4444;
+}
+
+.step-box {
+    border: 1px solid #000;
+    padding: 2px 8px;
+    margin: 2px;
+    display: inline-block;
+    font-size: 0.875rem;
+    border-radius: 4px;
+    background: #f1f5f9;
+}
+
+.call-btn {
+    background: #16a34a;
+    color: #fff;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s;
+}
+
+.call-btn:hover {
+    transform: scale(1.1);
+}
+
+.switch {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    display: inline-block;
+}
+
+.switch input { display:none; }
+
+.slider {
+    position:absolute;
+    background:#ef4444;
+    border-radius:24px;
+    top:0; left:0; right:0; bottom:0;
+    cursor: pointer;
+    transition: .4s;
+}
+
+.slider:before {
+    content:"";
+    position:absolute;
+    width:18px;
+    height:18px;
+    background:#fff;
+    bottom:3px;
+    left:3px;
+    border-radius:50%;
+    transition:.4s;
+}
+
+input:checked + .slider {
+    background:#22c55e;
+}
+
+/* Case Card Pro Styles */
+.case-card-pro-wrapper {
+    overflow-x: auto;
+    margin-top: 1rem;
+}
+
+.case-card-pro {
+    width: 100%;
+    min-width: 1000px;
+    border-collapse: collapse;
+    background: white;
+}
+
+.case-card-pro td {
+    border: 1px solid #000;
+    padding: 4px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.case-card-pro .plaintiff-bg, .case-card-pro.plaintiff-bg { background: #e6ffe6; }
+.case-card-pro .defendant-bg, .case-card-pro.defendant-bg { background: #ffe6e6; }
+
+.case-card-pro .plaintiff-cell { }
+.case-card-pro .defendant-cell { }
+
+.case-card-pro .vertical {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-weight: bold;
+    background: #f8fafc;
+}
+
+.case-card-pro .party-box {
+    text-align: left;
+    margin-bottom: 8px;
+    padding: 4px;
+    border-bottom: 1px solid #eee;
+}
+
+.case-card-pro .party-box:last-child {
+    border-bottom: none;
+}
+
+.case-card-pro .call-btn-pro {
+    padding: 2px 6px;
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.case-card-pro .toggle-btn-pro {
+    padding: 5px 10px;
+    border: none;
+    cursor: pointer;
+    border-radius: 6px;
+    font-weight: bold;
+    width: 100%;
+}
+
+.case-card-pro .own-pro { background: #16a34a; color: #fff; }
+.case-card-pro .opp-pro { background: #ef4444; color: #fff; }
+
+.case-card-pro .preview-pro {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.case-card-pro .preview-pro img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+@keyframes blink {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.98); background-color: #fecdd3; }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-blink {
+  animation: blink 1.5s infinite ease-in-out;
+}

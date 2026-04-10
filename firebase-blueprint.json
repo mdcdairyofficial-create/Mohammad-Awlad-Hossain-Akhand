@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Application user profile",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "mobile": { "type": "string" },
+        "user_type": { "type": "string", "enum": ["lawyer", "clerk", "client", "admin", "super_admin"] },
+        "district": { "type": "string" },
+        "country": { "type": "string" },
+        "referral_code": { "type": "string" },
+        "subscription_end_date": { "type": "string", "format": "date-time" },
+        "subscription_package": { "type": "string" },
+        "points": { "type": "number" }
+      },
+      "required": ["name", "mobile"]
+    },
+    "Case": {
+      "title": "Case",
+      "description": "Legal case record",
+      "type": "object",
+      "properties": {
+        "caseNumber": { "type": "string" },
+        "courtName": { "type": "string" },
+        "nextDate": { "type": "string" },
+        "status": { "type": "string" },
+        "caseType": { "type": "string" },
+        "petitioner": { "type": "string" },
+        "respondent": { "type": "string" },
+        "user_id": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["private", "public"] }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/cases/{caseId}": {
+      "schema": "Case",
+      "description": "Legal cases"
+    }
+  }
+}
