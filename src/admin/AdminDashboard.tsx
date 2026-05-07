@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
 import { UserRole } from '../types';
+import { fetchWithAuth } from '../lib/api';
 
 interface User {
   id: string;
   name: string;
   email: string;
-  role: UserRole;
+  user_type: UserRole;
+  role?: UserRole;
   country?: string;
   district?: string;
 }
@@ -19,25 +19,20 @@ const AdminDashboard: React.FC<{ currentUser: { role: UserRole; country?: string
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        let usersQuery;
-        if (currentUser.role === 'super_admin') {
-          usersQuery = collection(db, 'users');
-        } else if (currentUser.role === 'country_manager') {
-          usersQuery = query(collection(db, 'users'), where('country', '==', currentUser.country));
-        } else if (currentUser.role === 'district_admin') {
-          usersQuery = query(collection(db, 'users'), where('district', '==', currentUser.district));
-        } else {
-          setUsers([]);
-          setLoading(false);
-          return;
-        }
+        let apiUrl = `/api/admin/managed-users?role=${currentUser.role}`;
+        
+        if (currentUser.district) apiUrl += `&district=${encodeURIComponent(currentUser.district)}`;
+        if (currentUser.country) apiUrl += `&country=${encodeURIComponent(currentUser.country)}`;
 
-        const userSnapshot = await getDocs(usersQuery);
-        const userList = userSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...(doc.data() as Omit<User, 'id'>)
-        } as User));
-        setUsers(userList);
+        const response = await fetchWithAuth(apiUrl);
+        
+        if (response.ok) {
+          const data = await response.json();
+          // API returns user_type, map it back to role for display
+          setUsers(data.map((u: any) => ({ ...u, role: u.user_type })));
+        } else {
+          console.error("API error fetching users:", await response.text());
+        }
       } catch (error) {
         console.error("Error fetching users: ", error);
       } finally {

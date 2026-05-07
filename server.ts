@@ -1,265 +1,75 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
 import SSLCommerzPayment from "sslcommerz-lts";
 import fs from "fs";
+import path from "path";
+import admin from "firebase-admin";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
-// Initialize SQLite Database
-let db: Database.Database;
+// Initialize Firebase Admin
+let firestore: admin.firestore.Firestore;
 try {
-  db = new Database("app.db");
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-} catch (err: any) {
-  if (err.code === 'SQLITE_CORRUPT') {
-    console.error("Database is corrupt, deleting and recreating...");
-    if (fs.existsSync("app.db")) {
-      fs.unlinkSync("app.db");
-    }
-    db = new Database("app.db");
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-  } else {
-    throw err;
-  }
-}
-
-// Create basic tables if they don't exist
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    email TEXT UNIQUE,
-    mobile TEXT UNIQUE,
-    password TEXT,
-    user_type TEXT,
-    district TEXT,
-    country TEXT,
-    referral_code TEXT UNIQUE,
-    referred_by TEXT,
-    subscription_end_date DATETIME,
-    subscription_package TEXT DEFAULT 'free',
-    profile_picture TEXT,
-    appointed_by INTEGER,
-    ai_questions_count INTEGER DEFAULT 0,
-    last_ai_reset_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-    facebook_id TEXT,
-    youtube_id TEXT,
-    instagram_id TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+  const firebaseConfigPath = "./firebase-applet-config.json";
+  let firebaseConfig = { projectId: "gen-lang-client-0215506885", firestoreDatabaseId: "" };
   
-  CREATE TABLE IF NOT EXISTS cases (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    caseNumber TEXT,
-    courtName TEXT,
-    nextDate TEXT,
-    status TEXT,
-    caseType TEXT,
-    petitioner TEXT,
-    respondent TEXT,
-    isUpdated BOOLEAN DEFAULT 0,
-    order_text TEXT,
-    petitionerMobile TEXT,
-    respondentMobile TEXT,
-    petitionerLawyer TEXT,
-    respondentLawyer TEXT,
-    petitionerLawyerMobile TEXT,
-    respondentLawyerMobile TEXT,
-    petitionerClerk TEXT,
-    respondentClerk TEXT,
-    petitionerClerkMobile TEXT,
-    respondentClerkMobile TEXT,
-    petitionerAsstLawyer TEXT,
-    respondentAsstLawyer TEXT,
-    petitionerAsstLawyerMobile TEXT,
-    respondentAsstLawyerMobile TEXT,
-    petitionerAsstClerk TEXT,
-    respondentAsstClerk TEXT,
-    petitionerAsstClerkMobile TEXT,
-    respondentAsstClerkMobile TEXT,
-    filingDate TEXT,
-    lastEditedBySide TEXT,
-    reportedErrorBySide TEXT,
-    visibility TEXT DEFAULT 'private',
-    case_section TEXT,
-    user_id INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  -- PTC (Paid To Click) Tables
-  CREATE TABLE IF NOT EXISTS ptc_ads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT,
-    url TEXT NOT NULL,
-    reward_amount REAL DEFAULT 0.0,
-    duration_seconds INTEGER DEFAULT 10,
-    max_clicks INTEGER DEFAULT 0,
-    current_clicks INTEGER DEFAULT 0,
-    status TEXT DEFAULT 'active',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS ptc_clicks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    ad_id INTEGER,
-    earned_amount REAL,
-    clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (ad_id) REFERENCES ptc_ads(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS ptc_balances (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER UNIQUE,
-    balance REAL DEFAULT 0.0,
-    total_earned REAL DEFAULT 0.0,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  -- Recharge Module Tables
-  CREATE TABLE IF NOT EXISTS users_wallet (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER UNIQUE,
-    balance REAL DEFAULT 0.0,
-    points REAL DEFAULT 0.0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS recharge_orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    mobile_number TEXT,
-    operator TEXT,
-    package_type TEXT,
-    amount REAL,
-    commission REAL,
-    cashback REAL,
-    payment_method TEXT,
-    status TEXT DEFAULT 'pending',
-    transaction_id TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    tran_id TEXT UNIQUE,
-    amount REAL,
-    purpose TEXT,
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS recharge_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    mobile_number TEXT,
-    operator TEXT,
-    package TEXT,
-    amount REAL,
-    status TEXT,
-    date DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS templates (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    description TEXT,
-    file_url TEXT NOT NULL,
-    uploaded_by INTEGER,
-    uploader_name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (uploaded_by) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS user_memories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    content TEXT NOT NULL,
-    category TEXT DEFAULT 'general',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS subscription_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_mobile TEXT NOT NULL,
-    plan_name TEXT NOT NULL,
-    amount INTEGER NOT NULL,
-    duration TEXT NOT NULL,
-    payment_method TEXT NOT NULL,
-    transaction_id TEXT NOT NULL,
-    target_type TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS affiliate_proofs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    link_id TEXT NOT NULL,
-    screenshot_url TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-`);
-} catch (err) {
-  console.error("Error initializing tables:", err);
-}
-
-// Add missing columns if they don't exist
-try { db.prepare("ALTER TABLE cases ADD COLUMN reportedErrorBySide TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN petitionerAsstLawyer TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN respondentAsstLawyer TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN petitionerAsstLawyerMobile TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN respondentAsstLawyerMobile TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN petitionerAsstClerk TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN respondentAsstClerk TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN petitionerAsstClerkMobile TEXT").run(); } catch (e) {}
-try { db.prepare("ALTER TABLE cases ADD COLUMN respondentAsstClerkMobile TEXT").run(); } catch (e) {}
-
-// Add profile_picture column if it doesn't exist (for existing databases)
-try {
-  db.exec("ALTER TABLE users ADD COLUMN profile_picture TEXT");
-} catch (e) {
-  // Column might already exist
-}
-
-// Add social media ID columns if they don't exist
-try { db.exec("ALTER TABLE users ADD COLUMN facebook_id TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE users ADD COLUMN youtube_id TEXT"); } catch (e) {}
-try { db.exec("ALTER TABLE users ADD COLUMN instagram_id TEXT"); } catch (e) {}
-
-// Add uploader_name column if it doesn't exist
-try {
-  db.exec("ALTER TABLE templates ADD COLUMN uploader_name TEXT;");
-} catch (e) {
-  // Column already exists
-}
-
-// Ensure demo user exists to prevent FOREIGN KEY constraint failures
-try {
-  const demoUser = db.prepare("SELECT * FROM users WHERE id = 1").get();
-  if (!demoUser) {
-    db.prepare("INSERT INTO users (id, name, mobile, user_type, district, country, subscription_end_date) VALUES (1, 'ব্যবহারকারী', '01700000000', 'lawyer', 'ঢাকা', 'Bangladesh', datetime('now', '+365 days'))").run();
-    db.prepare("INSERT INTO ptc_balances (user_id, balance, total_earned) VALUES (1, 0, 0)").run();
-    db.prepare("INSERT INTO users_wallet (user_id, balance, points) VALUES (1, 0, 0)").run();
+  if (fs.existsSync(firebaseConfigPath)) {
+    const rawConfig = fs.readFileSync(firebaseConfigPath, "utf8");
+    firebaseConfig = JSON.parse(rawConfig);
+    console.log(`[Firebase] Loaded config from file. ProjectId: ${firebaseConfig.projectId}, DbId: ${firebaseConfig.firestoreDatabaseId}`);
+  } else {
+    console.warn(`[Firebase] Config file NOT found at ${firebaseConfigPath}, using defaults.`);
   }
-} catch (e) {
-  console.error("Failed to create demo user:", e);
+
+  const effectiveProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCP_PROJECT || firebaseConfig.projectId;
+  const dbId = process.env.FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
+  
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      projectId: effectiveProjectId
+    });
+  }
+
+  if (dbId && dbId !== "" && dbId !== "(default)") {
+    firestore = getFirestore(dbId);
+  } else {
+    firestore = getFirestore();
+  }
+} catch (err) {
+  console.error("Firebase Admin initialization error:", err);
+  if (!admin.apps.length) {
+    admin.initializeApp({ projectId: "gen-lang-client-0215506885" });
+  }
+  firestore = admin.firestore();
 }
 
+const db = firestore; // Alias for convenience
+
+// Authentication Middleware
+const authenticate = async (req: any, res: any, next: any) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized: No token provided" });
+  }
+
+  const idToken = authHeader.split("Bearer ")[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    req.user = decodedToken;
+    
+    // Fetch profile from Firestore
+    const userDoc = await db.collection("users").doc(decodedToken.uid).get();
+    if (userDoc.exists) {
+      req.profile = { id: userDoc.id, ...userDoc.data() };
+    }
+    
+    next();
+  } catch (error) {
+    console.error("Error verifying Firebase ID token:", error);
+    res.status(403).json({ error: "Unauthorized: Invalid token" });
+  }
+};
+
+// No SQLite needed anymore
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -267,45 +77,74 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  app.get("/api/users/:id", (req, res) => {
+  app.get("/api/users/:id", authenticate, async (req: any, res) => {
     try {
-      const user = db.prepare(`
-        SELECT u.id, u.name, u.email, u.mobile, u.user_type, u.district, u.country, u.referral_code, u.referred_by, u.subscription_end_date, u.subscription_package, u.profile_picture, u.ai_questions_count, u.last_ai_reset_date, w.points 
-        FROM users u 
-        LEFT JOIN users_wallet w ON u.id = w.user_id 
-        WHERE u.id = ?
-      `).get(req.params.id) as any;
-      if (!user) {
+      const userId = req.params.id; // Now a string (doc ID)
+      const firebaseUid = req.user.uid;
+
+      // Ensure user is only accessing their own profile OR is an admin
+      const isAdmin = ['admin', 'super_admin', 'country_manager'].includes(req.profile?.user_type || '');
+      
+      const userDoc = await db.collection("users").doc(userId).get();
+      if (!userDoc.exists) {
         return res.status(404).json({ error: "User not found" });
       }
+
+      const userData = userDoc.data() as any;
+
+      if (userData.firebase_uid !== firebaseUid && !isAdmin) {
+        return res.status(403).json({ error: "Forbidden: Access denied" });
+      }
+
       res.json({
-        id: user.id,
-        fullName: user.name,
-        email: user.email,
-        mobile: user.mobile,
-        userType: user.user_type,
-        district: user.district,
-        country: user.country,
-        referralCode: user.referral_code,
-        referredBy: user.referred_by,
-        subscriptionEndDate: user.subscription_end_date,
-        subscriptionPackage: user.subscription_package,
-        profilePicture: user.profile_picture,
-        aiQuestionsCount: user.ai_questions_count,
-        lastAiResetDate: user.last_ai_reset_date,
-        points: user.points || 0
+        id: userDoc.id,
+        firebaseUid: userData.firebase_uid,
+        fullName: userData.name,
+        email: userData.email,
+        mobile: userData.mobile,
+        userType: userData.user_type,
+        district: userData.district,
+        country: userData.country,
+        referralCode: userData.referral_code,
+        referredBy: userData.referred_by,
+        subscriptionEndDate: userData.subscription_end_date,
+        subscriptionPackage: userData.subscription_package,
+        profilePicture: userData.profile_picture,
+        aiQuestionsCount: userData.ai_questions_count,
+        lastAiResetDate: userData.last_ai_reset_date,
+        chamberAddress: userData.chamber_address,
+        officeHours: userData.office_hours,
+        barAssociation: userData.bar_association,
+        membershipId: userData.membership_id,
+        facebookUrl: userData.facebook_url,
+        linkedinUrl: userData.linkedin_url,
+        points: userData.points || 0,
+        walletBalance: userData.wallet_balance || 0
       });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
+
   // Recharge Routes
-  app.post("/api/recharge/request", (req, res) => {
+  app.post("/api/recharge/request", authenticate, async (req: any, res) => {
     try {
-      const { userId, mobileNumber, operator, amount, paymentMethod, transactionId } = req.body;
+      const { mobileNumber, operator, amount, paymentMethod, transactionId } = req.body;
+      const userId = req.profile?.id;
+
+      if (!userId) return res.status(404).json({ error: "ইউজার প্রোফাইল পাওয়া যায়নি।" });
       
-      db.prepare("INSERT INTO recharge_orders (user_id, mobile_number, operator, amount, payment_method, transaction_id) VALUES (?, ?, ?, ?, ?, ?)").run(userId, mobileNumber, operator, amount, paymentMethod, transactionId);
+      await db.collection("recharge_orders").add({
+        user_id: userId,
+        mobile_number: mobileNumber,
+        operator: operator,
+        amount: Number(amount),
+        payment_method: paymentMethod,
+        transaction_id: transactionId,
+        status: 'pending',
+        created_at: FieldValue.serverTimestamp()
+      });
       
       res.json({ success: true, message: "রিচার্জ রিকোয়েস্ট সফলভাবে পাঠানো হয়েছে।" });
     } catch (error: any) {
@@ -313,30 +152,45 @@ async function startServer() {
     }
   });
 
-  app.get("/api/recharge/history/:userId", (req, res) => {
+  app.get("/api/recharge/history/:userId", authenticate, async (req: any, res) => {
     try {
-      const history = db.prepare("SELECT * FROM recharge_orders WHERE user_id = ? ORDER BY created_at DESC").all(req.params.userId) as any[];
-      const mappedHistory = history.map(h => {
+      const targetUserId = req.params.userId;
+      const isAdmin = ['admin', 'super_admin', 'country_manager'].includes(req.profile?.user_type || '');
+
+      if (req.profile?.id !== targetUserId && !isAdmin) {
+        return res.status(403).json({ error: "ব্যক্তিগত তথ্য দেখার অনুমতি নেই।" });
+      }
+
+      const snapshot = await db.collection("recharge_orders")
+        .where("user_id", "==", targetUserId)
+        .orderBy("created_at", "desc")
+        .get();
+
+      const history = snapshot.docs.map(doc => {
+        const h = doc.data();
         let operatorId = 'gp';
-        if (h.operator === 'Robi') operatorId = 'robi';
-        else if (h.operator === 'Banglalink') operatorId = 'bl';
-        else if (h.operator === 'Teletalk') operatorId = 'teletalk';
-        else if (h.operator === 'Airtel') operatorId = 'airtel';
+        const op = (h.operator || '').toLowerCase();
+        if (op.includes('robi')) operatorId = 'robi';
+        else if (op.includes('banglalink') || op.includes('bl')) operatorId = 'bl';
+        else if (op.includes('teletalk')) operatorId = 'teletalk';
+        else if (op.includes('airtel')) operatorId = 'airtel';
         
         return {
+          id: doc.id,
           ...h,
-          date: h.created_at,
+          date: h.created_at?.toDate ? h.created_at.toDate() : h.created_at,
           package: h.package_type,
           operator: operatorId
         };
       });
-      res.json({ success: true, history: mappedHistory });
+      res.json({ success: true, history });
     } catch (error: any) {
+      console.error(error);
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-app.post('/api/subscription/request', (req, res) => {
+app.post('/api/subscription/request', async (req, res) => {
   const { mobile, planName, amount, duration, paymentMethod, transactionId, targetType } = req.body;
   
   if (!mobile || !planName || !amount || !duration || !paymentMethod || !transactionId || !targetType) {
@@ -344,18 +198,26 @@ app.post('/api/subscription/request', (req, res) => {
   }
 
   try {
-    // 1. Check if this Transaction ID has already been used
-    const existingRequest = db.prepare("SELECT * FROM subscription_requests WHERE transaction_id = ?").get(transactionId);
-    if (existingRequest) {
+    const existingScan = await db.collection("subscription_requests")
+      .where("transaction_id", "==", transactionId)
+      .limit(1)
+      .get();
+
+    if (!existingScan.empty) {
       return res.status(400).json({ error: 'এই ট্রাঞ্জেকশন আইডিটি ইতিমধ্যে ব্যবহার করা হয়েছে।' });
     }
 
-    // 2. Save the request as 'pending' for Admin verification
-    const stmt = db.prepare(`
-      INSERT INTO subscription_requests (user_mobile, plan_name, amount, duration, payment_method, transaction_id, target_type, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
-    `);
-    stmt.run(mobile, planName, amount, duration, paymentMethod, transactionId, targetType);
+    await db.collection("subscription_requests").add({
+      user_mobile: mobile,
+      plan_name: planName,
+      amount: Number(amount),
+      duration: duration,
+      payment_method: paymentMethod,
+      transaction_id: transactionId,
+      target_type: targetType,
+      status: 'pending',
+      created_at: FieldValue.serverTimestamp()
+    });
 
     res.json({ success: true, message: 'আপনার রিকোয়েস্টটি জমা হয়েছে। অ্যাডমিন যাচাই করে দ্রুত অ্যাপ্রুভ করবেন।' });
   } catch (err) {
@@ -364,85 +226,138 @@ app.post('/api/subscription/request', (req, res) => {
   }
 });
 
-  app.post("/api/users/increment-ai-usage", (req, res) => {
+  app.put("/api/users/:id", authenticate, async (req: any, res) => {
     try {
-      const { userId, deductPoints } = req.body;
-      const user = db.prepare("SELECT ai_questions_count, last_ai_reset_date FROM users WHERE id = ?").get(userId) as { ai_questions_count: number, last_ai_reset_date: string };
-      
-      if (!user) return res.status(404).json({ error: "ইউজার পাওয়া যায়নি।" });
+      const userId = req.params.id;
+      const isAdmin = ['admin', 'super_admin', 'country_manager'].includes(req.profile?.user_type || '');
+
+      if (req.profile?.id !== userId && !isAdmin) {
+        return res.status(403).json({ error: "প্রোফাইল আপডেট করার অনুমতি নেই।" });
+      }
+
+      const { fullName, mobile, district, chamberAddress, officeHours, barAssociation, membershipId, socialLinks } = req.body;
+      const updateData: any = {};
+      if (fullName !== undefined) updateData.name = fullName || 'ব্যবহারকারী';
+      if (mobile !== undefined) updateData.mobile = mobile;
+      if (district !== undefined) updateData.district = district;
+      if (chamberAddress !== undefined) updateData.chamber_address = chamberAddress;
+      if (officeHours !== undefined) updateData.office_hours = officeHours;
+      if (barAssociation !== undefined) updateData.bar_association = barAssociation;
+      if (membershipId !== undefined) updateData.membership_id = membershipId;
+      if (socialLinks?.facebook !== undefined) updateData.facebook_url = socialLinks.facebook;
+      if (socialLinks?.linkedin !== undefined) updateData.linkedin_url = socialLinks.linkedin;
+
+      if (Object.keys(updateData).length > 0) {
+        await db.collection("users").doc(userId).update(updateData);
+      }
+      res.json({ success: true, message: "Profile updated successfully" });
+    } catch (err: any) {
+      console.error('Error updating user profile:', err);
+      res.status(500).json({ error: 'Failed to update profile' });
+    }
+  });
+
+
+  app.put("/api/users/:id/password", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.params.id;
+      if (req.profile?.id !== userId) {
+        return res.status(403).json({ error: "পাসওয়ার্ড পরিবর্তনের অনুমতি নেই।" });
+      }
+
+      const { newPassword } = req.body;
+      if (!newPassword) {
+        return res.status(400).json({ error: "New password is required" });
+      }
+
+      await db.collection("users").doc(userId).update({ password: newPassword });
+
+      res.json({ success: true, message: "Password updated successfully" });
+    } catch (err: any) {
+      console.error('Error updating password:', err);
+      res.status(500).json({ error: 'Failed to update password' });
+    }
+  });
+
+  app.post("/api/users/increment-ai-usage", authenticate, async (req: any, res) => {
+    try {
+      const { deductPoints } = req.body;
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const userDoc = await db.collection("users").doc(userId).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "ইউজার পাওয়া যায়নি।" });
+      const user = userDoc.data() as any;
 
       if (deductPoints) {
-        // Deduct 10 points
-        const wallet = db.prepare("SELECT points FROM users_wallet WHERE user_id = ?").get(userId) as any;
-        if (!wallet || wallet.points < 10) {
+        if ((user.points || 0) < 10) {
           return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই।" });
         }
-        db.prepare("UPDATE users_wallet SET points = points - 10 WHERE user_id = ?").run(userId);
+        await db.collection("users").doc(userId).update({
+          points: FieldValue.increment(-10)
+        });
       } else {
-        const lastReset = new Date(user.last_ai_reset_date);
+        const lastReset = user.last_ai_reset_date?.toDate ? user.last_ai_reset_date.toDate() : user.last_ai_reset_date ? new Date(user.last_ai_reset_date) : new Date(0);
         const now = new Date();
         
-        // Reset count if it's a new month
         if (lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
-          db.prepare("UPDATE users SET ai_questions_count = 1, last_ai_reset_date = datetime('now') WHERE id = ?").run(userId);
+          await db.collection("users").doc(userId).update({
+            ai_questions_count: 1,
+            last_ai_reset_date: FieldValue.serverTimestamp()
+          });
         } else {
-          db.prepare("UPDATE users SET ai_questions_count = ai_questions_count + 1 WHERE id = ?").run(userId);
+          await db.collection("users").doc(userId).update({
+            ai_questions_count: FieldValue.increment(1)
+          });
         }
       }
 
       res.json({ success: true });
     } catch (error: any) {
+      console.error(error);
       res.status(500).json({ error: error.message });
     }
   });
 
   // Admin Middleware
-  app.use("/api/admin", (req, res, next) => {
-    const adminId = req.headers['x-admin-id'];
-    if (!adminId) {
-      return res.status(401).json({ error: "Unauthorized: Admin ID missing" });
+  app.use("/api/admin", authenticate, (req: any, res, next) => {
+    const profile = req.profile;
+    if (!profile) {
+      return res.status(404).json({ error: "ইউজার প্রোফাইল পাওয়া যায়নি।" });
     }
-    try {
-      const adminUser = db.prepare("SELECT user_type FROM users WHERE id = ?").get(adminId) as { user_type: string } | undefined;
-      if (!adminUser || !['admin', 'super_admin', 'country_manager'].includes(adminUser.user_type)) {
-        return res.status(403).json({ error: "Forbidden: Admin access required" });
-      }
-      // Attach admin info to request
-      (req as any).adminUser = adminUser;
-      next();
-    } catch (error) {
-      console.error("Admin middleware error:", error);
-      res.status(500).json({ error: "Internal server error in admin middleware" });
+    if (!['admin', 'super_admin', 'country_manager', 'bar_admin'].includes(profile.user_type)) {
+      return res.status(403).json({ error: "অ্যাডমিন অ্যাক্সেস প্রয়োজন।" });
     }
+    next();
   });
 
   // Superadmin Appointment Endpoint
-  app.post("/api/admin/appoint-district-admin", (req, res) => {
+  app.post("/api/admin/appoint-district-admin", async (req: any, res) => {
     try {
       const { targetUserId, district } = req.body;
-      const adminUser = (req as any).adminUser;
+      const adminProfile = req.profile;
 
-      // Verify superadmin
-      if (adminUser.user_type !== 'super_admin') {
+      if (adminProfile.user_type !== 'super_admin') {
         return res.status(403).json({ error: "শুধুমাত্র সুপার অ্যাডমিন এই কাজটি করতে পারবেন।" });
       }
 
-      // Check if district already has an admin
-      const existingAdmin = db.prepare("SELECT id FROM users WHERE user_type = 'admin' AND district = ?").get(district);
-      if (existingAdmin) {
+      const existingAdmins = await db.collection("users")
+        .where("user_type", "==", "admin")
+        .where("district", "==", district)
+        .limit(1)
+        .get();
+
+      if (!existingAdmins.empty) {
         return res.status(400).json({ error: "এই জেলায় ইতিমধ্যে একজন অ্যাডমিন নিযুক্ত আছেন।" });
       }
 
-      // Appoint admin
-      db.prepare(`
-        UPDATE users 
-        SET user_type = 'admin', 
-            appointed_by = ?, 
-            subscription_end_date = datetime('now', '+365 days'),
-            ai_questions_count = 0,
-            last_ai_reset_date = datetime('now')
-        WHERE id = ?
-      `).run(req.headers['x-admin-id'], targetUserId);
+      await db.collection("users").doc(targetUserId).update({
+        user_type: 'admin',
+        appointed_by: adminProfile.id,
+        subscription_end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        ai_questions_count: 0,
+        last_ai_reset_date: FieldValue.serverTimestamp()
+      });
 
       res.json({ success: true, message: "অ্যাডমিন সফলভাবে নিযুক্ত করা হয়েছে।" });
     } catch (error: any) {
@@ -451,117 +366,147 @@ app.post('/api/subscription/request', (req, res) => {
   });
 
   // Affiliate Proofs API
-  app.post("/api/affiliate/proof", (req, res) => {
+  app.post("/api/affiliate/proof", authenticate, async (req: any, res) => {
     try {
-      console.log("Received proof request:", req.body);
-      const { user_id, link_id, screenshot_url } = req.body;
+      const { link_id, screenshot_url } = req.body;
+      const user_id = req.profile?.id;
+
       if (!user_id || !link_id || !screenshot_url) {
-        console.log("Missing data:", { user_id, link_id, screenshot_url });
         return res.status(400).json({ error: "তথ্য অসম্পূর্ণ।" });
       }
 
-      // Check if user exists
-      const userExists = db.prepare("SELECT id FROM users WHERE id = ?").get(user_id);
-      if (!userExists) {
-        return res.status(404).json({ error: "ইউজার পাওয়া যায়নি। দয়া করে আবার লগইন করুন।" });
-      }
+      const docRef = await db.collection("affiliate_proofs").add({
+        user_id,
+        link_id,
+        screenshot_url,
+        status: 'pending',
+        created_at: FieldValue.serverTimestamp()
+      });
       
-      const stmt = db.prepare("INSERT INTO affiliate_proofs (user_id, link_id, screenshot_url) VALUES (?, ?, ?)");
-      const info = stmt.run(user_id, link_id, screenshot_url);
-      
-      res.json({ success: true, id: Number(info.lastInsertRowid) });
+      res.json({ success: true, id: docRef.id });
     } catch (error: any) {
       console.error("Error inserting proof:", error);
       res.status(500).json({ error: "প্রমাণ জমা দিতে ব্যর্থ হয়েছে। " + error.message });
     }
   });
 
-  app.get("/api/admin/affiliate-proofs", (req, res) => {
+  app.get("/api/admin/affiliate-proofs", async (req, res) => {
     try {
-      const proofs = db.prepare(`
-        SELECT p.*, u.name as user_name, u.mobile as user_mobile 
-        FROM affiliate_proofs p 
-        LEFT JOIN users u ON p.user_id = u.id 
-        ORDER BY p.created_at DESC
-      `).all();
+      const snapshot = await db.collection("affiliate_proofs")
+        .orderBy("created_at", "desc")
+        .get();
+      
+      const proofs = await Promise.all(snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const userDoc = await db.collection("users").doc(data.user_id).get();
+        const userData = userDoc.data() as any;
+        return {
+          id: doc.id,
+          ...data,
+          user_name: userData?.name || 'Unknown',
+          user_mobile: userData?.mobile || 'Unknown',
+          created_at: data.created_at?.toDate ? data.created_at.toDate() : data.created_at
+        };
+      }));
+
       res.json({ success: true, proofs });
     } catch (error: any) {
+      console.error(error);
       res.status(500).json({ error: "প্রমাণ আনতে ব্যর্থ হয়েছে।" });
     }
   });
 
-  app.post("/api/admin/affiliate-proofs/:id/approve", (req, res) => {
+  app.post("/api/admin/affiliate-proofs/:id/approve", async (req, res) => {
     try {
       const { id } = req.params;
-      const proof = db.prepare("SELECT * FROM affiliate_proofs WHERE id = ?").get(id) as any;
+      const proofDoc = await db.collection("affiliate_proofs").doc(id).get();
+      const proof = proofDoc.data() as any;
       
-      if (!proof || proof.status !== 'pending') {
+      if (!proofDoc.exists || proof.status !== 'pending') {
         return res.status(400).json({ error: "Invalid proof or already processed" });
       }
 
-      db.transaction(() => {
-        // Update status
-        db.prepare("UPDATE affiliate_proofs SET status = 'approved' WHERE id = ?").run(id);
-        
-        // Add 100 points
-        const wallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(proof.user_id);
-        if (!wallet) {
-          db.prepare("INSERT INTO users_wallet (user_id, points) VALUES (?, 100)").run(proof.user_id);
-        } else {
-          db.prepare("UPDATE users_wallet SET points = points + 100 WHERE user_id = ?").run(proof.user_id);
-        }
-      })();
+      await db.runTransaction(async (transaction) => {
+        const userRef = db.collection("users").doc(proof.user_id);
+        const proofRef = db.collection("affiliate_proofs").doc(id);
+
+        transaction.update(proofRef, { status: 'approved' });
+        transaction.update(userRef, {
+          points: FieldValue.increment(100)
+        });
+      });
 
       res.json({ success: true });
     } catch (error: any) {
+      console.error(error);
       res.status(500).json({ error: "Failed to approve proof" });
     }
   });
 
-  app.post("/api/admin/affiliate-proofs/:id/reject", (req, res) => {
+  app.post("/api/admin/affiliate-proofs/:id/reject", async (req, res) => {
     try {
       const { id } = req.params;
-      db.prepare("UPDATE affiliate_proofs SET status = 'rejected' WHERE id = ?").run(id);
+      await db.collection("affiliate_proofs").doc(id).update({ status: 'rejected' });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Failed to reject proof" });
     }
   });
 
-  app.get("/api/admin/stats", (req, res) => {
+  app.get("/api/admin/stats", async (req, res) => {
     try {
-      const totalUsers = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
-      const totalCases = db.prepare("SELECT COUNT(*) as count FROM cases").get() as { count: number };
-      const rechargeStats = db.prepare("SELECT status, COUNT(*) as count, SUM(amount) as total FROM recharge_requests GROUP BY status").all() as { status: string, count: number, total: number }[];
-      const userBreakdown = db.prepare("SELECT user_type, COUNT(*) as count FROM users GROUP BY user_type").all() as { user_type: string, count: number }[];
+      const userCountSnapshot = await db.collection("users").count().get();
+      const caseCountSnapshot = await db.collection("cases").count().get();
+      const rechargeCountSnapshot = await db.collection("recharge_orders").count().get();
       
+      const lawyerCountSnapshot = await db.collection("users").where("user_type", "==", "lawyer").count().get();
+      const adminCountSnapshot = await db.collection("users").where("user_type", "==", "admin").count().get();
+
       res.json({
-        totalUsers: totalUsers.count,
-        totalCases: totalCases.count,
-        rechargeStats,
-        userBreakdown
+        totalUsers: userCountSnapshot.data().count,
+        totalCases: caseCountSnapshot.data().count,
+        rechargeStats: { total: rechargeCountSnapshot.data().count },
+        userBreakdown: [
+          { user_type: 'lawyer', count: lawyerCountSnapshot.data().count },
+          { user_type: 'admin', count: adminCountSnapshot.data().count }
+        ]
       });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  app.get("/api/admin/cases", (req, res) => {
+  app.get("/api/admin/cases", async (req, res) => {
     try {
-      const cases = db.prepare("SELECT c.*, u.name as lawyer_name FROM cases c LEFT JOIN users u ON c.user_id = u.id ORDER BY c.created_at DESC").all();
+      const snapshot = await db.collection("cases")
+        .orderBy("created_at", "desc")
+        .limit(100)
+        .get();
+      
+      const cases = await Promise.all(snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const userDoc = await db.collection("users").doc(data.user_id).get();
+        return {
+          id: doc.id,
+          ...data,
+          lawyer_name: userDoc.data()?.name || 'Unknown'
+        };
+      }));
+
       res.json(cases);
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-app.get('/api/admin/subscription-requests', (req, res) => {
+app.get('/api/admin/subscription-requests', async (req, res) => {
   try {
-    const requests = db.prepare(`
-      SELECT * FROM subscription_requests 
-      WHERE status = 'pending' 
-      ORDER BY created_at DESC
-    `).all();
+    const snapshot = await db.collection("subscription_requests")
+      .where("status", "==", "pending")
+      .orderBy("created_at", "desc")
+      .get();
+    
+    const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     res.json(requests);
   } catch (err) {
     console.error('Error fetching subscription requests:', err);
@@ -569,36 +514,38 @@ app.get('/api/admin/subscription-requests', (req, res) => {
   }
 });
 
-app.post('/api/admin/subscription-requests/:id/approve', (req, res) => {
+app.post('/api/admin/subscription-requests/:id/approve', async (req, res) => {
   const { id } = req.params;
   try {
-    const request = db.prepare("SELECT * FROM subscription_requests WHERE id = ?").get(id) as any;
-    if (!request) return res.status(404).json({ error: 'Request not found' });
+    const requestDoc = await db.collection("subscription_requests").doc(id).get();
+    if (!requestDoc.exists) return res.status(404).json({ error: 'Request not found' });
+    const request = requestDoc.data() as any;
 
-    const user = db.prepare("SELECT * FROM users WHERE mobile = ?").get(request.user_mobile) as any;
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    const userQuery = await db.collection("users").where("mobile", "==", request.user_mobile).limit(1).get();
+    if (userQuery.empty) return res.status(404).json({ error: 'User not found' });
+    const userDoc = userQuery.docs[0];
+    const user = userDoc.data() as any;
 
-    // Calculate end date
     const months = request.duration.includes('12') ? 12 : request.duration.includes('6') ? 6 : 1;
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + months);
 
-    const packageType = request.plan_name.toLowerCase().includes('premium') ? 'premium' : 'classic';
+    const packageType = (request.plan_name || '').toLowerCase().includes('premium') ? 'premium' : 'classic';
 
-    let targetUserId = user.id;
+    let targetUserId = userDoc.id;
     if (request.target_type === 'clerk') {
-      const clerk = db.prepare("SELECT * FROM users WHERE appointed_by = ?").get(user.id) as any;
-      if (clerk) {
-        targetUserId = clerk.id;
+      const clerkQuery = await db.collection("users").where("appointed_by", "==", userDoc.id).limit(1).get();
+      if (!clerkQuery.empty) {
+        targetUserId = clerkQuery.docs[0].id;
       }
     }
 
-    // Update user subscription
-    db.prepare("UPDATE users SET subscription_package = ?, subscription_end_date = ? WHERE id = ?")
-      .run(packageType, endDate.toISOString(), targetUserId);
+    await db.collection("users").doc(targetUserId).update({
+      subscription_package: packageType,
+      subscription_end_date: endDate.toISOString()
+    });
 
-    // Update request status
-    db.prepare("UPDATE subscription_requests SET status = 'approved' WHERE id = ?").run(id);
+    await db.collection("subscription_requests").doc(id).update({ status: 'approved' });
 
     res.json({ success: true });
   } catch (err) {
@@ -607,10 +554,10 @@ app.post('/api/admin/subscription-requests/:id/approve', (req, res) => {
   }
 });
 
-app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
+app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
   const { id } = req.params;
   try {
-    db.prepare("UPDATE subscription_requests SET status = 'rejected' WHERE id = ?").run(id);
+    await db.collection("subscription_requests").doc(id).update({ status: 'rejected' });
     res.json({ success: true });
   } catch (err) {
     console.error('Error rejecting subscription:', err);
@@ -618,38 +565,60 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
   }
 });
 
-  app.get("/api/admin/recharge-requests", (req, res) => {
+  app.get("/api/admin/recharge-requests", async (req, res) => {
     try {
-      const requests = db.prepare("SELECT r.*, u.name as user_name FROM recharge_orders r JOIN users u ON r.user_id = u.id WHERE r.status = 'pending'").all();
+      const snapshot = await db.collection("recharge_orders")
+        .where("status", "==", "pending")
+        .get();
+      
+      const requests = await Promise.all(snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const userDoc = await db.collection("users").doc(data.user_id).get();
+        return {
+          id: doc.id,
+          ...data,
+          user_name: userDoc.data()?.name || 'Unknown'
+        };
+      }));
+
       res.json(requests);
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  app.get("/api/admin/users", (req, res) => {
+  app.get("/api/admin/users", async (req, res) => {
     try {
-      const users = db.prepare(`
-        SELECT 
-          u.id, u.name, u.mobile, u.user_type, u.created_at, 
-          u.subscription_package, u.subscription_end_date,
-          w.balance as wallet_balance
-        FROM users u
-        LEFT JOIN users_wallet w ON u.id = w.user_id
-        ORDER BY u.created_at DESC
-      `).all();
+      const snapshot = await db.collection("users")
+        .orderBy("created_at", "desc")
+        .limit(200)
+        .get();
+      
+      const users = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          mobile: data.mobile,
+          user_type: data.user_type,
+          created_at: data.created_at?.toDate ? data.created_at.toDate() : data.created_at,
+          subscription_package: data.subscription_package,
+          subscription_end_date: data.subscription_end_date,
+          wallet_balance: data.wallet_balance || 0
+        };
+      });
       res.json(users);
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  app.put("/api/admin/users/:id/subscription", (req, res) => {
+  app.put("/api/admin/users/:id/subscription", async (req, res) => {
     try {
       const { id } = req.params;
       const { package: pkg, days } = req.body;
       
-      const validPackages = ['free', 'standard', 'premium'];
+      const validPackages = ['free', 'classic', 'premium'];
       if (!validPackages.includes(pkg)) {
         return res.status(400).json({ error: "Invalid package" });
       }
@@ -657,14 +626,17 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
       const now = new Date();
       const newEndDate = new Date(now.getTime() + (days || 30) * 24 * 60 * 60 * 1000);
 
-      db.prepare("UPDATE users SET subscription_package = ?, subscription_end_date = ? WHERE id = ?").run(pkg, newEndDate.toISOString(), id);
+      await db.collection("users").doc(id).update({
+        subscription_package: pkg,
+        subscription_end_date: newEndDate.toISOString()
+      });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  app.put("/api/admin/users/:id/role", (req, res) => {
+  app.put("/api/admin/users/:id/role", async (req: any, res) => {
     try {
       const { id } = req.params;
       const { role } = req.body;
@@ -674,31 +646,31 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
         return res.status(400).json({ error: "Invalid role" });
       }
 
-      db.prepare("UPDATE users SET user_type = ? WHERE id = ?").run(role, id);
+      await db.collection("users").doc(id).update({ user_type: role });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  app.post("/api/admin/recharge-approve", (req, res) => {
+  app.post("/api/admin/recharge-approve", async (req, res) => {
     try {
       const { orderId, status } = req.body;
       
-      const order = db.prepare("SELECT * FROM recharge_orders WHERE id = ?").get(orderId) as any;
-      if (!order) return res.status(404).json({ error: "অর্ডার পাওয়া যায়নি।" });
+      const orderDoc = await db.collection("recharge_orders").doc(orderId).get();
+      if (!orderDoc.exists) return res.status(404).json({ error: "অর্ডার পাওয়া যায়নি।" });
+      const order = orderDoc.data() as any;
       
       if (status === 'approved') {
         if (order.status === 'completed' || order.status === 'approved') {
           return res.status(400).json({ error: "অর্ডারটি ইতিমধ্যে সম্পন্ন হয়েছে।" });
         }
         
-        // Update order status
-        db.prepare("UPDATE recharge_orders SET status = 'approved' WHERE id = ?").run(orderId);
+        await db.collection("recharge_orders").doc(orderId).update({ status: 'approved' });
         
-        if (order.operator === 'subscription' || order.package_type?.toLowerCase().includes('subscription')) {
-          // Handle subscription: Add 30 days to subscription_end_date
-          const user = db.prepare("SELECT subscription_end_date FROM users WHERE id = ?").get(order.user_id) as any;
+        if (order.operator === 'subscription' || (order.package_type || '').toLowerCase().includes('subscription')) {
+          const userDoc = await db.collection("users").doc(order.user_id).get();
+          const user = userDoc.data() as any;
           let newEndDate;
           const now = new Date();
           
@@ -710,21 +682,15 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
             newEndDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
           }
           
-          db.prepare("UPDATE users SET subscription_end_date = ? WHERE id = ?").run(newEndDate.toISOString(), order.user_id);
+          await db.collection("users").doc(order.user_id).update({ subscription_end_date: newEndDate.toISOString() });
         } else {
-          // Add to history
-          db.prepare("INSERT INTO recharge_history (user_id, mobile_number, operator, package, amount, status) VALUES (?, ?, ?, ?, ?, 'success')").run(order.user_id, order.mobile_number, order.operator, order.package_type, order.amount);
-          
-          // Add cashback to wallet
-          const wallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(order.user_id) as any;
-          if (wallet) {
-            db.prepare("UPDATE users_wallet SET balance = balance + ? WHERE user_id = ?").run(order.cashback || 0, order.user_id);
-          } else {
-            db.prepare("INSERT INTO users_wallet (user_id, balance) VALUES (?, ?)").run(order.user_id, order.cashback || 0);
-          }
+          // Add to wallet balance
+          await db.collection("users").doc(order.user_id).update({
+            wallet_balance: FieldValue.increment(order.cashback || 0)
+          });
         }
       } else {
-        db.prepare("UPDATE recharge_orders SET status = 'rejected' WHERE id = ?").run(orderId);
+        await db.collection("recharge_orders").doc(orderId).update({ status: 'rejected' });
       }
       
       res.json({ success: true });
@@ -733,43 +699,23 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
     }
   });
 
-  app.post("/api/admin/reset-all", (req, res) => {
+  app.post("/api/admin/reset-all", async (req, res) => {
     try {
-      console.log("Resetting all data...");
+      console.log("Resetting all data in Firestore...");
+      const collections = ["recharge_orders", "affiliate_proofs", "subscription_requests", "cases", "users"];
       
-      // Temporarily disable foreign key constraints
-      db.prepare("PRAGMA foreign_keys = OFF").run();
-      
-      // Clear all tables
-      db.prepare("DELETE FROM recharge_history").run();
-      db.prepare("DELETE FROM recharge_orders").run();
-      db.prepare("DELETE FROM users_wallet").run();
-      db.prepare("DELETE FROM ptc_balances").run();
-      db.prepare("DELETE FROM ptc_clicks").run();
-      db.prepare("DELETE FROM ptc_ads").run();
-      db.prepare("DELETE FROM templates").run();
-      db.prepare("DELETE FROM cases").run();
-      db.prepare("DELETE FROM user_memories").run();
-      db.prepare("DELETE FROM subscription_requests").run();
-      db.prepare("DELETE FROM users").run();
-      
-      // Re-enable foreign key constraints
-      db.prepare("PRAGMA foreign_keys = ON").run();
-      
-      console.log("All data reset successfully.");
+      for (const coll of collections) {
+        const snapshot = await db.collection(coll).get();
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
       
       res.json({ success: true, message: "সকল ডাটা সফলভাবে মুছে ফেলা হয়েছে।" });
     } catch (error: any) {
       console.error("Error resetting data:", error);
-      // Ensure foreign keys are back on even if error occurs
-      try { db.prepare("PRAGMA foreign_keys = ON").run(); } catch (e) {}
       res.status(500).json({ error: "ডাটা মুছতে ব্যর্থ: " + error.message });
     }
-  });
-
-  // API Routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", database: "connected" });
   });
 
   // SSLCommerz Payment Routes
@@ -777,10 +723,8 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
     try {
       const { userId, amount, orderId, purpose } = req.body;
       
-      console.log('Initiating payment for user ' + userId + ', amount ' + amount + ', purpose: ' + purpose);
-      
       const store_id = process.env.SSLCOMMERZ_STORE_ID || 'testbox';
-      const store_passwd = process.env.SSLCOMMERZ_STORE_PASSWORD || 'testpass';
+      const store_passwd = process.env.SSLCOMMERZ_STORE_PASSWORD || 'qwerty';
       const is_live = process.env.SSLCOMMERZ_IS_LIVE === 'true';
 
       const tran_id = orderId || `TRAN_${Date.now()}_${userId}`;
@@ -800,35 +744,32 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
         cus_name: 'Customer',
         cus_email: 'customer@example.com',
         cus_add1: 'Dhaka',
-        cus_add2: 'Dhaka',
         cus_city: 'Dhaka',
-        cus_state: 'Dhaka',
         cus_postcode: '1000',
         cus_country: 'Bangladesh',
         cus_phone: '01711111111',
-        cus_fax: '01711111111',
-        ship_name: 'Customer',
-        ship_add1: 'Dhaka',
-        ship_add2: 'Dhaka',
-        ship_city: 'Dhaka',
-        ship_state: 'Dhaka',
-        ship_postcode: 1000,
-        ship_country: 'Bangladesh',
       };
 
-      // Save payment record
-      db.prepare("INSERT INTO payments (user_id, tran_id, amount, purpose, status) VALUES (?, ?, ?, ?, 'pending')").run(userId, tran_id, amount, purpose);
+      // Save payment record in Firestore
+      await db.collection("payments").doc(tran_id).set({
+        user_id: userId,
+        tran_id: tran_id,
+        amount: Number(amount),
+        purpose: purpose,
+        status: 'pending',
+        created_at: FieldValue.serverTimestamp()
+      });
 
       const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
+      
       sslcz.init(data).then((apiResponse: any) => {
         let GatewayPageURL = apiResponse.GatewayPageURL;
         if (GatewayPageURL) {
           res.json({ success: true, gatewayUrl: GatewayPageURL });
         } else {
-          res.status(400).json({ error: "পেমেন্ট গেটওয়ে তৈরি করতে সমস্যা হয়েছে।" });
+          res.status(400).json({ error: "পেমেন্ট গেটওয়ে এরর: " + (apiResponse.failedreason || 'Gateway initialization failed') });
         }
       }).catch((err: any) => {
-        console.error("SSLCommerz Init Error:", err);
         res.status(500).json({ error: "পেমেন্ট ইনিশিয়েশন ব্যর্থ: " + err.message });
       });
     } catch (error: any) {
@@ -836,384 +777,328 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
     }
   });
 
-  app.post("/api/payment/success", (req, res) => {
+  app.post("/api/payment/success", async (req, res) => {
     try {
       const { tran_id, amount, status } = req.body;
-      console.log('Payment success for tran_id: ' + tran_id);
 
       if (status === 'VALID') {
-        const payment = db.prepare("SELECT * FROM payments WHERE tran_id = ?").get(tran_id) as any;
-        if (payment && payment.status === 'pending') {
-          db.prepare("UPDATE payments SET status = 'success' WHERE tran_id = ?").run(tran_id);
+        const paymentDoc = await db.collection("payments").doc(tran_id).get();
+        const payment = paymentDoc.data() as any;
+        
+        if (paymentDoc.exists && payment.status === 'pending') {
+          await db.collection("payments").doc(tran_id).update({ status: 'success' });
 
-    // Handle purpose
-    if (payment.purpose && payment.purpose.startsWith('Subscription')) {
-      const parts = payment.purpose.split('|');
-      const planName = parts[1] || 'Premium (1 Month)';
-      const durationStr = parts[2] || '1 month';
-      const targetType = parts[3] || 'self';
+          if (payment.purpose && payment.purpose.toLowerCase().includes('subscription')) {
+            const durationStr = payment.purpose.split('_')[1] || '1 month';
+            const months = durationStr.includes('12') ? 12 : durationStr.includes('6') ? 6 : 1;
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + months);
 
-      const user = db.prepare("SELECT * FROM users WHERE id = ?").get(payment.user_id) as any;
-      if (user) {
-        // Calculate end date
-        const months = durationStr.includes('12') ? 12 : durationStr.includes('6') ? 6 : 1;
-        const endDate = new Date();
-        endDate.setMonth(endDate.getMonth() + months);
-
-        const packageType = planName.toLowerCase().includes('premium') ? 'premium' : 'classic';
-
-        let targetUserId = payment.user_id;
-        if (targetType === 'clerk') {
-          const clerk = db.prepare("SELECT * FROM users WHERE appointed_by = ?").get(payment.user_id) as any;
-          if (clerk) {
-            targetUserId = clerk.id;
-          }
-        }
-
-        // Update user subscription
-        db.prepare("UPDATE users SET subscription_end_date = ?, subscription_package = ? WHERE id = ?")
-          .run(endDate.toISOString(), packageType, targetUserId);
-      }
-    } else if (payment.purpose === 'Recharge') {
-            // Update wallet
-            db.prepare("UPDATE users_wallet SET balance = balance + ? WHERE user_id = ?").run(payment.amount, payment.user_id);
-            // Log in recharge_history
-            db.prepare("INSERT INTO recharge_history (user_id, mobile_number, operator, package, amount, status) VALUES (?, ?, ?, ?, ?, 'success')").run(payment.user_id, 'Online', 'Online', 'Online Recharge', payment.amount);
+            await db.collection("users").doc(payment.user_id).update({
+              subscription_end_date: endDate.toISOString(),
+              subscription_package: 'premium'
+            });
+          } else if (payment.purpose === 'Recharge') {
+            await db.collection("users").doc(payment.user_id).update({
+              wallet_balance: FieldValue.increment(payment.amount)
+            });
           }
         }
       }
       res.redirect("/?payment=success");
     } catch (error) {
-      console.error("Payment success error:", error);
+      console.error(error);
       res.redirect("/?payment=fail");
     }
   });
 
-  app.post("/api/payment/fail", (req, res) => {
-    const { tran_id } = req.body;
-    db.prepare("UPDATE payments SET status = 'failed' WHERE tran_id = ?").run(tran_id);
-    res.redirect("/?payment=fail");
-  });
-
-  app.post("/api/payment/cancel", (req, res) => {
-    const { tran_id } = req.body;
-    db.prepare("UPDATE payments SET status = 'cancelled' WHERE tran_id = ?").run(tran_id);
-    res.redirect("/?payment=cancel");
-  });
-
-  app.post("/api/payment/ipn", (req, res) => {
-    const { tran_id, status } = req.body;
-    if (status === 'VALID') {
-      const payment = db.prepare("SELECT * FROM payments WHERE tran_id = ?").get(tran_id) as any;
-      if (payment && payment.status === 'pending') {
-        db.prepare("UPDATE payments SET status = 'success' WHERE tran_id = ?").run(tran_id);
-        // ... same logic as success ...
-        if (payment.purpose === 'Subscription') {
-          db.prepare("UPDATE users SET subscription_end_date = datetime('now', '+365 days'), subscription_package = 'premium' WHERE id = ?").run(payment.user_id);
-        } else if (payment.purpose === 'Recharge') {
-          db.prepare("UPDATE users_wallet SET balance = balance + ? WHERE user_id = ?").run(payment.amount, payment.user_id);
-          db.prepare("INSERT INTO recharge_history (user_id, mobile_number, operator, package, amount, status) VALUES (?, ?, ?, ?, ?, 'success')").run(payment.user_id, 'Online', 'Online', 'Online Recharge', payment.amount);
-        }
-      }
-    }
-    res.status(200).send("IPN Received");
-  });
-
-  app.post("/api/admin/create-user", (req, res) => {
+  app.post("/api/payment/fail", async (req, res) => {
     try {
-      const { name, email, mobile, password, facebook_id, youtube_id, instagram_id, user_type } = req.body;
+      const { tran_id } = req.body;
+      if (tran_id) {
+        await db.collection("payments").doc(tran_id).update({ status: 'failed' });
+      }
+      res.redirect("/?payment=fail");
+    } catch (error) {
+      res.redirect("/?payment=fail");
+    }
+  });
+
+  app.post("/api/payment/cancel", async (req, res) => {
+    try {
+      const { tran_id } = req.body;
+      if (tran_id) {
+        await db.collection("payments").doc(tran_id).update({ status: 'cancelled' });
+      }
+      res.redirect("/?payment=cancel");
+    } catch (error) {
+      res.redirect("/?payment=cancel");
+    }
+  });
+
+  app.post("/api/payment/ipn", async (req, res) => {
+    try {
+      const { tran_id, status, amount } = req.body;
+      if (status === 'VALID' && tran_id) {
+        const paymentDoc = await db.collection("payments").doc(tran_id).get();
+        const payment = paymentDoc.data() as any;
+        
+        if (paymentDoc.exists && payment.status === 'pending') {
+          await db.collection("payments").doc(tran_id).update({ status: 'success' });
+          
+          if (payment.purpose && payment.purpose.toLowerCase().includes('subscription')) {
+            const durationStr = payment.purpose.split('_')[1] || '1 month';
+            const months = durationStr.includes('12') ? 12 : durationStr.includes('6') ? 6 : 1;
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + months);
+
+            await db.collection("users").doc(payment.user_id).update({
+              subscription_end_date: endDate.toISOString(),
+              subscription_package: 'premium'
+            });
+          } else if (payment.purpose === 'Recharge') {
+            await db.collection("users").doc(payment.user_id).update({
+              wallet_balance: FieldValue.increment(payment.amount)
+            });
+          }
+        }
+      }
+      res.status(200).send("IPN Received");
+    } catch (error) {
+      console.error("IPN Error:", error);
+      res.status(500).send("IPN Error");
+    }
+  });
+
+  app.post("/api/auth/firebase-sync", async (req, res) => {
+    try {
+      const { firebaseUid, email, mobile, fullName, profilePicture, userType, district, country } = req.body;
+      if (!firebaseUid) return res.status(400).json({ error: "UID missing" });
+
+      const usersRef = db.collection("users");
+      const query = await usersRef.where("firebase_uid", "==", firebaseUid).limit(1).get();
+      let userDoc = query.empty ? null : query.docs[0];
       
-      if (!name || !mobile || !password || !user_type) {
-        return res.status(400).json({ error: "নাম, মোবাইল, পাসওয়ার্ড এবং ইউজার টাইপ আবশ্যক।" });
-      }
+      // SUPER ADMIN BOOTSTRAP: mdcdairy.official@gmail.com
+      const isSuperAdminEmail = email === 'mdcdairy.official@gmail.com';
 
-      // Check if user exists
-      const existingUser = db.prepare("SELECT * FROM users WHERE mobile = ?").get(mobile);
-      if (existingUser) {
-        return res.status(400).json({ error: "এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট আছে।" });
-      }
+      if (!userDoc) {
+        // Find existing user by mobile or email
+        if (mobile) {
+          const mQuery = await usersRef.where("mobile", "==", mobile).limit(1).get();
+          if (!mQuery.empty) userDoc = mQuery.docs[0];
+        }
+        if (!userDoc && email) {
+          const eQuery = await usersRef.where("email", "==", email).limit(1).get();
+          if (!eQuery.empty) userDoc = eQuery.docs[0];
+        }
 
-      if (email) {
-        const existingUserByEmail = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-        if (existingUserByEmail) {
-          return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট আছে।" });
+        if (userDoc) {
+          // Link existing user to firebase_uid
+          const updates: any = { firebase_uid: firebaseUid };
+          if (userType) updates.user_type = userType;
+          if (isSuperAdminEmail) {
+            updates.user_type = 'super_admin';
+            updates.subscription_end_date = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString();
+          }
+          await userDoc.ref.update(updates);
+          const fresh = await userDoc.ref.get();
+          userDoc = fresh;
+        } else {
+          // Auto-register
+          const namePart = (fullName || 'USER').replace(/\s+/g, '').substring(0, 4).toUpperCase();
+          const referralCode = namePart + Math.floor(Math.random() * 10000);
+          let finalUserType = userType || 'client';
+          let subscriptionDays = 1;
+
+          if (isSuperAdminEmail) {
+            finalUserType = 'super_admin';
+            subscriptionDays = 36500;
+          }
+
+          const newUser = {
+            firebase_uid: firebaseUid,
+            name: fullName || 'ব্যবহারকারী',
+            email: email || null,
+            mobile: mobile || null,
+            user_type: finalUserType,
+            district: district || 'ঢাকা',
+            country: country || 'Bangladesh',
+            referral_code: referralCode,
+            profile_picture: profilePicture || null,
+            is_approved: 1,
+            subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
+            created_at: FieldValue.serverTimestamp(),
+            points: 0,
+            wallet_balance: 0
+          };
+          
+          const docRef = await usersRef.add(newUser);
+          userDoc = await docRef.get();
+        }
+      } else {
+        // User exists by firebase_uid, check if promotion needed
+        const data = userDoc.data() as any;
+        const updates: any = {};
+        if (isSuperAdminEmail && data.user_type !== 'super_admin') {
+          updates.user_type = 'super_admin';
+          updates.subscription_end_date = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString();
+        } else if (userType && data.user_type !== userType) {
+          updates.user_type = userType;
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          await userDoc.ref.update(updates);
+          userDoc = await userDoc.ref.get();
         }
       }
 
-      const stmt = db.prepare("INSERT INTO users (name, mobile, email, password, user_type, facebook_id, youtube_id, instagram_id, subscription_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+365 days'))");
-      const info = stmt.run(name, mobile, email || null, password, user_type, facebook_id || null, youtube_id || null, instagram_id || null);
-      
-      // Initialize PTC balance for new user
-      db.prepare("INSERT INTO ptc_balances (user_id, balance, total_earned) VALUES (?, 0, 0)").run(Number(info.lastInsertRowid));
-      db.prepare("INSERT INTO users_wallet (user_id, balance, points) VALUES (?, 0, 0)").run(Number(info.lastInsertRowid));
-
-      res.json({ success: true, userId: Number(info.lastInsertRowid) });
+      const userData = userDoc.data() as any;
+      res.json({ 
+        success: true, 
+        user: { 
+          id: userDoc.id,
+          ...userData,
+          firebaseUid: userData.firebase_uid,
+          fullName: userData.name,
+          userType: userData.user_type,
+          subscriptionEndDate: userData.subscription_end_date
+        } 
+      });
     } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+      console.error("[Auth Sync Error]", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
-  app.post("/api/auth/register", (req, res) => {
+  app.post("/api/auth/register", async (req, res) => {
     try {
-      const { fullName, mobile, email, password, userType, district, country, referredBy } = req.body;
+      const { firebaseUid, fullName, mobile, email, password, userType, district, thana, country, referredBy } = req.body;
       
       if (!fullName || !mobile || !password || !userType || !district || !country) {
         return res.status(400).json({ error: "সব তথ্য দেওয়া আবশ্যক।" });
       }
 
-      // Check if user exists
-      const existingUser = db.prepare("SELECT * FROM users WHERE mobile = ?").get(mobile);
-      if (existingUser) {
-
-        return res.status(400).json({ error: "এই মোবাইল নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট আছে।" });
-      }
-
-      if (email) {
-        const existingUserByEmail = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-        if (existingUserByEmail) {
-          return res.status(400).json({ error: "এই ইমেইল দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট আছে।" });
+      const usersRef = db.collection("users");
+      // Check if user exists by mobile, email or firebaseUid
+      let existingQuery;
+      if (mobile) existingQuery = await usersRef.where("mobile", "==", mobile).limit(1).get();
+      if ((!existingQuery || existingQuery.empty) && email) existingQuery = await usersRef.where("email", "==", email).limit(1).get();
+      if ((!existingQuery || existingQuery.empty) && firebaseUid) existingQuery = await usersRef.where("firebase_uid", "==", firebaseUid).limit(1).get();
+      
+      if (existingQuery && !existingQuery.empty) {
+        const userDoc = existingQuery.docs[0];
+        const userData = userDoc.data() as any;
+        if (firebaseUid && !userData.firebase_uid) {
+           await userDoc.ref.update({ firebase_uid: firebaseUid });
+           return res.json({ success: true, user: { id: userDoc.id, ...userData, firebase_uid: firebaseUid, fullName: userData.name, userType: userData.user_type } });
         }
+        return res.status(400).json({ error: "অ্যাকাউন্ট ইতিমধ্যে বিদ্যমান।" });
       }
 
-      // Generate a simple referral code (e.g., first 4 letters of name + last 4 digits of mobile)
       const namePart = fullName.replace(/\s+/g, '').substring(0, 4).toUpperCase();
       const mobilePart = mobile.substring(mobile.length - 4);
       const referralCode = namePart + mobilePart + Math.floor(Math.random() * 1000);
 
       let finalUserType = userType;
       let subscriptionDays = referredBy === '1012' ? 30 : 1;
-
-      if (referredBy === 'SUPERADMIN2026') {
+      
+      if (referredBy === 'SUPERADMIN2026' || email === 'mdcdairy.official@gmail.com') {
         finalUserType = 'super_admin';
-        subscriptionDays = 36500; // 100 years for superadmin
+        subscriptionDays = 36500;
       }
 
-      const stmt = db.prepare("INSERT INTO users (name, mobile, email, password, user_type, district, country, referral_code, referred_by, subscription_end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+" + subscriptionDays + " days'))");
-      
-      const info = stmt.run(fullName, mobile, email || null, password, finalUserType, district, country, referralCode, referredBy || null);
-      
-      // Initialize PTC balance for new user
-      db.prepare("INSERT INTO ptc_balances (user_id, balance, total_earned) VALUES (?, 0, 0)").run(Number(info.lastInsertRowid));
-      db.prepare("INSERT INTO users_wallet (user_id, balance, points) VALUES (?, 0, 0)").run(Number(info.lastInsertRowid));
+      const newUser = {
+        firebase_uid: firebaseUid || null,
+        name: fullName,
+        mobile: mobile,
+        email: email || null,
+        password: password, // For legacy support
+        user_type: finalUserType,
+        district: district,
+        thana: thana || null,
+        country: country,
+        referral_code: referralCode,
+        referred_by: referredBy || null,
+        is_approved: 1,
+        subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
+        created_at: FieldValue.serverTimestamp(),
+        points: 0,
+        wallet_balance: 0
+      };
 
-      // If referred by someone, we could add a bonus here
-      if (referredBy) {
-        const referrer = db.prepare("SELECT id, user_type FROM users WHERE referral_code = ?").get(referredBy) as { id: number, user_type: string } | undefined;
-        if (referrer) {
-          // If referrer is client, add 300 points
-          if (referrer.user_type === 'client') {
-            db.prepare("UPDATE ptc_balances SET balance = balance + 300, total_earned = total_earned + 300 WHERE user_id = ?").run(referrer.id);
-          }
-          // Lawyers and Clerks get subscription rewards based on case entries, no cash bonus
-        }
-      }
+      const docRef = await usersRef.add(newUser);
+      const userDoc = await docRef.get();
+      const userData = userDoc.data() as any;
 
-      res.json({ 
-        success: true, 
-        user: { 
-          id: Number(info.lastInsertRowid), 
-          fullName, 
-          mobile, 
-          userType: finalUserType, 
-          district, 
-          country,
-          referralCode
-        } 
-      });
+      res.json({ success: true, user: { id: userDoc.id, ...userData, fullName: userData.name, userType: userData.user_type } });
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  app.post("/api/auth/google", (req, res) => {
+  // Hierarchy & Management APIs
+  app.get("/api/admin/managed-users", async (req: any, res) => {
     try {
-      const { fullName, email, profilePicture, userType, district, country, referredBy } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({ error: "ইমেইল আবশ্যক।" });
+      const { role, district, country } = req.query;
+      const usersRef = db.collection("users");
+      let query: any = usersRef;
+
+      if (role === 'admin') {
+        query = query.where("district", "==", district)
+                     .where("user_type", "in", ['lawyer', 'clerk', 'client', 'bar_association', 'advertiser']);
+      } else if (role === 'country_manager') {
+        query = query.where("country", "==", country).where("user_type", "==", "admin");
+      } else if (role === 'super_admin') {
+        query = query.where("user_type", "==", "country_manager");
+      } else {
+        return res.status(403).json({ error: "অনুমতি নেই।" });
       }
 
-      // Check if user exists by email
-      let user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as any;
-      
-      if (!user) {
-        // Generate a simple referral code
-        const namePart = (fullName || 'USER').replace(/\s+/g, '').substring(0, 4).toUpperCase();
-        const randomPart = Math.floor(Math.random() * 10000);
-        const referralCode = namePart + randomPart;
-
-        let finalUserType = userType || 'client';
-        let subscriptionDays = referredBy === '1012' ? 30 : 1;
-
-        if (referredBy === 'SUPERADMIN2026') {
-          finalUserType = 'super_admin';
-          subscriptionDays = 36500; // 100 years for superadmin
-        }
-
-        // Create new user with defaults
-        const stmt = db.prepare(`
-          INSERT INTO users (name, email, user_type, district, country, referral_code, referred_by, profile_picture, subscription_end_date) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '+${subscriptionDays} days'))
-        `);
-        
-        const info = stmt.run(
-          fullName || 'ব্যবহারকারী', 
-          email, 
-          finalUserType, 
-          district || 'ঢাকা', 
-          country || 'Bangladesh', 
-          referralCode, 
-          referredBy || null,
-          profilePicture || null
-        );
-        
-        const userId = Number(info.lastInsertRowid);
-        
-        // Initialize PTC balance for new user
-        db.prepare("INSERT INTO ptc_balances (user_id, balance, total_earned) VALUES (?, 0, 0)").run(userId);
-        db.prepare("INSERT INTO users_wallet (user_id, balance, points) VALUES (?, 0, 0)").run(userId);
-
-        // If referred by someone, we could add a bonus here
-        if (referredBy) {
-          const referrer = db.prepare("SELECT id, user_type FROM users WHERE referral_code = ?").get(referredBy) as { id: number, user_type: string } | undefined;
-          if (referrer) {
-            // If referrer is client, add 300 points
-            if (referrer.user_type === 'client') {
-              db.prepare("UPDATE ptc_balances SET balance = balance + 300, total_earned = total_earned + 300 WHERE user_id = ?").run(referrer.id);
-            }
-          }
-        }
-
-        user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
-      }
-
-      // Fetch points
-      const wallet = db.prepare("SELECT points FROM users_wallet WHERE user_id = ?").get(user.id) as any;
-      const points = wallet ? wallet.points : 0;
-
-      res.json({ 
-        success: true, 
-        user: { 
-          id: user.id, 
-          fullName: user.name, 
-          mobile: user.mobile, 
-          userType: user.user_type, 
-          district: user.district, 
-          country: user.country,
-          referralCode: user.referral_code,
-          subscriptionEndDate: user.subscription_end_date,
-          subscriptionPackage: user.subscription_package,
-          profilePicture: user.profile_picture,
-          aiQuestionsCount: user.ai_questions_count,
-          lastAiResetDate: user.last_ai_reset_date,
-          points: points
-        } 
-      });
+      const snapshot = await query.get();
+      const users = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      res.json({ success: true, users });
     } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  app.post("/api/auth/reset-password", (req, res) => {
+  app.get("/api/admin/affiliate-referrals", async (req, res) => {
     try {
-      const { mobile, newPassword } = req.body;
-      
-      if (!mobile || !newPassword) {
-        return res.status(400).json({ error: "মোবাইল নম্বর এবং নতুন পাসওয়ার্ড প্রয়োজন।" });
-      }
-
-      // Check if user exists
-      const user = db.prepare("SELECT * FROM users WHERE mobile = ? OR email = ?").get(mobile, mobile) as any;
-      
-      if (!user) {
-        return res.status(404).json({ error: "এই মোবাইল নম্বর বা ইমেইল দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।" });
-      }
-
-      // Update password
-      db.prepare("UPDATE users SET password = ? WHERE id = ?").run(newPassword, user.id);
-      
-      res.json({ success: true, message: "পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে।" });
+      // Logic for affiliate signups can be added here if needed
+      res.json({ success: true, referrals: [] });
     } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
       const { mobile, rawMobile, password } = req.body;
+      const usersRef = db.collection("users");
       
-      // Find user by mobile and password
-      let user = db.prepare("SELECT * FROM users WHERE mobile = ? AND password = ?").get(mobile, password) as any;
+      let query = await usersRef.where("mobile", "==", mobile).where("password", "==", password).limit(1).get();
       
-      if (!user && rawMobile) {
-        user = db.prepare("SELECT * FROM users WHERE mobile = ? AND password = ?").get(rawMobile, password) as any;
+      if (query.empty && rawMobile) {
+        query = await usersRef.where("mobile", "==", rawMobile).where("password", "==", password).limit(1).get();
       }
 
-      // Fallback: Check if rawMobile is actually an email
-      if (!user && rawMobile && rawMobile.includes('@')) {
-        user = db.prepare("SELECT * FROM users WHERE email = ? AND password = ?").get(rawMobile, password) as any;
+      if (query.empty && rawMobile && rawMobile.includes('@')) {
+        query = await usersRef.where("email", "==", rawMobile).where("password", "==", password).limit(1).get();
       }
       
-      if (!user) {
-        let userFallback = null;
-        
-        // Additional fallback: check if DB has local version (e.g., 017... instead of +88017...)
-        if (!userFallback && mobile && mobile.startsWith('+')) {
-          // Extract country code and local part. Assuming country code is up to 4 chars.
-          // For simplicity, just strip the + and check, or strip known country codes.
-          let localMobile = '';
-          if (mobile.startsWith('+880')) localMobile = "0" + mobile.substring(4);
-          else if (mobile.startsWith('+91')) localMobile = "0" + mobile.substring(3);
-          else if (mobile.startsWith('+92')) localMobile = "0" + mobile.substring(3);
-          
-          if (localMobile) {
-            userFallback = db.prepare("SELECT * FROM users WHERE mobile = ? AND password = ?").get(localMobile, password) as any;
-          }
-          
-          // Also check without the leading 0
-          if (!userFallback && localMobile) {
-            const noZeroMobile = localMobile.substring(1);
-            userFallback = db.prepare("SELECT * FROM users WHERE mobile = ? AND password = ?").get(noZeroMobile, password) as any;
-          }
-        }
-
-        // Additional fallback: if DB has the double prefix bug (+880+88017...)
-        if (!userFallback && mobile && mobile.startsWith('+')) {
-          let doublePrefixMobile = '';
-          if (mobile.startsWith('+880')) doublePrefixMobile = "+880" + mobile;
-          else if (mobile.startsWith('+91')) doublePrefixMobile = "+91" + mobile;
-          else if (mobile.startsWith('+92')) doublePrefixMobile = "+92" + mobile;
-          
-          if (doublePrefixMobile) {
-            userFallback = db.prepare("SELECT * FROM users WHERE mobile = ? AND password = ?").get(doublePrefixMobile, password) as any;
-          }
-        }
-
-        // Additional fallback: if DB has +8800... bug
-        if (!userFallback && mobile && mobile.startsWith('+880')) {
-          const zeroPrefixMobile = "+8800" + mobile.substring(4);
-          userFallback = db.prepare("SELECT * FROM users WHERE mobile = ? AND password = ?").get(zeroPrefixMobile, password) as any;
-        }
-        
-        if (!userFallback) {
-          return res.status(401).json({ error: "মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।" });
-        }
-        
-        user = userFallback;
+      if (query.empty) {
+        return res.status(401).json({ error: "মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।" });
       }
       
-      // Fetch points
-      const wallet = db.prepare("SELECT points FROM users_wallet WHERE user_id = ?").get(user.id) as any;
-      const points = wallet ? wallet.points : 0;
+      const userDoc = query.docs[0];
+      const user = userDoc.data() as any;
 
       res.json({ 
         success: true, 
         user: { 
-          id: user.id, 
+          id: userDoc.id, 
           fullName: user.name, 
           mobile: user.mobile, 
           userType: user.user_type, 
@@ -1223,172 +1108,104 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
           subscriptionEndDate: user.subscription_end_date,
           subscriptionPackage: user.subscription_package,
           profilePicture: user.profile_picture,
-          aiQuestionsCount: user.ai_questions_count,
-          lastAiResetDate: user.last_ai_reset_date,
-          points: points
+          points: user.points || 0
         } 
       });
     } catch (error: any) {
-      console.error(error);
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
-  // Referral Routes
-  app.get("/api/user-network", (req, res) => {
+  app.get("/api/user-network", async (req, res) => {
     try {
       const { referralCode } = req.query;
-      if (!referralCode) {
-        return res.status(400).json({ error: "Referral code required" });
-      }
+      if (!referralCode) return res.status(400).json({ error: "Referral code required" });
 
-      // Get users referred by this referral code
-      const referredUsers = db.prepare("SELECT u.id, u.name, u.mobile, u.created_at, (SELECT COUNT(*) FROM cases WHERE user_id = u.id) as case_count FROM users u WHERE u.referred_by = ?").all(referralCode);
+      const snapshot = await db.collection("users").where("referred_by", "==", referralCode).get();
+      const referredUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       res.json(referredUsers);
     } catch (error: any) {
-      console.error(error);
       res.status(500).json({ error: "Database error: " + error.message });
     }
   });
 
-  // User Search API
-  app.get("/api/users/search", (req, res) => {
+  app.get("/api/users/search", async (req, res) => {
     try {
-      const { mobile, type } = req.query;
-      if (!mobile) return res.status(400).json({ error: "Mobile number required" });
-      
-      const mobileStr = mobile as string;
-      const possibleMobiles = [mobileStr];
-      
-      // Add variations for common BD mobile formats
-      if (mobileStr && mobileStr.startsWith('0')) {
-        possibleMobiles.push('+88' + mobileStr);
-        possibleMobiles.push('88' + mobileStr);
-      } else if (mobileStr && mobileStr.startsWith('+880')) {
-        possibleMobiles.push(mobileStr.substring(3)); // 017...
-        possibleMobiles.push(mobileStr.substring(4)); // 17...
-      } else if (mobileStr && mobileStr.startsWith('880')) {
-        possibleMobiles.push('0' + mobileStr.substring(3));
-        possibleMobiles.push(mobileStr.substring(3));
-      } else if (mobileStr && mobileStr.length === 10 && !mobileStr.startsWith('0')) {
-        possibleMobiles.push('0' + mobileStr);
-        possibleMobiles.push('+880' + mobileStr);
-        possibleMobiles.push('880' + mobileStr);
+      const { mobile, type, district } = req.query;
+      const usersRef = db.collection("users");
+      let query: any = usersRef;
+
+      if (mobile) {
+        query = query.where("mobile", "==", mobile);
       }
-      
-      const placeholders = possibleMobiles.map(() => '?').join(',');
-      let query = `SELECT id, name, mobile, user_type FROM users WHERE mobile IN (${placeholders})`;
-      const params = [...possibleMobiles];
-      
       if (type) {
-        query += " AND user_type = ?";
-        params.push(type as string);
+        query = query.where("user_type", "==", type);
       }
-      
-      const user = db.prepare(query).get(...params);
-      res.json(user || null);
+      if (district) {
+        query = query.where("district", "==", district);
+      }
+
+      const snapshot = await query.limit(50).get();
+      const users = snapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        name: doc.data().name,
+        mobile: doc.data().mobile,
+        user_type: doc.data().user_type,
+        district: doc.data().district,
+        profile_picture: doc.data().profile_picture
+      }));
+
+      res.json({ success: true, users });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
 
   // Cases Routes
-  app.get("/api/cases", (req, res) => {
+  app.get("/api/cases", authenticate, async (req: any, res) => {
     try {
-      const userId = req.query.userId;
-      let cases = [];
-      
-      if (userId && userId !== 'undefined') {
-        // Fetch cases created by this user, or where they are a party
-        const user = db.prepare("SELECT * FROM users WHERE id = ?").get(userId) as any;
-        if (user) {
-          const mobileStr = user.mobile as string;
-          const possibleMobiles = [mobileStr].filter(Boolean);
-          
-          if (mobileStr && mobileStr.startsWith('0')) {
-            possibleMobiles.push('+88' + mobileStr);
-            possibleMobiles.push('88' + mobileStr);
-          } else if (mobileStr && mobileStr.startsWith('+880')) {
-            possibleMobiles.push(mobileStr.substring(3)); // 017...
-            possibleMobiles.push(mobileStr.substring(4)); // 17...
-          } else if (mobileStr && mobileStr.startsWith('880')) {
-            possibleMobiles.push('0' + mobileStr.substring(2)); // 017...
-            possibleMobiles.push(mobileStr.substring(2)); // 17...
-          }
+      const user = req.profile;
+      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      const userId = user.id;
 
-          // Build the query dynamically based on possible mobiles
-          const conditions = ["user_id = ?"];
-          const params: any[] = [userId];
+      // Fetch cases created by this user
+      const casesSnapshot = await db.collection("cases")
+        .where("user_id", "==", userId)
+        .orderBy("created_at", "desc")
+        .get();
 
-          possibleMobiles.forEach(m => {
-            conditions.push("petitionerMobile = ?");
-            params.push(m);
-            conditions.push("respondentMobile = ?");
-            params.push(m);
-            
-            const likeStr = "%\"" + m + "\"%";
-            const fields = [
-              "petitionerLawyerMobile", "respondentLawyerMobile",
-              "petitionerClerkMobile", "respondentClerkMobile",
-              "petitionerAsstLawyerMobile", "respondentAsstLawyerMobile",
-              "petitionerAsstClerkMobile", "respondentAsstClerkMobile"
-            ];
-            
-            fields.forEach(f => {
-              conditions.push(`${f} LIKE ?`);
-              params.push(likeStr);
-            });
-          });
+      let cases = casesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-          const query = `SELECT * FROM cases WHERE ${conditions.join(" OR ")} ORDER BY id DESC`;
-          cases = db.prepare(query).all(...params);
-        } else {
-          cases = db.prepare("SELECT * FROM cases WHERE user_id = ? ORDER BY id DESC").all(userId);
-        }
-      } else {
-        cases = db.prepare("SELECT * FROM cases ORDER BY id DESC").all();
+      if (user.user_type === 'client' && user.district) {
+        const publicCasesSnapshot = await db.collection("cases")
+          .where("visibility", "==", "public")
+          .where("district", "==", user.district)
+          .get();
+
+        const publicCases = publicCasesSnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(c => !cases.find(existing => existing.id === c.id));
+
+        cases = [...cases, ...publicCases];
       }
 
-      // Parse JSON arrays for mobile numbers if needed, and map order_text back to order
-      const formattedCases = cases.map((c: any) => {
-        const parseMobile = (val: any) => {
-          if (!val) return undefined;
-          try {
-            return JSON.parse(val);
-          } catch (e) {
-            console.error("Error parsing mobile JSON:", val);
-            return [val]; // Fallback to array with raw string
-          }
-        };
-
-        return {
-          ...c,
-          order: c.order_text,
-          caseSection: c.case_section,
-          isUpdated: Boolean(c.isUpdated),
-          petitionerLawyerMobile: parseMobile(c.petitionerLawyerMobile),
-          respondentLawyerMobile: parseMobile(c.respondentLawyerMobile),
-          petitionerClerkMobile: parseMobile(c.petitionerClerkMobile),
-          respondentClerkMobile: parseMobile(c.respondentClerkMobile),
-          petitionerAsstLawyerMobile: parseMobile(c.petitionerAsstLawyerMobile),
-          respondentAsstLawyerMobile: parseMobile(c.respondentAsstLawyerMobile),
-          petitionerAsstClerkMobile: parseMobile(c.petitionerAsstClerkMobile),
-          respondentAsstClerkMobile: parseMobile(c.respondentAsstClerkMobile),
-        };
-      });
-      res.json(formattedCases);
+      res.json(cases);
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: "Database error: " + error.message });
     }
   });
 
-  app.post("/api/cases", (req, res) => {
+  app.post("/api/cases", authenticate, (req: any, res) => {
     try {
       const c = req.body;
+      const userId = req.profile?.id;
+
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
       
-      // Convert arrays to JSON strings for SQLite
+      // Ensure user_id is the authenticated user
+      c.user_id = userId;
       const pLawyerMob = Array.isArray(c.petitionerLawyerMobile) ? JSON.stringify(c.petitionerLawyerMobile) : c.petitionerLawyerMobile ? JSON.stringify([c.petitionerLawyerMobile]) : null;
       const rLawyerMob = Array.isArray(c.respondentLawyerMobile) ? JSON.stringify(c.respondentLawyerMobile) : c.respondentLawyerMobile ? JSON.stringify([c.respondentLawyerMobile]) : null;
       const pClerkMob = Array.isArray(c.petitionerClerkMobile) ? JSON.stringify(c.petitionerClerkMobile) : c.petitionerClerkMobile ? JSON.stringify([c.petitionerClerkMobile]) : null;
@@ -1398,112 +1215,127 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
       const pAsstClerkMob = Array.isArray(c.petitionerAsstClerkMobile) ? JSON.stringify(c.petitionerAsstClerkMobile) : c.petitionerAsstClerkMobile ? JSON.stringify([c.petitionerAsstClerkMobile]) : null;
       const rAsstClerkMob = Array.isArray(c.respondentAsstClerkMobile) ? JSON.stringify(c.respondentAsstClerkMobile) : c.respondentAsstClerkMobile ? JSON.stringify([c.respondentAsstClerkMobile]) : null;
 
-      if (c.id && typeof c.id === 'number' && c.id < 1000000000000) {
-        // Update existing case (assuming IDs < timestamp are from server)
-        const stmt = db.prepare("UPDATE cases SET caseNumber=?, courtName=?, nextDate=?, status=?, caseType=?, petitioner=?, respondent=?, isUpdated=?, order_text=?, petitionerMobile=?, respondentMobile=?, petitionerLawyer=?, respondentLawyer=?, petitionerLawyerMobile=?, respondentLawyerMobile=?, petitionerClerk=?, respondentClerk=?, petitionerClerkMobile=?, respondentClerkMobile=?, petitionerAsstLawyer=?, respondentAsstLawyer=?, petitionerAsstLawyerMobile=?, respondentAsstLawyerMobile=?, petitionerAsstClerk=?, respondentAsstClerk=?, petitionerAsstClerkMobile=?, respondentAsstClerkMobile=?, filingDate=?, lastEditedBySide=?, reportedErrorBySide=?, visibility=?, case_section=?, user_id=? WHERE id=?");
-        stmt.run(
-          c.caseNumber, c.courtName, c.nextDate, c.status, c.caseType, c.petitioner, c.respondent,
-          c.isUpdated ? 1 : 0, c.order, c.petitionerMobile, c.respondentMobile, c.petitionerLawyer,
-          c.respondentLawyer, pLawyerMob, rLawyerMob, c.petitionerClerk,
-          c.respondentClerk, pClerkMob, rClerkMob, c.petitionerAsstLawyer, c.respondentAsstLawyer,
-          pAsstLawyerMob, rAsstLawyerMob, c.petitionerAsstClerk, c.respondentAsstClerk,
-          pAsstClerkMob, rAsstClerkMob, c.filingDate,
-          c.lastEditedBySide, c.reportedErrorBySide, c.visibility || 'private', c.caseSection || null, c.user_id || null,
-          c.id
-        );
+      if (c.id) {
+        await db.collection("cases").doc(c.id).set({
+          ...c,
+          updated_at: FieldValue.serverTimestamp()
+        }, { merge: true });
         res.json({ success: true, id: c.id });
       } else {
-        // Insert new case
-        const stmt = db.prepare("INSERT INTO cases (caseNumber, courtName, nextDate, status, caseType, petitioner, respondent, isUpdated, order_text, petitionerMobile, respondentMobile, petitionerLawyer, respondentLawyer, petitionerLawyerMobile, respondentLawyerMobile, petitionerClerk, respondentClerk, petitionerClerkMobile, respondentClerkMobile, petitionerAsstLawyer, respondentAsstLawyer, petitionerAsstLawyerMobile, respondentAsstLawyerMobile, petitionerAsstClerk, respondentAsstClerk, petitionerAsstClerkMobile, respondentAsstClerkMobile, filingDate, lastEditedBySide, reportedErrorBySide, visibility, case_section, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        const info = stmt.run(
-          c.caseNumber, c.courtName, c.nextDate, c.status, c.caseType, c.petitioner, c.respondent,
-          c.isUpdated ? 1 : 0, c.order, c.petitionerMobile, c.respondentMobile, c.petitionerLawyer,
-          c.respondentLawyer, pLawyerMob, rLawyerMob, c.petitionerClerk,
-          c.respondentClerk, pClerkMob, rClerkMob, c.petitionerAsstLawyer, c.respondentAsstLawyer,
-          pAsstLawyerMob, rAsstLawyerMob, c.petitionerAsstClerk, c.respondentAsstClerk,
-          pAsstClerkMob, rAsstClerkMob, c.filingDate,
-          c.lastEditedBySide, c.reportedErrorBySide, c.visibility || 'private', c.caseSection || null, c.user_id || null
-        );
-        
-        // Automatic subscription logic
-        if (c.user_id) {
-          const user = db.prepare("SELECT referred_by FROM users WHERE id = ?").get(c.user_id) as { referred_by: string } | undefined;
-          if (user && user.referred_by) {
-            const referrer = db.prepare("SELECT id, created_at, user_type FROM users WHERE referral_code = ?").get(user.referred_by) as { id: number, created_at: string, user_type: string } | undefined;
-            if (referrer && (referrer.user_type === 'lawyer' || referrer.user_type === 'clerk')) {
-              const joinDate = new Date(referrer.created_at);
-              const now = new Date();
-              const diffTime = Math.abs(now.getTime() - joinDate.getTime());
-              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-              
-              if (diffDays <= 30) {
-                const referredUsers = db.prepare("SELECT u.id, (SELECT COUNT(*) FROM cases WHERE user_id = u.id) as case_count FROM users u WHERE u.referred_by = ?").all(user.referred_by);
-
-                const qualifiedUsers = referredUsers.filter((u: any) => u.case_count >= 10);
-                
-                if (qualifiedUsers.length >= 10) {
-                  db.prepare("UPDATE users SET subscription_end_date = datetime('now', '+3 months') WHERE id = ?").run(referrer.id);
-                } else if (qualifiedUsers.length >= 5) {
-                  db.prepare("UPDATE users SET subscription_end_date = datetime('now', '+1 month') WHERE id = ?").run(referrer.id);
-                }
-              }
-            }
-          }
-        }
-        
-        res.json({ success: true, id: Number(info.lastInsertRowid) });
+        const docRef = await db.collection("cases").add({
+          ...c,
+          created_at: FieldValue.serverTimestamp()
+        });
+        res.json({ success: true, id: docRef.id });
       }
     } catch (error: any) {
-      console.error(error);
       res.status(500).json({ error: "Database error: " + error.message });
     }
   });
 
-  // Recharge API Routes
-  app.post("/api/recharge/create", (req, res) => {
+  // User Memories API
+  app.get("/api/memories/:userId", authenticate, async (req: any, res) => {
     try {
-      const { user_id, mobile_number, operator, package_type, amount, payment_method, transaction_id } = req.body;
+      const targetUserId = req.params.userId;
+      if (req.profile?.id !== targetUserId) {
+        return res.status(403).json({ error: "অনুমতি নেই।" });
+      }
+      const snapshot = await db.collection("memories")
+        .where("user_id", "==", targetUserId)
+        .orderBy("created_at", "desc")
+        .get();
+      const memories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json({ success: true, memories });
+    } catch (error: any) {
+      res.status(500).json({ error: "মেমোরি আনতে ব্যর্থ হয়েছে।" });
+    }
+  });
+
+  app.post("/api/memories", authenticate, async (req: any, res) => {
+    try {
+      const { content, category } = req.body;
+      const userId = req.profile?.id;
+      if (!userId || !content) return res.status(400).json({ error: "তথ্য অসম্পূর্ণ।" });
+      
+      const docRef = await db.collection("memories").add({
+        user_id: userId,
+        content,
+        category: category || 'general',
+        created_at: FieldValue.serverTimestamp()
+      });
+      
+      res.json({ success: true, id: docRef.id });
+    } catch (error: any) {
+      res.status(500).json({ error: "তথ্য সংরক্ষণে ব্যর্থ হয়েছে।" });
+    }
+  });
+
+  // Recharge API Routes
+  app.post("/api/recharge/create", authenticate, async (req: any, res) => {
+    try {
+      const { mobile_number, operator, package_type, amount, payment_method, transaction_id } = req.body;
+      const user_id = req.profile?.id;
+      if (!user_id) return res.status(401).json({ error: "Unauthorized" });
       
       const commission = amount * 0.10; // 10% commission
       const cashback = commission * 0.30; // 30% of commission goes to user
       
-      const stmt = db.prepare("INSERT INTO recharge_orders (user_id, mobile_number, operator, package_type, amount, commission, cashback, payment_method, transaction_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+      const docRef = await db.collection("recharge_orders").add({
+        user_id,
+        mobile_number,
+        operator,
+        package_type,
+        amount: Number(amount),
+        commission,
+        cashback,
+        payment_method,
+        transaction_id: transaction_id || null,
+        status: 'pending',
+        created_at: FieldValue.serverTimestamp()
+      });
       
-      const info = stmt.run(user_id, mobile_number, operator, package_type, amount, commission, cashback, payment_method, transaction_id || null);
-      
-      res.json({ success: true, order_id: Number(info.lastInsertRowid), amount, cashback });
+      res.json({ success: true, order_id: docRef.id, amount, cashback });
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: "Failed to create recharge order" });
     }
   });
 
-  app.post("/api/recharge/confirm", (req, res) => {
+  app.post("/api/recharge/confirm", async (req, res) => {
     try {
       const { order_id } = req.body;
       
-      const order = db.prepare("SELECT * FROM recharge_orders WHERE id = ?").get(order_id) as any;
-      if (!order) {
-        return res.status(404).json({ error: "Order not found" });
-      }
+      const orderDoc = await db.collection("recharge_orders").doc(order_id).get();
+      if (!orderDoc.exists) return res.status(404).json({ error: "Order not found" });
+      const order = orderDoc.data() as any;
       
       if (order.status === 'completed') {
         return res.status(400).json({ error: "Order already completed" });
       }
       
+      const batch = db.batch();
       // Update order status
-      db.prepare("UPDATE recharge_orders SET status = 'completed' WHERE id = ?").run(order_id);
+      batch.update(db.collection("recharge_orders").doc(order_id), { status: 'completed' });
       
       // Add to history
-      db.prepare("INSERT INTO recharge_history (user_id, mobile_number, operator, package, amount, status) VALUES (?, ?, ?, ?, ?, 'success')").run(order.user_id, order.mobile_number, order.operator, order.package_type, order.amount);
+      const historyRef = db.collection("recharge_history").doc();
+      batch.set(historyRef, {
+        user_id: order.user_id,
+        mobile_number: order.mobile_number,
+        operator: order.operator,
+        package: order.package_type,
+        amount: order.amount,
+        status: 'success',
+        created_at: FieldValue.serverTimestamp()
+      });
       
       // Add cashback to wallet
-      const wallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(order.user_id) as any;
-      if (wallet) {
-        db.prepare("UPDATE users_wallet SET balance = balance + ? WHERE user_id = ?").run(order.cashback, order.user_id);
-      } else {
-        db.prepare("INSERT INTO users_wallet (user_id, balance) VALUES (?, ?)").run(order.user_id, order.cashback);
-      }
+      const userRef = db.collection("users").doc(order.user_id);
+      batch.update(userRef, {
+        wallet_balance: FieldValue.increment(order.cashback || 0)
+      });
+      
+      await batch.commit();
       
       res.json({ success: true, message: "Recharge successful", cashback: order.cashback });
     } catch (error: any) {
@@ -1512,26 +1344,23 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
     }
   });
 
-  app.get("/api/recharge/history/:userId", (req, res) => {
-    try {
-      const { userId } = req.params;
-      const history = db.prepare("SELECT * FROM recharge_history WHERE user_id = ? ORDER BY date DESC").all(userId);
-      res.json({ success: true, history });
-    } catch (error: any) {
-      console.error(error);
-      res.status(500).json({ error: "Failed to fetch history" });
-    }
-  });
 
-  app.get("/api/recharge/wallet/:userId", (req, res) => {
+
+  app.get("/api/recharge/wallet/:userId", authenticate, async (req: any, res) => {
     try {
-      const { userId } = req.params;
-      let wallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(userId) as any;
-      
-      if (!wallet) {
-        db.prepare("INSERT INTO users_wallet (user_id, balance) VALUES (?, 0)").run(userId);
-        wallet = { user_id: userId, balance: 0, points: 0 };
+      const targetUserId = req.params.userId;
+      if (req.profile?.id !== targetUserId) {
+        return res.status(403).json({ error: "অনুমতি নেই।" });
       }
+      const userDoc = await db.collection("users").doc(targetUserId).get();
+      if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+      
+      const userData = userDoc.data() as any;
+      const wallet = {
+        user_id: targetUserId,
+        balance: userData.wallet_balance || 0,
+        points: userData.points || 0
+      };
       
       res.json({ success: true, wallet });
     } catch (error: any) {
@@ -1541,148 +1370,101 @@ app.post('/api/admin/subscription-requests/:id/reject', (req, res) => {
   });
 
   // Templates Routes
-  app.get("/api/templates", (req, res) => {
+  app.get("/api/templates", async (req, res) => {
     try {
-      const templates = db.prepare("SELECT t.*, COALESCE(t.uploader_name, u.name) as uploader_name, u.user_type as uploader_type FROM templates t LEFT JOIN users u ON t.uploaded_by = u.id ORDER BY t.created_at DESC").all();
+      const snapshot = await db.collection("templates").orderBy("created_at", "desc").get();
+      const templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       res.json({ success: true, templates });
     } catch (error: any) {
-      console.error(error);
       res.status(500).json({ error: "Failed to fetch templates" });
     }
   });
 
-  // User Memories API
-  app.get("/api/memories/:userId", (req, res) => {
-    try {
-      const { userId } = req.params;
-      const memories = db.prepare("SELECT * FROM user_memories WHERE user_id = ? ORDER BY created_at DESC").all(userId);
-      res.json({ success: true, memories });
-    } catch (error: any) {
-      res.status(500).json({ error: "মেমোরি আনতে ব্যর্থ হয়েছে।" });
-    }
-  });
-
-  app.post("/api/memories", (req, res) => {
-    try {
-      const { userId, content, category } = req.body;
-      if (!userId || !content) return res.status(400).json({ error: "তথ্য অসম্পূর্ণ।" });
-      
-      const stmt = db.prepare("INSERT INTO user_memories (user_id, content, category) VALUES (?, ?, ?)");
-      const info = stmt.run(userId, content, category || 'general');
-      
-      res.json({ success: true, id: Number(info.lastInsertRowid) });
-    } catch (error: any) {
-      res.status(500).json({ error: "তথ্য সংরক্ষণে ব্যর্থ হয়েছে।" });
-    }
-  });
-
-  app.post("/api/templates", express.json({ limit: '10mb' }), (req, res) => {
+  app.post("/api/templates", async (req, res) => {
     try {
       const { title, description, file_url, uploaded_by, uploader_name } = req.body;
-      
-      // Verify user exists if uploaded_by is provided
-      let validUploadedBy = null;
-      if (uploaded_by) {
-        const userExists = db.prepare("SELECT id FROM users WHERE id = ?").get(uploaded_by);
-        if (userExists) {
-          validUploadedBy = uploaded_by;
-        } else {
-          console.warn("User ID " + uploaded_by + " not found in database. Setting uploaded_by to null.");
-        }
-      }
-
-      const stmt = db.prepare("INSERT INTO templates (title, description, file_url, uploaded_by, uploader_name) VALUES (?, ?, ?, ?, ?)");
-      const info = stmt.run(title, description, file_url, validUploadedBy, uploader_name || null);
-      res.json({ success: true, template_id: Number(info.lastInsertRowid) });
+      const docRef = await db.collection("templates").add({
+        title,
+        description,
+        file_url,
+        uploaded_by: uploaded_by || null,
+        uploader_name: uploader_name || null,
+        created_at: FieldValue.serverTimestamp()
+      });
+      res.json({ success: true, template_id: docRef.id });
     } catch (error: any) {
-      console.error("Template upload error:", error);
-      res.status(500).json({ error: error.message || "Failed to upload template" });
+      res.status(500).json({ error: "Failed to upload template" });
     }
   });
 
-  // Points and Ads API
-
-
-  app.post("/api/users/:id/profile-picture", express.json({ limit: '5mb' }), (req, res) => {
+  app.post("/api/templates/:id/download", async (req, res) => {
     try {
-      const { profilePicture } = req.body;
       const { id } = req.params;
+      const { user_id } = req.body;
+      if (!user_id) return res.status(400).json({ error: "User ID required" });
+
+      const templateDoc = await db.collection("templates").doc(id).get();
+      if (!templateDoc.exists) return res.status(404).json({ error: "Template not found" });
+      const template = templateDoc.data() as any;
+
+      if (template.uploaded_by !== user_id) {
+        const userDoc = await db.collection("users").doc(user_id).get();
+        const user = userDoc.data() as any;
+        if (!user || (user.points || 0) < 10) {
+          return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই। বিজ্ঞাপন দেখে পয়েন্ট অর্জন করুন।" });
+        }
+
+        const batch = db.batch();
+        batch.update(db.collection("users").doc(user_id), { points: FieldValue.increment(-10) });
+        if (template.uploaded_by) {
+          batch.update(db.collection("users").doc(template.uploaded_by), { points: FieldValue.increment(5) });
+        }
+        await batch.commit();
+      }
       
-      db.prepare("UPDATE users SET profile_picture = ? WHERE id = ?").run(profilePicture, id);
-      res.json({ success: true });
+      res.json({ success: true, file_url: template.file_url });
     } catch (error: any) {
-      res.status(500).json({ error: "Failed to update profile picture" });
+      res.status(500).json({ error: "Download processing failed" });
     }
   });
 
-  app.get("/api/users/:id/points", (req, res) => {
-    try {
-      const wallet = db.prepare("SELECT points FROM users_wallet WHERE user_id = ?").get(req.params.id);
-      res.json({ success: true, points: wallet ? wallet.points : 0 });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch points" });
-    }
-  });
-
-  app.post("/api/ads/watch", (req, res) => {
+  app.post("/api/ads/watch", async (req, res) => {
     try {
       const { user_id } = req.body;
       if (!user_id) return res.status(400).json({ error: "User ID required" });
       
-      const wallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(user_id);
-      if (!wallet) {
-        db.prepare("INSERT INTO users_wallet (user_id, points) VALUES (?, 10)").run(user_id);
-      } else {
-        db.prepare("UPDATE users_wallet SET points = points + 10 WHERE user_id = ?").run(user_id);
-      }
+      await db.collection("users").doc(user_id).update({
+        points: FieldValue.increment(10)
+      });
       
-      const updatedWallet = db.prepare("SELECT points FROM users_wallet WHERE user_id = ?").get(user_id);
-      res.json({ success: true, points: updatedWallet.points });
-    } catch (error) {
+      const userDoc = await db.collection("users").doc(user_id).get();
+      res.json({ success: true, points: (userDoc.data() as any).points });
+    } catch (error: any) {
       res.status(500).json({ error: "Failed to update points" });
     }
   });
 
-  app.post("/api/templates/:id/download", (req, res) => {
+  app.get('/api/user/referrals', async (req, res) => {
     try {
+      const { referralCode } = req.query;
+      if (!referralCode) return res.status(400).json({ error: 'Referral code is required' });
+
+      const snapshot = await db.collection("users").where("referred_by", "==", referralCode).get();
+      const referrals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(referrals);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to fetch referrals' });
+    }
+  });
+
+  app.post("/api/users/:id/profile-picture", async (req, res) => {
+    try {
+      const { profilePicture } = req.body;
       const { id } = req.params;
-      const { user_id } = req.body;
-      
-      if (!user_id) return res.status(400).json({ error: "User ID required" });
-
-      const template = db.prepare("SELECT * FROM templates WHERE id = ?").get(id);
-      if (!template) return res.status(404).json({ error: "Template not found" });
-
-      const isUploader = template.uploaded_by === user_id;
-
-      if (!isUploader) {
-        const wallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(user_id);
-        if (!wallet || wallet.points < 10) {
-          return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই। দয়া করে বিজ্ঞাপন দেখে পয়েন্ট অর্জন করুন।" });
-        }
-
-        const transaction = db.transaction(() => {
-          // Deduct 10 points from downloader
-          db.prepare("UPDATE users_wallet SET points = points - 10 WHERE user_id = ?").run(user_id);
-          
-          // Add 5 points to uploader
-          if (template.uploaded_by) {
-            const uploaderWallet = db.prepare("SELECT * FROM users_wallet WHERE user_id = ?").get(template.uploaded_by);
-            if (!uploaderWallet) {
-              db.prepare("INSERT INTO users_wallet (user_id, points) VALUES (?, 5)").run(template.uploaded_by);
-            } else {
-              db.prepare("UPDATE users_wallet SET points = points + 5 WHERE user_id = ?").run(template.uploaded_by);
-            }
-          }
-        });
-
-        transaction();
-      }
-      
-      res.json({ success: true, file_url: template.file_url });
-    } catch (error) {
-      console.error("Download transaction error:", error);
-      res.status(500).json({ error: "Download processing failed" });
+      await db.collection("users").doc(id).update({ profile_picture: profilePicture });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to update profile picture" });
     }
   });
 

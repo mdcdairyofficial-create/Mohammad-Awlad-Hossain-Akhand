@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Smartphone, Wifi, Clock, Gift, CreditCard, History, Wallet, CheckCircle2, ChevronRight, ArrowLeft, Users } from 'lucide-react';
+import { fetchWithAuth } from '../../lib/api';
 
 interface RechargeProps {
   userId: number | undefined;
@@ -24,7 +25,7 @@ export default function Recharge({ userId }: RechargeProps) {
   const initiateOnlinePayment = async (amount: number, purpose: string) => {
     setIsOnlinePaymentLoading(true);
     try {
-      const response = await fetch('/api/payment/initiate', {
+      const response = await fetchWithAuth('/api/payment/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -89,7 +90,7 @@ export default function Recharge({ userId }: RechargeProps) {
 
   const fetchWallet = async () => {
     try {
-      const res = await fetch(`/api/recharge/wallet/${userId}`);
+      const res = await fetchWithAuth(`/api/recharge/wallet/${userId}`);
       const data = await res.json();
       if (data.success) {
         setWalletBalance(data.wallet.balance);
@@ -101,7 +102,7 @@ export default function Recharge({ userId }: RechargeProps) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(`/api/recharge/history/${userId}`);
+      const res = await fetchWithAuth(`/api/recharge/history/${userId}`);
       const data = await res.json();
       if (data.success) {
         setHistory(data.history);

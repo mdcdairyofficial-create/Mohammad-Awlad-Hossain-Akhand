@@ -2,25 +2,39 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Application user profile",
+      "description": "User profile and account information",
       "type": "object",
       "properties": {
+        "firebase_uid": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "mobile": { "type": "string" },
-        "user_type": { "type": "string", "enum": ["lawyer", "clerk", "client", "admin", "super_admin"] },
+        "user_type": { "type": "string", "enum": ["super_admin", "country_manager", "admin", "bar_admin", "lawyer", "clerk", "client", "advertiser", "bar_association"] },
         "district": { "type": "string" },
+        "thana": { "type": "string" },
         "country": { "type": "string" },
         "referral_code": { "type": "string" },
+        "referred_by": { "type": "string" },
         "subscription_end_date": { "type": "string", "format": "date-time" },
         "subscription_package": { "type": "string" },
-        "points": { "type": "number" }
+        "profile_picture": { "type": "string" },
+        "is_approved": { "type": "boolean" },
+        "wallet_balance": { "type": "number" },
+        "points": { "type": "number" },
+        "ai_questions_count": { "type": "integer" },
+        "last_ai_reset_date": { "type": "string", "format": "date-time" },
+        "chamber_address": { "type": "string" },
+        "office_hours": { "type": "string" },
+        "bar_association": { "type": "string" },
+        "membership_id": { "type": "string" },
+        "facebook_url": { "type": "string" },
+        "linkedin_url": { "type": "string" }
       },
-      "required": ["name", "mobile"]
+      "required": ["firebase_uid", "mobile", "user_type"]
     },
     "Case": {
       "title": "Case",
-      "description": "Legal case record",
+      "description": "Legal case information",
       "type": "object",
       "properties": {
         "caseNumber": { "type": "string" },
@@ -30,19 +44,47 @@
         "caseType": { "type": "string" },
         "petitioner": { "type": "string" },
         "respondent": { "type": "string" },
+        "isUpdated": { "type": "boolean" },
+        "order": { "type": "string" },
+        "petitionerMobile": { "type": "string" },
+        "respondentMobile": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["private", "public"] },
+        "district": { "type": "string" },
+        "thana": { "type": "string" },
         "user_id": { "type": "string" },
-        "visibility": { "type": "string", "enum": ["private", "public"] }
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "RechargeOrder": {
+      "title": "RechargeOrder",
+      "description": "Mobile recharge or subscription order",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "mobile_number": { "type": "string" },
+        "operator": { "type": "string" },
+        "amount": { "type": "number" },
+        "commission": { "type": "number" },
+        "cashback": { "type": "number" },
+        "payment_method": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "completed", "rejected"] },
+        "transaction_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
       }
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
-      "description": "User profiles"
+      "description": "User profiles indexed by Firebase UID"
     },
     "/cases/{caseId}": {
       "schema": "Case",
       "description": "Legal cases"
+    },
+    "/recharge_orders/{orderId}": {
+      "schema": "RechargeOrder",
+      "description": "Recharge and subscription requests"
     }
   }
 }

@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
-import Library from '../resources/Library';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
 import { 
   LayoutDashboard, 
@@ -22,9 +21,12 @@ import {
   BellOff,
   Search,
   Plus,
+  PlusCircle,
   Video,
   Camera,
   User,
+  Mic,
+  Paperclip,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -59,32 +61,33 @@ import {
   History,
   Trash2,
   RotateCcw,
-  MessageSquare
+  MessageSquare,
+  QrCode,
+  Award,
+  Landmark
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { auth, db } from '../../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import { onAuthStateChanged, updateProfile } from 'firebase/auth';
+import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Markdown from 'react-markdown';
 import { emergencyData } from '../../data/emergencyData';
 import CaseTimeline from '../cases/CaseTimeline';
 import { getPoliceStations, getCourtsForDistrict, BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS } from '../../constants';
 import MediGen from '../ai/MediGen';
-import ProfessionalResources from '../resources/ProfessionalResources';
 import AffiliateZone from '../resources/AffiliateZone';
 import BarAdminDashboard from '../../admin/BarAdminDashboard';
 import Media from '../resources/Media';
 import PaymentGateway from '../recharge/PaymentGateway';
 import Recharge from '../recharge/Recharge';
 import AdminPanel from '../../admin/AdminPanel';
-import DocumentManager from '../cases/DocumentManager';
 import LawyerDirectory from '../profile/LawyerDirectory';
+import ClerkDirectory from '../profile/ClerkDirectory';
 import ArchiveCaseHistory from '../cases/ArchiveCaseHistory';
-import SupportChat from './SupportChat';
 import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase } from '../../types';
 import CaseForm from '../cases/CaseForm';
-import JoinCaseForm from '../cases/JoinCaseForm';
 import NotificationPanel from './NotificationPanel';
+import { Logo } from '../../components/Logo';
 import { translations } from '../../translations';
 import { AdBanner } from './AdBanner';
 import { 
@@ -93,8 +96,14 @@ import {
   subscribeToGlobalNotifications,
   subscribeToTasks, 
   createTask,
+  updateTask as updateTaskService,
+  deleteTask as deleteTaskService,
   getLawyers,
-  searchArchiveCases
+  searchArchiveCases,
+  subscribeToCases,
+  createCase,
+  updateCase,
+  deleteCase
 } from '../../services/user/featureService';
 import { 
   ResponsiveContainer, 
@@ -115,8 +124,22 @@ import { CasesView } from './views/CasesView';
 import { CalendarView } from './views/CalendarView';
 import { TasksView } from './views/TasksView';
 import { NewsView } from './views/NewsView';
+import { NewspapersView } from './views/NewspapersView';
 import { EmergencyView } from './views/EmergencyView';
 import { ProfileView } from './views/ProfileView';
+import { ReligiousTextsView } from './views/ReligiousTextsView';
+import { InvoicesView } from './views/InvoicesView';
+import { LegalDraftsView } from './views/LegalDraftsView';
+
+import { ProfessionalIDCard } from './components/ProfessionalIDCard';
+import { AdFlexiplan } from './components/AdFlexiplan';
+import { ManageAdsView } from './views/ManageAdsView';
+import { AdHomeView } from './views/AdHomeView';
+import { AdReportsView } from './views/AdReportsView';
+import { AdInvoicesView } from './views/AdInvoicesView';
+import { PointsView } from './views/PointsView';
+import { FullscreenAdViewer } from './components/FullscreenAdViewer';
+import { fetchWithAuth } from '../../lib/api';
 
 const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boolean, onClose: () => void, caseData: Case | null, language: 'bn' | 'en' | 'hi' | 'ur' }) => {
   if (!caseData) return null;
@@ -190,6 +213,7 @@ const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boo
 
 interface DashboardProps {
   userId?: number;
+  firebaseUid?: string;
   userType: string;
   userName: string;
   userEmail?: string;
@@ -203,18 +227,27 @@ interface DashboardProps {
   aiQuestionsCount?: number;
   lastAiResetDate?: string;
   points?: number;
+  chamberAddress?: string;
+  officeHours?: string;
+  barAssociation?: string;
+  membershipId?: string;
+  facebookUrl?: string;
+  linkedinUrl?: string;
+  userPoliceStation?: string;
   onLogout: () => void;
   onUpdateProfile?: (updatedProfile: any) => void;
 }
 
 export default function Dashboard({ 
   userId, 
+  firebaseUid: initialFirebaseUid,
   userType, 
   userName, 
   userEmail,
   userMobile, 
   userDistrict, 
   userCountry, 
+  userPoliceStation,
   referralCode, 
   subscriptionEndDate, 
   subscriptionPackage, 
@@ -222,63 +255,29 @@ export default function Dashboard({
   aiQuestionsCount,
   lastAiResetDate,
   points,
+  chamberAddress: initialChamberAddress,
+  officeHours: initialOfficeHours,
+  barAssociation: initialBarAssociation,
+  membershipId: initialMembershipId,
+  facebookUrl: initialFacebookUrl,
+  linkedinUrl: initialLinkedinUrl,
   onLogout, 
   onUpdateProfile 
 }: DashboardProps) {
   if (userType === 'bar_admin') {
-    return <BarAdminDashboard userId={userId} userName={userName} />;
+    return <BarAdminDashboard userId={initialFirebaseUid || (userId ? String(userId) : undefined)} userName={userName} />;
   }
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentViewMode, setCurrentViewMode] = useState<string>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType);
   const isSubscribed = subscriptionPackage && subscriptionPackage !== 'free';
+  const isPremiumFeatures = ['premium', 'special'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory'>('dashboard');
-  const [tasks, setTasks] = useState<Task[]>([
-    { 
-      id: 1, 
-      title: 'ওকালতনামা জমা দেওয়া', 
-      description: 'মামলা নং ১২৩/২০২৪ এর ওকালতনামা আগামীকাল জমা দিতে হবে।', 
-      dueDate: new Date().toISOString().split('T')[0], 
-      status: 'pending', 
-      priority: 'high', 
-      category: 'filing',
-      caseNumber: '১২৩/২০২৪',
-      courtName: 'জেলা জজ আদালত',
-      assignedTo: 'self',
-      assignedBy: 'lawyer',
-      created_at: new Date().toISOString() 
-    },
-    { 
-      id: 2, 
-      title: 'সাক্ষীর সাথে কথা বলা', 
-      description: 'বাদী পক্ষের সাক্ষীর সাথে মামলার বিষয়ে আলোচনা করা।', 
-      dueDate: '2025-03-22', 
-      status: 'pending', 
-      priority: 'medium', 
-      category: 'other',
-      caseNumber: '৪৫৬/২০২৩',
-      courtName: 'ম্যাজিস্ট্রেট কোর্ট-২',
-      assignedTo: 'clerk',
-      assignedBy: 'lawyer',
-      created_at: new Date().toISOString() 
-    },
-    { 
-      id: 3, 
-      title: 'নথি সংগ্রহ', 
-      description: 'আদালত থেকে পূর্ববর্তী আদেশের কপি সংগ্রহ করা।', 
-      dueDate: '2025-03-20', 
-      status: 'completed', 
-      priority: 'low', 
-      category: 'copy',
-      caseNumber: '৭৮৯/২০২২',
-      courtName: 'হাইকোর্ট বিভাগ',
-      assignedTo: 'self',
-      assignedBy: 'clerk',
-      created_at: new Date().toISOString() 
-    },
-  ]);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points'>('dashboard');
+  const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
+  const [cases, setCases] = useState<Case[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
@@ -293,63 +292,162 @@ export default function Dashboard({
   const [lookupId, setLookupId] = useState('');
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
   const [profilePic, setProfilePic] = useState(profilePicture || '');
+  const [showFullscreenAd, setShowFullscreenAd] = useState(false);
+  const [userPoints, setUserPoints] = useState(points || 0);
+
+  useEffect(() => {
+    // Show fullscreen ad once after a few seconds of landing on dashboard
+    const hasSeenAd = sessionStorage.getItem('seen_fullscreen_ad');
+    if (!hasSeenAd && currentViewMode !== 'advertiser') {
+      const timer = setTimeout(() => {
+        setShowFullscreenAd(true);
+        sessionStorage.setItem('seen_fullscreen_ad', 'true');
+      }, 5000); // 5 seconds delay
+      return () => clearTimeout(timer);
+    }
+  }, [currentViewMode]);
+
+  useEffect(() => {
+    if (points !== undefined) setUserPoints(points);
+  }, [points]);
 
   useEffect(() => {
     if (profilePicture) setProfilePic(profilePicture);
   }, [profilePicture]);
 
   const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert(t('image_size_error'));
-        return;
+      if (file.type.startsWith('image/')) {
+        try {
+          file = await new Promise<File>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file!);
+            reader.onload = (event) => {
+              const img = new Image();
+              img.src = event.target?.result as string;
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const maxWidth = 800;
+                const maxHeight = 800;
+
+                if (width > height) {
+                  if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                  }
+                } else {
+                  if (height > maxHeight) {
+                    width = Math.round((width * maxHeight) / height);
+                    height = maxHeight;
+                  }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0, width, height);
+                  canvas.toBlob(
+                    (blob) => {
+                      if (blob) {
+                        resolve(new File([blob], file!.name, { type: 'image/jpeg', lastModified: Date.now() }));
+                      } else {
+                        reject(new Error('Canvas to Blob failed'));
+                      }
+                    },
+                    'image/jpeg',
+                    0.8
+                  );
+                } else {
+                  reject(new Error('Canvas context is null'));
+                }
+              };
+              img.onerror = () => reject(new Error('Failed to load image'));
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+          });
+        } catch (err) {
+          console.error("Image resize failed", err);
+          alert(language === 'bn' ? 'ছবি সাইজ করতে সমস্যা হয়েছে।' : 'Failed to resize image');
+          return;
+        }
       }
       
       try {
         console.log("Uploading profile picture for user:", userId);
         
-        const timestamp = Date.now();
-        const fileExt = file.name.split('.').pop();
-        const fileName = `profile_${userId}_${timestamp}.${fileExt}`;
-        const path = `profiles/${userId}/${fileName}`;
-        
-        console.log("Uploading to path:", path);
-        await uploadFile('documents', path, file);
-        const url = await getPublicUrl('documents', path);
-        console.log("Uploaded URL:", url.substring(0, 50) + "...");
-        
-        setProfilePic(url);
-        
+        // Convert and Resize to base64
+        const base64Data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file!);
+          reader.onload = () => {
+            const img = new Image();
+            img.src = reader.result as string;
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const maxSize = 450;
+              let width = img.width;
+              let height = img.height;
+
+              if (width > height) {
+                if (width > maxSize) {
+                  height *= maxSize / width;
+                  width = maxSize;
+                }
+              } else {
+                if (height > maxSize) {
+                  width *= maxSize / height;
+                  height = maxSize;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              ctx?.drawImage(img, 0, 0, width, height);
+              resolve(canvas.toDataURL('image/jpeg', 0.7));
+            };
+            img.onerror = reject;
+          };
+          reader.onerror = error => reject(error);
+        });
+
         console.log("Updating profile picture in database for user:", userId);
-        const response = await fetch(`/api/users/${userId}/profile-picture`, {
+        const response = await fetchWithAuth(`/api/users/${userId}/profile-picture`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profilePicture: url })
+          body: JSON.stringify({ profilePicture: base64Data })
         });
         
         if (!response.ok) {
-          throw new Error(`Failed to update profile picture in database: ${response.statusText}`);
+          alert(language === 'bn' ? 'ছবি আপডেট হতে সমস্যা। সার্ভার এরর।' : 'Failed to update profile picture server side.');
+          throw new Error('Failed to update profile picture in database: ' + response.statusText);
         }
         
+        setProfilePic(base64Data);
+        
         try {
-          console.log("Updating profile picture in Firestore for user:", userId);
-          const userRef = doc(db, 'users', userId);
-          await updateDoc(userRef, { profile_picture: url });
+          const docId = firebaseUid || String(userId);
+          console.log(`Updating profile picture in Firestore for user ${userId} using docId ${docId}`);
+          const userRef = doc(db, 'users', docId);
+          await updateDoc(userRef, { profile_picture: base64Data });
           console.log("Profile picture updated in Firestore");
         } catch (firestoreErr) {
           console.error("Failed to update profile picture in Firestore:", firestoreErr);
-          // We don't throw here because the SQLite update succeeded and we want to continue
         }
         
         console.log("Profile picture updated in database");
         
         if (onUpdateProfile) {
-          onUpdateProfile({ profilePicture: url });
+          onUpdateProfile({ profilePicture: base64Data });
         }
       } catch (err: any) {
         console.error("Failed to upload profile picture", err);
-        alert(`${t('profile_pic_upload_error')}: ${err.message || 'Unknown error'}`);
+        alert(`${t('profile_pic_upload_error' as any)}: ${err.message || 'Unknown error'}`);
       }
     }
   };
@@ -366,34 +464,41 @@ export default function Dashboard({
   const [policeStationSearchQuery, setPoliceStationSearchQuery] = useState('');
   const [mobileSearchQuery, setMobileSearchQuery] = useState('');
   const [doneCases, setDoneCases] = useState<Record<number, boolean>>({});
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: 1,
-      title: 'আগামীকাল শুনানি',
-      message: 'মামলা নং ১২৩/২০২৪ এর শুনানি আগামীকাল জেলা জজ আদালতে অনুষ্ঠিত হবে।',
-      time: '১০ মিনিট আগে',
-      type: 'hearing',
-      isRead: false
-    },
-    {
-      id: 2,
-      title: 'নতুন মামলার আপডেট',
-      message: 'মামলা নং ৪৫৬/২০২৪ এ নতুন আদেশ যুক্ত করা হয়েছে।',
-      time: '২ ঘণ্টা আগে',
-      type: 'update',
-      isRead: false
-    },
-    {
-      id: 3,
-      title: 'অ্যাসাইন করা কাজ',
-      message: 'নতুন মামলার নথিগুলো যাচাই করার কাজ আপনাকে দেওয়া হয়েছে।',
-      time: '৫ ঘণ্টা আগে',
-      type: 'task',
-      isRead: true
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    const savedNotifications = localStorage.getItem('appNotifications');
+    if (savedNotifications) {
+      try { return JSON.parse(savedNotifications); } catch (e) { console.error(e); }
     }
-  ]);
+    return [
+      {
+        id: 1,
+        title: 'আগামীকাল শুনানি',
+        message: 'মামলা নং ১২৩/২০২৪ এর শুনানি আগামীকাল জেলা জজ আদালতে অনুষ্ঠিত হবে।',
+        time: '১০ মিনিট আগে',
+        type: 'hearing',
+        isRead: false
+      },
+      {
+        id: 2,
+        title: 'নতুন মামলার আপডেট',
+        message: 'মামলা নং ৪৫৬/২০২৪ এ নতুন আদেশ যুক্ত করা হয়েছে।',
+        time: '২ ঘণ্টা আগে',
+        type: 'update',
+        isRead: false
+      },
+      {
+        id: 3,
+        title: 'অ্যাসাইন করা কাজ',
+        message: 'নতুন মামলার নথিগুলো যাচাই করার কাজ আপনাকে দেওয়া হয়েছে।',
+        time: '৫ ঘণ্টা আগে',
+        type: 'task',
+        isRead: true
+      }
+    ];
+  });
   const [editingCase, setEditingCase] = useState<Case | null>(null);
   const [selectedCaseForTimeline, setSelectedCaseForTimeline] = useState<Case | null>(null);
+  const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
   const [selectedCaseForHistory, setSelectedCaseForHistory] = useState<Case | null>(null);
   const [selectedCaseForCard, setSelectedCaseForCard] = useState<Case | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -401,8 +506,7 @@ export default function Dashboard({
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
   const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
   const [language, setLanguage] = useState<'bn' | 'en' | 'hi' | 'ur'>(() => {
-    const saved = localStorage.getItem('appLanguage');
-    return (saved as any) || 'bn';
+    return 'bn';
   });
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('appTheme');
@@ -434,22 +538,44 @@ export default function Dashboard({
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
+    if (initialFirebaseUid) {
+      setFirebaseUid(initialFirebaseUid);
+    }
+  }, [initialFirebaseUid]);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthReady(!!user);
+      setIsAuthReady(true);
+      if (user?.uid) {
+        setFirebaseUid(user.uid);
+      }
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('appCases', JSON.stringify(cases));
+  }, [cases]);
+
+  useEffect(() => {
+    localStorage.setItem('appTasks', JSON.stringify(tasks));
+  }, [tasks]);
+
+  useEffect(() => {
+    localStorage.setItem('appNotifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
     if (!userId || !isAuthReady) return;
 
-    const unsubNotifications = subscribeToNotifications(userId.toString(), (data) => {
+    const uid = firebaseUid || userId.toString();
+    const unsubNotifications = subscribeToNotifications(uid, (data) => {
       setNotifications(prev => {
         const globalOnes = prev.filter(n => n.isGlobal);
         const merged = [...data, ...globalOnes];
-        return merged.sort((a, b) => {
-          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return merged.sort((a: any, b: any) => {
+          const dateA = a.created_at ? (typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : a.created_at.toMillis?.() || 0) : 0;
+          const dateB = b.created_at ? (typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : b.created_at.toMillis?.() || 0) : 0;
           return dateB - dateA;
         });
       });
@@ -459,30 +585,86 @@ export default function Dashboard({
       setNotifications(prev => {
         const personalOnes = prev.filter(n => !n.isGlobal);
         const merged = [...personalOnes, ...data];
-        return merged.sort((a, b) => {
-          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return merged.sort((a: any, b: any) => {
+          const dateA = a.created_at ? (typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : a.created_at.toMillis?.() || 0) : 0;
+          const dateB = b.created_at ? (typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : b.created_at.toMillis?.() || 0) : 0;
           return dateB - dateA;
         });
       });
     });
 
-    const unsubTasks = subscribeToTasks(userId.toString(), (data) => {
+    const unsubTasks = subscribeToTasks(uid, (data) => {
       setTasks(data);
+    });
+
+    const unsubCases = subscribeToCases(uid, (data) => {
+      setCases(data);
     });
 
     return () => {
       unsubNotifications();
       unsubGlobal();
       unsubTasks();
+      unsubCases();
     };
-  }, [userId]);
+  }, [userId, isAuthReady, firebaseUid]);
 
   useEffect(() => {
-    if (activeTab === 'lawyers') {
-      getLawyers().then(setLawyersList);
+    if (!cases || !tasks) return;
+
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+    const newNotifications: Notification[] = [];
+
+    // Check cases for tomorrow's hearing/step
+    cases.forEach(c => {
+      if (c.nextDate === tomorrowStr) {
+        const stepName = c.order || c.status || 'Hearing';
+        // Priority check: Judgment, Witness, Cross-exam are high priority
+        const messageHeader = language === 'bn' ? 'আগামীকালের মামলার সতর্কতা' : 'Tomorrow\'s Case Alert';
+        
+        newNotifications.push({
+          id: `tomorrow-case-${c.id}`,
+          title: messageHeader,
+          message: language === 'bn' 
+            ? `মামলা নং ${c.caseNumber} এর পদক্ষেপ: ${stepName}। আগামীকাল (${c.nextDate})। প্রস্তুতি নিন।`
+            : `Case No ${c.caseNumber} - Step: ${stepName} scheduled for tomorrow (${c.nextDate}).`,
+          time: 'এখন (Now)',
+          type: 'hearing',
+          isRead: false,
+          created_at: new Date().toISOString()
+        });
+      }
+    });
+
+    // Check tasks for tomorrow
+    tasks.forEach(t => {
+      if (t.dueDate === tomorrowStr) {
+        newNotifications.push({
+          id: `tomorrow-task-${t.id}`,
+          title: language === 'bn' ? 'আগামীকালের টাস্ক সতর্কতা' : 'Tomorrow\'s Task Alert',
+          message: language === 'bn'
+            ? `টাস্ক: ${t.title}। আগামীকাল (${t.dueDate}) সম্পন্ন করতে হবে।`
+            : `Task: ${t.title} is due tomorrow (${t.dueDate}).`,
+          time: 'এখন (Now)',
+          type: 'task',
+          isRead: false,
+          created_at: new Date().toISOString()
+        });
+      }
+    });
+
+    if (newNotifications.length > 0) {
+      setNotifications(prev => {
+        const filtered = prev.filter(n => !n.id.toString().startsWith('tomorrow-'));
+        return [...newNotifications, ...filtered];
+      });
     }
-  }, [activeTab]);
+  }, [cases, tasks, language]);
+
 
   const handleSearchArchive = async (query: string) => {
     if (!query.trim()) return;
@@ -497,22 +679,32 @@ export default function Dashboard({
     }
   };
 
-  // Lawyer Specific Profile State
-  const [chamberAddress, setChamberAddress] = useState('সুপ্রিম কোর্ট বার অ্যাসোসিয়েশন ভবন, ঢাকা');
-  const [officeHours, setOfficeHours] = useState('সকাল ১০:০০ - বিকাল ৫:০০');
-  const [barAssociation, setBarAssociation] = useState('ঢাকা আইনজীবী সমিতি');
-  const [membershipId, setMembershipId] = useState('L-12345');
+  // Professional Profile State
+  const [chamberAddress, setChamberAddress] = useState(initialChamberAddress || (currentViewMode === 'clerk' ? 'ঢাকা মুহুরি সমিতি ভবন, ঢাকা' : 'সুপ্রিম কোর্ট বার অ্যাসোসিয়েশন ভবন, ঢাকা'));
+  const [officeHours, setOfficeHours] = useState(initialOfficeHours || 'সকাল ১০:০০ - বিকাল ৫:০০');
+  const [barAssociation, setBarAssociation] = useState(initialBarAssociation || (currentViewMode === 'clerk' ? 'ঢাকা মুহুরি সমিতি' : 'ঢাকা আইনজীবী সমিতি'));
+  const [membershipId, setMembershipId] = useState(initialMembershipId || (currentViewMode === 'clerk' ? 'C-12345' : 'L-12345'));
+  const [sponsorName, setSponsorName] = useState('অ্যাডভোকেট এ এইচ খান');
+  const [sponsorMobile, setSponsorMobile] = useState('01800-000000');
+  const [showIDCard, setShowIDCard] = useState(false);
   const [mapLink, setMapLink] = useState('https://maps.google.com');
   const [certificates, setCertificates] = useState<string[]>([]);
   const [socialLinks, setSocialLinks] = useState({
-    facebook: '',
-    linkedin: '',
+    facebook: initialFacebookUrl || 'https://www.facebook.com/MDCDAIRY',
+    linkedin: initialLinkedinUrl || '',
     twitter: ''
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  
+  // Password Change state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [editName, setEditName] = useState(userName);
   const [editMobile, setEditMobile] = useState(userMobile || '');
   const [editDistrict, setEditDistrict] = useState(userDistrict || '');
+  const [userThana, setUserThana] = useState(userPoliceStation || '');
+  const [editThana, setEditThana] = useState(userPoliceStation || '');
 
   const districts = userCountry === 'India' ? INDIA_DISTRICTS : 
                     userCountry === 'Pakistan' ? PAKISTAN_DISTRICTS : 
@@ -522,11 +714,13 @@ export default function Dashboard({
     setEditName(userName);
     setEditMobile(userMobile || '');
     setEditDistrict(userDistrict || '');
-  }, [userName, userMobile, userDistrict]);
+    setEditThana(userPoliceStation || '');
+    setUserThana(userPoliceStation || '');
+  }, [userName, userMobile, userDistrict, userPoliceStation]);
 
   useEffect(() => {
     if (referralCode) {
-      fetch(`/api/user-network?referralCode=${referralCode}`)
+      fetchWithAuth(`/api/user-network?referralCode=${referralCode}`)
         .then(async res => {
           if (!res.ok) throw new Error(`Network response was not ok, status: ${res.status}`);
           const contentType = res.headers.get("content-type");
@@ -553,7 +747,7 @@ export default function Dashboard({
   const initiateOnlinePayment = async (amount: number, purpose: string) => {
     setIsOnlinePaymentLoading(true);
     try {
-      const response = await fetch('/api/payment/initiate', {
+      const response = await fetchWithAuth('/api/payment/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -578,8 +772,42 @@ export default function Dashboard({
   };
 
   const handleSubscriptionPayment = (plan: { name: string; price: number; duration: string }) => {
-    setSelectedPlan(plan);
-    setShowSubscriptionPayment(true);
+    // Instead of showing manual payment modal, use the integrated online payment flow
+    const initiateDirectPayment = async () => {
+      setIsOnlinePaymentLoading(true);
+      try {
+        const response = await fetch('/api/payment/initiate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            amount: plan.price,
+            purpose: `subscription_${plan.duration}`
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'API request failed');
+        }
+        const data = await response.json();
+
+        if (data.gatewayUrl) {
+          window.location.href = data.gatewayUrl;
+        } else if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error('No redirection URL provided');
+        }
+      } catch (error) {
+        console.error("Subscription payment error:", error);
+        alert('সরাসরি পেমেন্ট শুরু করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+      } finally {
+        setIsOnlinePaymentLoading(false);
+      }
+    };
+    
+    initiateDirectPayment();
   };
 
   const submitSubscriptionRequest = async (paymentMethod: string, transactionId: string) => {
@@ -587,7 +815,7 @@ export default function Dashboard({
     
     setIsSubmittingSubscription(true);
     try {
-      const response = await fetch('/api/subscription/request', {
+      const response = await fetchWithAuth('/api/subscription/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -636,7 +864,7 @@ export default function Dashboard({
 
   const fetchMemories = async () => {
     try {
-      const res = await fetch(`/api/memories/${userId}`);
+      const res = await fetchWithAuth(`/api/memories/${userId}`);
       if (res.ok) {
         const data = await res.json();
         setMemories(data.memories || []);
@@ -656,7 +884,7 @@ export default function Dashboard({
     if (!newMemoryContent.trim()) return;
     setIsSavingMemory(true);
     try {
-      const res = await fetch('/api/memories', {
+      const res = await fetchWithAuth('/api/memories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, content: newMemoryContent })
@@ -723,52 +951,6 @@ export default function Dashboard({
   const [selectedDist, setSelectedDist] = useState<string>('');
   const [selectedThana, setSelectedThana] = useState<string>('');
 
-  const [cases, setCases] = useState<Case[]>(() => {
-    const savedCases = localStorage.getItem('appCases');
-    if (savedCases) {
-      try {
-        return JSON.parse(savedCases);
-      } catch (e) {
-        console.error('Failed to parse cases from localStorage', e);
-      }
-    }
-    return [
-      { 
-        id: 1, 
-        caseNumber: 'জি.আর-১২৩/২০২৪(রমনা)', 
-        courtName: 'জেলা জজ আদালত', 
-        nextDate: new Date().toISOString().split('T')[0], 
-        status: 'শুনানি',
-        caseType: 'Civil',
-        petitioner: 'করিম উদ্দিন',
-        respondent: 'রহিম মিয়া',
-        isUpdated: false,
-        order: '',
-        petitionerMobile: '01700000000',
-        respondentMobile: '01800000000',
-        history: [
-          { date: '2024-01-10', actionBy: 'petitioner', description: 'আরজি দাখিল করা হয়েছে।' },
-          { date: '2024-02-15', actionBy: 'court', description: 'বিবাদীর প্রতি সমন জারির আদেশ।' },
-          { date: '2024-03-20', actionBy: 'respondent', description: 'বিবাদী হাজির হয়ে সময়ের আবেদন করেছেন।' },
-          { date: '2024-04-25', actionBy: 'court', description: 'জবাব দাখিলের জন্য দিন ধার্য।' }
-        ]
-      },
-      { 
-        id: 2, 
-        caseNumber: 'সি.আর-৪৫৬/২০২৪(শাহবাগ)', 
-        courtName: 'ম্যাজিস্ট্রেট আদালত', 
-        nextDate: new Date().toISOString().split('T')[0], 
-        status: 'সাক্ষ্য',
-        caseType: 'Criminal',
-        petitioner: 'রাষ্ট্র',
-        respondent: 'আবুল হোসেন',
-        isUpdated: true,
-        order: 'সাক্ষ্য গ্রহণ সম্পন্ন',
-        respondentMobile: '01700000000'
-      },
-    ];
-  });
-
   useEffect(() => {
     localStorage.setItem('appCases', JSON.stringify(cases));
   }, [cases]);
@@ -792,7 +974,7 @@ export default function Dashboard({
     const fetchCases = async () => {
       if (navigator.onLine && userId) {
         try {
-          const res = await fetch(`/api/cases?userId=${userId}`);
+          const res = await fetchWithAuth(`/api/cases?userId=${userId}`);
           if (res.ok) {
             const contentType = res.headers.get("content-type");
             if (contentType && contentType.indexOf("application/json") !== -1) {
@@ -863,22 +1045,30 @@ export default function Dashboard({
   const [lastDeletedCase, setLastDeletedCase] = useState<Case | null>(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
 
-  const handleDeleteCase = (id: number) => {
+  const handleDeleteCase = async (id: string | number) => {
     const caseToDelete = cases.find(c => c.id === id);
     if (caseToDelete) {
-      setLastDeletedCase(caseToDelete);
-      setCases(prev => prev.filter(c => c.id !== id));
-      setShowUndoToast(true);
-      // Auto-hide toast after 10 seconds
-      setTimeout(() => setShowUndoToast(false), 10000);
+      try {
+        await deleteCase(id.toString());
+        setLastDeletedCase(caseToDelete);
+        setShowUndoToast(true);
+        setTimeout(() => setShowUndoToast(false), 10000);
+      } catch (err) {
+        console.error("Failed to delete case:", err);
+      }
     }
   };
 
-  const handleUndoDelete = () => {
+  const handleUndoDelete = async () => {
     if (lastDeletedCase) {
-      setCases(prev => [...prev, lastDeletedCase]);
-      setLastDeletedCase(null);
-      setShowUndoToast(false);
+      try {
+        const { id, ...data } = lastDeletedCase;
+        await createCase({ ...data, user_id: firebaseUid || String(userId) } as any);
+        setLastDeletedCase(null);
+        setShowUndoToast(false);
+      } catch (err) {
+        console.error("Failed to undo delete:", err);
+      }
     }
   };
 
@@ -887,54 +1077,72 @@ export default function Dashboard({
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-  const t = (key: keyof typeof translations['bn']) => translations[language][key] || key;
+  const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
 
-  const menuGroups = [
+  const menuGroups = currentViewMode === 'advertiser' ? [
+    {
+      title: language === 'bn' ? 'বিজ্ঞাপন ব্যবস্থাপনা' : 'Ad Management',
+      items: [
+        { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
+        { id: 'manage_ads', label: language === 'bn' ? 'আমার বিজ্ঞাপন' : 'My Advertisements', icon: FileText },
+        { id: 'ad_reports', label: language === 'bn' ? 'বিজ্ঞাপন রিপোর্ট' : 'Ad Reports', icon: MonitorPlay },
+        { id: 'ad_campaigns', label: language === 'bn' ? 'নতুন ক্যাম্পেইন (ফ্লেক্সি-প্ল্যান)' : 'New Campaign (Flexiplan)', icon: PlusCircle },
+      ]
+    },
+    {
+      title: t('support_account'),
+      items: [
+        { id: 'recharge', label: t('recharge'), icon: Smartphone },
+        { id: 'my_points', label: language === 'bn' ? 'আমার পয়েন্ট' : 'My Points', icon: Award },
+        { id: 'notifications', label: t('notifications'), icon: Bell },
+      ]
+    },
+    {
+      title: t('settings'),
+      items: [
+        { id: 'profile', label: t('profile'), icon: User },
+        { id: 'settings', label: t('settings'), icon: Settings },
+      ]
+    }
+  ] : [
     {
       title: t('case_management'),
       items: [
         { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
+        ...(currentViewMode === 'clerk' ? [
+          { id: 'performance', label: t('performance_nav'), icon: Award },
+          { id: 'cause_list', label: t('cause_list'), icon: FileText },
+          { id: 'monthly_report', label: t('monthly_report'), icon: Landmark },
+        ] : []),
         { id: 'cases', label: currentViewMode === 'client' ? t('my_cases') : t('cases'), icon: FileText },
         { id: 'calendar', label: t('calendar'), icon: Calendar },
-        ...(currentViewMode !== 'client' ? [
-          { id: 'tasks', label: t('task_management'), icon: CheckCircle2 },
+        ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
+          { id: 'invoices', label: t('invoices'), icon: CreditCard },
         ] : []),
+        { id: 'tasks', label: t('task_management'), icon: CheckCircle2 },
         { id: 'case_timeline', label: t('case_timeline'), icon: History },
         { id: 'notifications', label: t('notifications'), icon: Bell },
-        { id: 'support_chat', label: t('support_chat'), icon: MessageSquare },
       ]
     },
-    ...(currentViewMode !== 'client' ? [
-      {
-        title: t('professional_tools'),
-        items: [
-          { id: 'documents', label: t('documents'), icon: FolderOpen },
-          { id: 'professional_services', label: t('professional_services'), icon: Briefcase },
-          { id: 'medigen', label: t('medigen'), icon: Stethoscope },
-          { id: 'lawyer_directory', label: t('lawyer_directory'), icon: Users },
-          { id: 'lawyers', label: t('my_profile'), icon: User },
-        ]
-      }
-    ] : [
-      {
-        title: t('search'),
-        items: [
-          { id: 'lawyer_directory', label: t('find_lawyer'), icon: Users },
-        ]
-      }
-    ]),
     {
-      title: t('library'),
+      title: t('professional_tools'),
       items: [
-        { id: 'library', label: t('library'), icon: BookOpen },
-        { id: 'resources', label: t('resources'), icon: BookOpenText },
-        { id: 'case_history_20y', label: t('history_20y'), icon: History },
+        { id: 'lawyer_directory', label: currentViewMode === 'client' ? t('find_lawyer') : t('lawyer_directory'), icon: Users },
+        { id: 'clerk_directory', label: currentViewMode === 'client' ? t('find_clerk') : t('clerk_directory'), icon: Users },
+        { id: 'medigen', label: t('medigen'), icon: Stethoscope },
+      ]
+    },
+    {
+      title: language === 'bn' ? 'পবিত্র ঐশী গ্রন্থ' : 'Divine Books',
+      items: [
+        { id: 'religious', label: language === 'bn' ? 'পবিত্র ঐশী গ্রন্থ' : 'Divine Books', icon: BookOpen },
       ]
     },
     {
       title: t('income_offers'),
       items: [
         { id: 'affiliate_zone', label: t('affiliate_zone'), icon: ShoppingCart },
+        { id: 'my_points', label: language === 'bn' ? 'আমার পয়েন্ট' : 'My Points', icon: Award },
         { id: 'news', label: t('news'), icon: Newspaper },
         { id: 'media', label: t('media'), icon: MonitorPlay },
       ]
@@ -943,10 +1151,7 @@ export default function Dashboard({
       title: t('support_account'),
       items: [
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        ...(currentViewMode !== 'client' ? [
-          { id: 'recharge', label: t('recharge'), icon: Smartphone },
-          { id: 'subscription', label: t('subscription'), icon: CreditCard },
-        ] : []),
+        { id: 'recharge', label: t('recharge'), icon: Smartphone },
       ]
     },
     {
@@ -965,6 +1170,10 @@ export default function Dashboard({
   const [adAction, setAdAction] = useState<(() => void) | null>(null);
 
   const handleTabChange = (tab: string) => {
+    if (tab === 'id_card') {
+      setShowIDCard(true);
+      return;
+    }
     if (tab === 'calendar' && currentViewMode === 'client') {
       setShowAd(true);
       setAdAction(() => () => setActiveTab(tab as any));
@@ -987,12 +1196,16 @@ export default function Dashboard({
     alert(t('meeting_request_sent'));
   };
 
-  const handleUpdateCaseOrder = (caseId: string | number, nextDate: string, order: string) => {
+  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public') => {
+    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility);
+    handleUpdateSelectedParty(id, selectedParty);
+  };
+
+  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public') => {
     const targetCase = cases.find(c => c.id === caseId);
     if (targetCase && nextDate) {
       // Auto-generate attendance task
-      const autoTask: Task = {
-        id: Date.now(),
+      const autoTask: Omit<Task, 'id' | 'created_at'> = {
         title: `হাজিরা: ${targetCase.caseNumber}`,
         description: `${targetCase.courtName} - এ হাজিরা দিতে হবে।`,
         dueDate: nextDate,
@@ -1001,42 +1214,41 @@ export default function Dashboard({
         category: 'attendance',
         caseNumber: targetCase.caseNumber,
         courtName: targetCase.courtName,
-        assignedTo: currentViewMode === 'lawyer' ? 'clerk' : 'self',
-        assignedBy: currentViewMode === 'lawyer' ? 'lawyer' : 'clerk',
-        created_at: new Date().toISOString()
+        assignedTo: firebaseUid || String(userId),
+        assignedBy: firebaseUid || String(userId),
       };
-      setTasks(prev => [autoTask, ...prev]);
+      await createTask(autoTask);
     }
-    setCases(cases.map(c => c.id === caseId ? { ...c, nextDate, order, isUpdated: true } : c));
+    await updateCase(caseId.toString(), { nextDate, order, isUpdated: true, clerkCanCall, lawyerCanCall, visibility });
   };
 
-  const handleAddDocument = (caseId: string | number, document: { name: string; type: string; url: string }) => {
+  const handleAddDocument = async (caseId: string | number, document: { name: string; type: string; url: string }) => {
     const todayStr = new Date().toISOString().split('T')[0];
-    setCases(cases.map(c => {
-      if (c.id === caseId) {
-        let actionBy: 'petitioner' | 'respondent' | 'court' | 'accused' | 'lawyer' | 'clerk' | 'admin' | 'client' = (currentViewMode === 'bar_admin' ? 'admin' : currentViewMode) as any;
-        
-        // If client, try to be more specific
-        if (currentViewMode === 'client' && userMobile) {
-          if (c.petitionerMobile === userMobile) actionBy = 'petitioner';
-          else if (c.respondentMobile === userMobile) actionBy = 'respondent';
-        }
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
 
-        return { 
-          ...c, 
-          documents: [...(c.documents || []), document],
-          history: [
-            ...(c.history || []),
-            {
-              date: todayStr,
-              actionBy,
-              description: `ডকুমেন্ট আপলোড: ${document.name}`
-            }
-          ]
-        };
+    let actionBy: 'petitioner' | 'respondent' | 'court' | 'accused' | 'lawyer' | 'clerk' | 'admin' | 'client' = (currentViewMode === 'bar_admin' ? 'admin' : currentViewMode) as any;
+    
+    // If client, try to be more specific
+    if (currentViewMode === 'client' && userMobile) {
+      if (targetCase.petitionerMobile === userMobile) actionBy = 'petitioner';
+      else if (targetCase.respondentMobile === userMobile) actionBy = 'respondent';
+    }
+
+    const updatedDocuments = [...(targetCase.documents || []), document];
+    const updatedHistory = [
+      ...(targetCase.history || []),
+      {
+        date: todayStr,
+        actionBy,
+        description: `ডকুামেন্ট আপলোড: ${document.name}`
       }
-      return c;
-    }));
+    ];
+
+    await updateCase(caseId.toString(), { 
+      documents: updatedDocuments,
+      history: updatedHistory
+    });
   };
 
   const handleUpdateSelectedParty = (caseId: string | number, selectedParty: 'petitioner' | 'respondent' | 'accused') => {
@@ -1137,24 +1349,24 @@ export default function Dashboard({
     return mapping[month] || "";
   };
 
-  const govtHolidays = [
-    '2026-02-21', // Shaheed Day
-    '2026-03-17', // Sheikh Mujibur Rahman's Birthday
-    '2026-03-20', // Eid-ul-Fitr (approx)
-    '2026-03-21', // Eid-ul-Fitr (approx)
-    '2026-03-22', // Eid-ul-Fitr (approx)
-    '2026-03-26', // Independence Day
-    '2026-04-14', // Pohela Boishakh
-    '2026-05-01', // May Day
-    '2026-05-27', // Eid-ul-Adha (approx)
-    '2026-05-28', // Eid-ul-Adha (approx)
-    '2026-05-29', // Eid-ul-Adha (approx)
-    '2026-08-15', // National Mourning Day
-    '2026-08-26', // Janmashtami (approx)
-    '2026-10-20', // Durga Puja (approx)
-    '2026-12-16', // Victory Day
-    '2026-12-25', // Christmas Day
-  ];
+  const govtHolidays: Record<string, string> = {
+    '2026-02-21': 'শহীদ দিবস ও আন্তর্জাতিক মাতৃভাষা দিবস',
+    '2026-03-17': 'বঙ্গবন্ধু শেখ মুজিবুর রহমানের জন্মদিন',
+    '2026-03-20': 'ঈদুল ফিতর',
+    '2026-03-21': 'ঈদুল ফিতর',
+    '2026-03-22': 'ঈদুল ফিতর',
+    '2026-03-26': 'স্বাধীনতা ও জাতীয় দিবস',
+    '2026-04-14': 'পহেলা বৈশাখ (বাংলা নববর্ষ)',
+    '2026-05-01': 'মে দিবস',
+    '2026-05-27': 'ঈদুল আযহা',
+    '2026-05-28': 'ঈদুল আযহা',
+    '2026-05-29': 'ঈদুল আযহা',
+    '2026-08-15': 'জাতীয় শোক দিবস',
+    '2026-08-26': 'জন্মাষ্টমী',
+    '2026-10-20': 'দুর্গাপূজা (বিজয়া দশমী)',
+    '2026-12-16': 'বিজয় দিবস',
+    '2026-12-25': 'যীশু খ্রীষ্টের জন্মদিন (বড়দিন)',
+  };
 
   const currentMonth = currentCalendarDate.getMonth();
   const currentYear = currentCalendarDate.getFullYear();
@@ -1175,7 +1387,7 @@ export default function Dashboard({
     const dayOfWeek = date.getDay(); // 0: Sunday, 5: Friday, 6: Saturday
     
     const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
-    const isGovtHoliday = govtHolidays.includes(dateStr);
+    const isGovtHoliday = !!govtHolidays[dateStr as keyof typeof govtHolidays];
     const isHoliday = isWeekend || isGovtHoliday;
 
     const dayCases = visibleCases.filter(c => c.nextDate === dateStr);
@@ -1229,70 +1441,37 @@ export default function Dashboard({
   };
 
   const handleSaveCase = async (caseData: Partial<Case>) => {
-    // Check online status if visibility is not private (own diary)
-    if (caseData.visibility !== 'private' && !navigator.onLine) {
-      alert(t('online_required_sync'));
-      return;
-    }
-
     const isPetitioner = isUserPetitioner(caseData as Case);
     const isRespondent = isUserRespondent(caseData as Case);
     const currentSide = isPetitioner ? 'petitioner' : isRespondent ? 'respondent' : undefined;
 
-    let finalCaseData = { ...caseData, user_id: userId };
+    let finalCaseData = { ...caseData, user_id: firebaseUid || String(userId) };
 
-    if (editingCase) {
-      if (currentSide && editingCase.reportedErrorBySide && editingCase.reportedErrorBySide !== currentSide) {
-        alert(language === 'bn' ? 'আপনার দেওয়া পূর্বের তথ্য ভুল ছিল বলে রিপোর্ট করা হয়েছিল। এটি সংশোধন করার কারণে আপনার সাবস্ক্রিপশন ৩ দিনের জন্য স্থগিত করা হলো।' : 'Your previous data was reported as incorrect. Due to this correction, your subscription is suspended for 3 days.');
-        finalCaseData.reportedErrorBySide = undefined;
-      }
-      finalCaseData.lastEditedBySide = currentSide;
-      
-      // Save to server if online
-      if (navigator.onLine) {
-        try {
-          await fetch('/api/cases', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...editingCase, ...finalCaseData })
-          });
-        } catch (e) {
-          console.error('Failed to save case to server', e);
+    try {
+      if (editingCase) {
+        if (currentSide && editingCase.reportedErrorBySide && editingCase.reportedErrorBySide !== currentSide) {
+          finalCaseData.reportedErrorBySide = undefined;
         }
+        finalCaseData.lastEditedBySide = currentSide;
+        
+        await updateCase(editingCase.id.toString(), finalCaseData);
+        setSuccessMessage(t('success_update'));
+      } else {
+        const newCase = {
+          ...finalCaseData,
+          lastEditedBySide: currentSide
+        } as Case;
+
+        await createCase(newCase as any);
+        setSuccessMessage(t('success_add'));
       }
-
-      setCases(cases.map(c => c.id === editingCase.id ? { ...c, ...finalCaseData } as Case : c));
-      setSuccessMessage(t('success_update'));
-    } else {
-      const newCase = {
-        ...finalCaseData,
-        id: Date.now(), // Temporary ID for offline
-        lastEditedBySide: currentSide
-      } as Case;
-
-      // Save to server if online
-      if (navigator.onLine) {
-        try {
-          const res = await fetch('/api/cases', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newCase)
-          });
-          if (res.ok) {
-            const data = await res.json();
-            newCase.id = data.id; // Use server ID
-          }
-        } catch (e) {
-          console.error('Failed to save case to server', e);
-        }
-      }
-
-      setCases([newCase, ...cases]);
-      setSuccessMessage(t('success_add'));
+      setIsCaseFormOpen(false);
+      setEditingCase(null);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error("Failed to save case:", err);
+      alert(language === 'bn' ? 'মামলা সংরক্ষণ করতে সমস্যা হয়েছে।' : 'Failed to save case.');
     }
-    setIsCaseFormOpen(false);
-    setEditingCase(null);
-    setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   const handleEditCase = (c: Case) => {
@@ -1327,18 +1506,24 @@ export default function Dashboard({
     setIsTaskFormOpen(true);
   };
 
-  const handleDeleteTask = (id: number | string) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
+  const handleDeleteTask = async (id: number | string) => {
+    try {
+      await deleteTaskService(id.toString());
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+    }
   };
 
-  const handleToggleTask = (id: number | string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === id) {
-        const nextStatus = t.status === 'pending' ? 'in-progress' : t.status === 'in-progress' ? 'completed' : 'pending';
-        return { ...t, status: nextStatus };
-      }
-      return t;
-    }));
+  const handleToggleTask = async (id: number | string) => {
+    const t = tasks.find(task => task.id === id);
+    if (!t) return;
+    
+    const nextStatus = t.status === 'pending' ? 'in-progress' : t.status === 'in-progress' ? 'completed' : 'pending';
+    try {
+      await updateTaskService(id.toString(), { status: nextStatus });
+    } catch (err) {
+      console.error("Failed to toggle task:", err);
+    }
   };
 
   const handleCaseSearch = () => {
@@ -1484,7 +1669,7 @@ export default function Dashboard({
       // Open the diary view for this date
       setSelectedDate(caseMatch.nextDate);
     } else {
-      alert('কোনো তথ্য পাওয়া যায়নি। দয়া করে সঠিক তারিখ বা মামলা নম্বর দিন।');
+      alert(t('no_info_found'));
     }
   };
 
@@ -1580,10 +1765,10 @@ export default function Dashboard({
       await uploadFile('documents', path, file);
       const url = await getPublicUrl('documents', path);
       setReligiousBooks(prev => prev.map(b => b.id === id ? { ...b, url } : b));
-      alert("ফাইল সফলভাবে আপলোড হয়েছে।");
+      alert(t('file_uploaded'));
     } catch (err: any) {
       console.error("Failed to upload religious book", err);
-      alert(`ফাইল আপলোড করতে সমস্যা হয়েছে: ${err.message || 'অজানা ত্রুটি'}`);
+      alert(t('file_upload_error') + (err.message || 'Unknown Error'));
     }
   };
 
@@ -1616,10 +1801,10 @@ export default function Dashboard({
       }
       
       if (currentCount >= limit) {
-        if ((points || 0) >= 10) {
+        if ((userPoints || 0) >= 10) {
           deductPoints = true;
         } else {
-          setAiMessages([...newMessages, { role: 'model', text: t('ai_limit_reached').replace('{limit}', limit.toString()).replace('{points}', (points || 0).toString()) }]);
+          setAiMessages([...newMessages, { role: 'model', text: t('ai_limit_reached').replace('{limit}', limit.toString()).replace('{points}', (userPoints || 0).toString()) }]);
           setIsAiLoading(false);
           return;
         }
@@ -1640,7 +1825,7 @@ export default function Dashboard({
         config: {
           systemInstruction: `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং এই "MDC Diary" অ্যাপের গাইড। আপনি বাংলাদেশের আইন, ধারা, সাজা, সাক্ষ্য গ্রহণের টেকনিক, জেরা করার টেকনিক, যুক্তিতর্ক, এবং দরখাস্ত লেখার নিয়ম সম্পর্কে উকিল ও মুহুরিদের সাহায্য করবেন। 
 
-বর্তমান ব্যবহারকারীর ধরণ: ${currentViewMode === 'lawyer' ? 'উকিল' : currentViewMode === 'clerk' ? 'মুহুরি' : currentViewMode === 'client' ? 'ক্লায়েন্ট' : 'অ্যাডমিন'}। আপনি ব্যবহারকারীর ধরণ অনুযায়ী আরও প্রাসঙ্গিক পরামর্শ দিন।
+বর্তমান ব্যবহারকারীর ধরণ: ${currentViewMode === 'lawyer' ? 'উকিল' : currentViewMode === 'clerk' ? 'মুহুরি' : currentViewMode === 'advertiser' ? 'বিজ্ঞাপনদাতা' : currentViewMode === 'client' ? 'ক্লায়েন্ট' : 'অ্যাডমিন'}। আপনি ব্যবহারকারীর ধরণ অনুযায়ী আরও প্রাসঙ্গিক পরামর্শ দিন।
 
 পাশাপাশি আপনি এই অ্যাপের প্রতিটি মেনু, বাটন এবং প্রসেস সম্পর্কেও তথ্য দেবেন। অ্যাপের প্রধান ফিচারগুলো হলো:
 ১. ড্যাশবোর্ড: মামলার সারসংক্ষেপ এবং দ্রুত অ্যাকশন বাটন।
@@ -1664,13 +1849,14 @@ export default function Dashboard({
       setAiMessages([...newMessages, { role: 'model', text: response.text || '' }]);
       
       // Increment AI usage in background
-      fetch('/api/users/increment-ai-usage', {
+      fetchWithAuth('/api/users/increment-ai-usage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, deductPoints })
       }).then(() => {
         if (deductPoints && onUpdateProfile) {
-          onUpdateProfile({ points: (points || 0) - 10 });
+          onUpdateProfile({ points: (userPoints || 0) - 10 });
+          setUserPoints(prev => Math.max(0, prev - 10));
         } else if (!deductPoints && onUpdateProfile) {
           onUpdateProfile({ aiQuestionsCount: (aiQuestionsCount || 0) + 1 });
         }
@@ -1685,7 +1871,7 @@ export default function Dashboard({
   };
 
   return (
-    <div ref={containerRef} className={`min-h-screen flex transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+    <div ref={containerRef} className={`h-screen flex overflow-hidden transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -1703,11 +1889,8 @@ export default function Dashboard({
       `}>
         <div className="h-full flex flex-col">
           <div className="p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-white/10 p-2 rounded-lg">
-                <FileText className="text-indigo-200" size={20} />
-              </div>
-              <span className="text-xl font-bold tracking-tight">MDC Diary</span>
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange('dashboard')}>
+              <Logo showSubtitle size="lg" />
             </div>
             <button onClick={toggleSidebar} className="lg:hidden text-white/70 hover:text-white">
               <X size={24} />
@@ -1734,10 +1917,12 @@ export default function Dashboard({
               <p className="text-indigo-200/60 text-[10px] font-medium uppercase tracking-wider mt-0.5">
                 {currentViewMode === 'lawyer' ? t('role_lawyer') : 
                  currentViewMode === 'clerk' ? t('role_clerk') : 
+                 currentViewMode === 'advertiser' ? t('role_advertiser') : 
                  currentViewMode === 'admin' ? t('role_admin') : 
                  currentViewMode === 'super_admin' ? t('role_super_admin') :
                  currentViewMode === 'country_manager' ? t('role_country_manager') :
-                 t('role_client')}
+                 currentViewMode === 'client' ? t('role_client') : 
+                 t('role_general_user')}
               </p>
             </div>
           </div>
@@ -1778,7 +1963,7 @@ export default function Dashboard({
                           )}
                           {item.id === 'affiliate_zone' && (
                             <span className="px-2 py-0.5 bg-rose-500 text-white text-[10px] font-bold rounded-full animate-pulse">
-                              সাবস্ক্রিপশন ফ্রি
+                              {t('plan_free')}
                             </span>
                           )}
                         </div>
@@ -1803,13 +1988,16 @@ export default function Dashboard({
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Header */}
         <header className={`border-b h-16 flex items-center justify-between px-4 lg:px-8 sticky top-0 z-30 transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center gap-4">
             <button onClick={toggleSidebar} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
               <Menu size={24} />
             </button>
+            <div className="lg:hidden">
+              <Logo size="sm" />
+            </div>
             {activeTab !== 'dashboard' && (
               <button 
                 onClick={() => setActiveTab('dashboard')}
@@ -1838,21 +2026,24 @@ export default function Dashboard({
                   <option value="lawyer">Lawyer</option>
                   <option value="clerk">Clerk</option>
                   <option value="client">Client</option>
+                  <option value="advertiser">Advertiser</option>
                 </select>
               </div>
             )}
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ${
               currentViewMode === 'lawyer' ? 'bg-blue-100 text-blue-700' : 
               currentViewMode === 'clerk' ? 'bg-indigo-100 text-indigo-700' : 
+              currentViewMode === 'advertiser' ? 'bg-amber-100 text-amber-700' :
               currentViewMode === 'client' ? 'bg-emerald-100 text-emerald-700' : 
               'bg-orange-100 text-orange-700'
             }`}>
               <span className={`w-2.5 h-2.5 rounded-full ${
-                currentViewMode === 'lawyer' ? 'bg-blue-500' : currentViewMode === 'clerk' ? 'bg-indigo-500' : currentViewMode === 'client' ? 'bg-emerald-500' : 'bg-orange-500'
+                currentViewMode === 'lawyer' ? 'bg-blue-500' : currentViewMode === 'clerk' ? 'bg-indigo-500' : currentViewMode === 'advertiser' ? 'bg-amber-500' : currentViewMode === 'client' ? 'bg-emerald-500' : 'bg-orange-500'
               }`}></span>
               {currentViewMode === 'lawyer' ? t('role_lawyer') : 
                currentViewMode === 'clerk' ? t('role_clerk') : 
                currentViewMode === 'client' ? t('role_client') : 
+               currentViewMode === 'advertiser' ? t('role_advertiser') : 
                currentViewMode === 'admin' ? (language === 'bn' ? 'অ্যাডমিন' : language === 'hi' ? 'व्यवस्थापक' : 'Admin') :
                currentViewMode === 'super_admin' ? (language === 'bn' ? 'সুপার অ্যাডমিন' : language === 'hi' ? 'सुपर व्यवस्थापक' : 'Super Admin') :
                currentViewMode === 'country_manager' ? (language === 'bn' ? 'কান্ট্রি ম্যানেজার' : language === 'hi' ? 'देश प्रबंधक' : 'Country Manager') :
@@ -1942,9 +2133,21 @@ export default function Dashboard({
               >
                     {activeTab === 'case_timeline' && (
                 <div className="p-6">
-                  <h2 className="text-2xl font-bold mb-4">মামলার টাইমলাইন</h2>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold">{t('case_timeline')}</h2>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input
+                        type="text"
+                        placeholder={t('search_cases')}
+                        value={timelineSearchQuery}
+                        onChange={(e) => setTimelineSearchQuery(e.target.value)}
+                        className="pl-10 pr-4 py-2 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {cases.map(c => (
+                    {cases.filter(c => c.caseNumber.toLowerCase().includes(timelineSearchQuery.toLowerCase())).map(c => (
                       <button 
                         key={c.id}
                         onClick={() => setSelectedCaseForTimeline(c)}
@@ -1959,7 +2162,7 @@ export default function Dashboard({
               )}
               {activeTab === 'notifications' && (
                 <div className="p-6">
-                  <h2 className="text-2xl font-bold mb-4">নোটিফিকেশন</h2>
+                  <h2 className="text-2xl font-bold mb-4">{t('notifications')}</h2>
                   <NotificationPanel 
                     notifications={notifications} 
                     onClose={() => setActiveTab('dashboard')}
@@ -1968,29 +2171,50 @@ export default function Dashboard({
                   />
                 </div>
               )}
-              {activeTab === 'support_chat' && (
-                <div className="h-[calc(100vh-12rem)]">
-                  <SupportChat userId={userId.toString()} userName={userName} />
-                </div>
-              )}
               {activeTab === 'lawyer_directory' && (
-                <LawyerDirectory />
+                <LawyerDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
+              )}
+              {activeTab === 'clerk_directory' && (
+                <ClerkDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
               )}
               {activeTab === 'case_history_20y' && (
                 <ArchiveCaseHistory />
               )}
-              {activeTab === 'dashboard' && (
-                <HomeView 
-                  userName={userName}
-                  userType={currentViewMode}
-                  cases={visibleCases}
-                  tasks={tasks}
-                  language={language}
-                  theme={theme}
-                  setActiveTab={setActiveTab}
-                  t={t}
-                  isPremium={subscriptionPackage === 'premium'}
-                />
+              {(activeTab === 'dashboard' || activeTab === 'performance') && (
+                currentViewMode === 'advertiser' ? (
+                  <AdHomeView 
+                    userName={userName}
+                    language={language}
+                    setActiveTab={setActiveTab}
+                    t={t}
+                  />
+                ) : (
+                  <HomeView 
+                    userName={userName}
+                    userType={currentViewMode}
+                    cases={visibleCases}
+                    tasks={tasks}
+                    language={language}
+                    theme={theme}
+                    setActiveTab={setActiveTab}
+                    t={t}
+                    isPremium={isPremiumFeatures}
+                    isPremiumForAds={subscriptionPackage === 'premium'}
+                    referralCode={referralCode}
+                    referralCount={referralHistory.filter(r => r.case_count >= 10).length}
+                    onCopyLink={() => {
+                      const link = `${window.location.origin}/register?ref=${referralCode}`;
+                      navigator.clipboard.writeText(link);
+                      alert(t('link_copied_success') || 'Link Copied!');
+                    }}
+                    onWhatsAppShare={() => {
+                      const link = `${window.location.origin}/register?ref=${referralCode}`;
+                      const text = `Join MDC Diary and manage cases easily: ${link}`;
+                      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                    }}
+                    initialShowScoreModal={activeTab === 'performance'}
+                  />
+                )
               )}
 
               {activeTab === 'calendar' && (
@@ -2003,6 +2227,7 @@ export default function Dashboard({
                   onViewCard={handleViewCardWithAd}
                   onViewHistory={setSelectedCaseForHistory}
                   language={language}
+                  t={t}
                   userType={currentViewMode}
                   govtHolidays={govtHolidays}
                   getBanglaDate={getBanglaDate}
@@ -2027,14 +2252,107 @@ export default function Dashboard({
                   onViewCard={setSelectedCaseForCard}
                   t={t}
                   language={language}
-                  isPremium={subscriptionPackage === 'premium'}
+                  isPremium={isPremiumFeatures}
+                  isPremiumForAds={subscriptionPackage === 'premium'}
+                  userType={userType}
                 />
               )}
               {activeTab === 'news' && (
-                <NewsView 
+                <NewspapersView 
                   language={language}
                   t={t}
                 />
+              )}
+
+              {activeTab === 'ad_campaigns' && (
+                <AdFlexiplan 
+                  language={language} 
+                  onPurchase={async (config) => {
+                    if (!auth.currentUser) {
+                      alert(language === 'bn' ? 'দয়া করে লগইন করুন' : 'Please login to continue');
+                      return;
+                    }
+
+                    try {
+                      let adMediaUrl = '';
+                      let adMediaPath = '';
+                      let fbCoverPhotoUrl = '';
+                      let fbCoverPhotoPath = '';
+
+                      // Upload Ad Media if exists
+                      if (config.adMedia instanceof File) {
+                        adMediaPath = `campaigns/${auth.currentUser.uid}/${Date.now()}_${config.adMedia.name}`;
+                        await uploadFile('', adMediaPath, config.adMedia);
+                        adMediaUrl = await getPublicUrl('', adMediaPath);
+                      }
+
+                      // Upload FB Cover if exists
+                      if (config.fbCoverPhoto instanceof File) {
+                        fbCoverPhotoPath = `campaigns/${auth.currentUser.uid}/fb_covers/${Date.now()}_${config.fbCoverPhoto.name}`;
+                        await uploadFile('', fbCoverPhotoPath, config.fbCoverPhoto);
+                        fbCoverPhotoUrl = await getPublicUrl('', fbCoverPhotoPath);
+                      }
+
+                      const campaignData = {
+                        ownerId: auth.currentUser.uid,
+                        type: config.type,
+                        reach: config.reach,
+                        validity: config.validity,
+                        placements: config.placement,
+                        totalPrice: config.totalPrice,
+                        location: config.location || 'All Bangladesh',
+                        subLocation: config.subLocation || 'All Thanas',
+                        targetRoles: config.targetRoles || [],
+                        dailyFrequency: 3,
+                        duration: 15,
+                        adTitle: config.adTitle || '',
+                        adDescription: config.adDescription || '',
+                        fbLink: config.fbLink || '',
+                        ytLink: config.ytLink || '',
+                        otherLink: config.otherLink || '',
+                        adMediaType: config.adMediaType || 'image',
+                        adMediaUrl,
+                        adMediaPath,
+                        fbCoverPhotoUrl,
+                        fbCoverPhotoPath,
+                        status: 'pending',
+                        paymentMethod: config.paymentMethod || 'mobile',
+                        paymentStatus: 'pending',
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                      };
+
+                      await addDoc(collection(db, 'campaigns'), campaignData);
+
+                      alert(language === 'bn' 
+                        ? 'ক্যাম্পেইন সফলভাবে তৈরি হয়েছে এবং অনুমোদনের জন্য অপেক্ষমান আছে!' 
+                        : 'Campaign created successfully and is pending approval!');
+                      setActiveTab('manage_ads');
+                    } catch (error) {
+                      console.error('Error saving campaign:', error);
+                      alert(language === 'bn' ? 'সেভ করতে সমস্যা হয়েছে' : 'Failed to save campaign');
+                    }
+                  }} 
+                />
+              )}
+
+              {activeTab === 'manage_ads' && (
+                <ManageAdsView language={language} />
+              )}
+
+              {activeTab === 'my_points' && (
+                <PointsView 
+                  language={language} 
+                  userPoints={userPoints} 
+                  onPointsUpdate={(pts) => {
+                    setUserPoints(pts);
+                    onUpdateProfile?.({ points: pts });
+                  }} 
+                />
+              )}
+
+              {activeTab === 'ad_reports' && (
+                <AdReportsView language={language} />
               )}
 
               {activeTab === 'tasks' && (
@@ -2362,21 +2680,10 @@ export default function Dashboard({
                 </div>
               )}
 
-              {activeTab === 'library' && (
-                <Library language={language} />
-              )}
-
-              {activeTab === 'professional_services' && (
-                <div className="space-y-6 max-w-4xl mx-auto pb-20">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
-                  <ProfessionalResources user={{ id: userId, userType: currentViewMode, name: userName }} />
-                </div>
-              )}
-
               {activeTab === 'lawyers' && (
                 <div className="space-y-6 max-w-4xl mx-auto pb-20">
                   <AdBanner isPremium={subscriptionPackage === 'premium'} />
-                  <LawyerDirectory />
+                  <LawyerDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
                 </div>
               )}
 
@@ -2519,17 +2826,33 @@ export default function Dashboard({
                       </div>
                       <div className="text-center md:text-left">
                         <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2">{userName}</h2>
+                        <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-4">
+                          <div className="px-4 py-1.5 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-xl text-sm font-black flex items-center gap-2 border border-amber-200 dark:border-amber-800">
+                            <Shield size={16} />
+                            {userPoints || 0} {t('points')}
+                          </div>
+                        </div>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3">
                           <span className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold uppercase tracking-wider">
                             {currentViewMode === 'lawyer' ? t('role_lawyer') : 
                              currentViewMode === 'clerk' ? t('role_clerk') : 
+                             currentViewMode === 'advertiser' ? t('role_advertiser') :
                              currentViewMode === 'admin' ? t('role_admin') : 
                              currentViewMode === 'super_admin' ? t('role_super_admin') :
                              currentViewMode === 'country_manager' ? t('role_country_manager') :
-                             t('role_client')}
+                             currentViewMode === 'client' ? t('role_client') :
+                             t('role_general_user')}
                           </span>
                           <span className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-xl text-sm font-bold">
-                            {userDistrict}, {userCountry}
+                            {isEditingProfile ? editDistrict : userDistrict}
+                          </span>
+                          {(editThana || userThana) && (
+                            <span className="px-4 py-1.5 bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-400 rounded-xl text-sm font-bold">
+                              {isEditingProfile ? editThana : userThana}
+                            </span>
+                          )}
+                          <span className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-sm font-bold">
+                            {isEditingProfile ? 'Bangladesh' : userCountry}
                           </span>
                         </div>
                       </div>
@@ -2537,10 +2860,10 @@ export default function Dashboard({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">ব্যক্তিগত তথ্য</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{t('personal_info')}</p>
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">নাম</span>
+                            <span className="text-slate-500 font-medium">{t('name_label')}</span>
                             {isEditingProfile ? (
                               <input 
                                 type="text" 
@@ -2553,7 +2876,7 @@ export default function Dashboard({
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">মোবাইল</span>
+                            <span className="text-slate-500 font-medium">{t('mobile_label')}</span>
                             {isEditingProfile ? (
                               <input 
                                 type="text" 
@@ -2566,11 +2889,17 @@ export default function Dashboard({
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">জেলা</span>
+                            <span className="text-slate-500 font-medium">{t('district_label')}</span>
                             {isEditingProfile ? (
                               <select 
                                 value={editDistrict} 
-                                onChange={(e) => setEditDistrict(e.target.value)}
+                                onChange={(e) => {
+                                  const newDist = e.target.value;
+                                  setEditDistrict(newDist);
+                                  setEditThana('');
+                                  setChamberAddress(currentViewMode === 'clerk' ? `${newDist} মুহুরি সমিতি ভবন, ${newDist}` : `${newDist} আইনজীবী সমিতি ভবন, ${newDist}`);
+                                  setBarAssociation(currentViewMode === 'clerk' ? `${newDist} মুহুরি সমিতি` : `${newDist} আইনজীবী সমিতি`);
+                                }}
                                 className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                               >
                                 {districts.map(d => <option key={d} value={d}>{d}</option>)}
@@ -2580,40 +2909,54 @@ export default function Dashboard({
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">দেশ</span>
+                            <span className="text-slate-500 font-medium">{t('police_station_label' as any)}</span>
+                            {isEditingProfile ? (
+                              <select 
+                                value={editThana} 
+                                onChange={(e) => setEditThana(e.target.value)}
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                              >
+                                <option value="">{t('select_police_station' as any)}</option>
+                                {getPoliceStations(editDistrict, userCountry).map(ps => (
+                                  <option key={ps} value={ps}>{ps}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="font-bold text-slate-900 dark:text-white">{userThana}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 font-medium">{t('country_label')}</span>
                             <span className="font-bold text-slate-900 dark:text-white">{userCountry}</span>
                           </div>
                         </div>
                       </div>
 
                       <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">অ্যাকাউন্ট তথ্য</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{t('account_info')}</p>
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">ইউজার টাইপ</span>
+                            <span className="text-slate-500 font-medium">{t('user_type_label')}</span>
                             <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase">{currentViewMode}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">রেফারেল কোড</span>
-                            <span className="font-bold text-slate-900 dark:text-white">{referralCode || 'নেই'}</span>
+                            <span className="text-slate-500 font-medium">{t('referral_code_label')}</span>
+                            <span className="font-bold text-slate-900 dark:text-white">{referralCode || '-'}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">সাবস্ক্রিপশন মেয়াদ</span>
+                            <span className="text-slate-500 font-medium">{t('subscription_expiry')}</span>
                             <span className={`font-bold ${isExpired ? 'text-rose-500' : 'text-emerald-500'}`}>
-                              {subscriptionEndDate ? new Date(subscriptionEndDate).toLocaleDateString('bn-BD') : 'নেই'}
+                              {subscriptionEndDate ? new Date(subscriptionEndDate).toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US') : '-'}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">প্যাকেজ</span>
+                            <span className="text-slate-500 font-medium">{t('package_label')}</span>
                             <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase">
-                              {subscriptionPackage === 'diamond' ? 'ডায়মন্ড' : 
-                               subscriptionPackage === 'platinum' ? 'প্লাটিনাম' :
-                               subscriptionPackage === 'gold' ? 'গোল্ড' :
-                               subscriptionPackage === 'silver' ? 'সিলভার' : 'ফ্রি'}
+                              {subscriptionPackage}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">অ্যাকাউন্ট আইডি</span>
+                            <span className="text-slate-500 font-medium">{t('account_id_label')}</span>
                             <span className="font-bold text-slate-900 dark:text-white">#{userId}</span>
                           </div>
                         </div>
@@ -2623,12 +2966,12 @@ export default function Dashboard({
                         <>
                           <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
                             <div className="flex items-center justify-between mb-4">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">চেম্বার ও অফিস তথ্য</p>
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('chamber_address')}</p>
                               <Building2 size={16} className="text-indigo-500" />
                             </div>
                             <div className="space-y-4">
                               <div>
-                                <label className="text-xs text-slate-500 block mb-1">চেম্বারের ঠিকানা</label>
+                                <label className="text-xs text-slate-500 block mb-1">{t('chamber_address')}</label>
                                 {isEditingProfile ? (
                                   <input 
                                     type="text" 
@@ -2642,7 +2985,7 @@ export default function Dashboard({
                               </div>
                               <div className="flex items-center justify-between">
                                 <div>
-                                  <label className="text-xs text-slate-500 block mb-1">অফিস সময়</label>
+                                  <label className="text-xs text-slate-500 block mb-1">{t('office_hours')}</label>
                                   {isEditingProfile ? (
                                     <input 
                                       type="text" 
@@ -2660,7 +3003,7 @@ export default function Dashboard({
                               </div>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                  <label className="text-xs text-slate-500 block mb-1">বার অ্যাসোসিয়েশন</label>
+                                  <label className="text-xs text-slate-500 block mb-1">{t('bar_association')}</label>
                                   {isEditingProfile ? (
                                     <input 
                                       type="text" 
@@ -2673,7 +3016,7 @@ export default function Dashboard({
                                   )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-slate-500 block mb-1">মেম্বারশিপ আইডি</label>
+                                  <label className="text-xs text-slate-500 block mb-1">{t('membership_id')}</label>
                                   {isEditingProfile ? (
                                     <input 
                                       type="text" 
@@ -2686,24 +3029,55 @@ export default function Dashboard({
                                   )}
                                 </div>
                               </div>
+
+                              {currentViewMode === 'clerk' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-xs text-slate-500 block mb-1">{t('sponsor_lawyer')}</label>
+                                    {isEditingProfile ? (
+                                      <input 
+                                        type="text" 
+                                        value={sponsorName} 
+                                        onChange={(e) => setSponsorName(e.target.value)}
+                                        className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                      />
+                                    ) : (
+                                      <p className="font-bold text-slate-900 dark:text-white text-sm">{sponsorName}</p>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-slate-500 block mb-1">{t('sponsor_mobile')}</label>
+                                    {isEditingProfile ? (
+                                      <input 
+                                        type="text" 
+                                        value={sponsorMobile} 
+                                        onChange={(e) => setSponsorMobile(e.target.value)}
+                                        className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                      />
+                                    ) : (
+                                      <p className="font-bold text-slate-900 dark:text-white text-sm">{sponsorMobile}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
                           <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
                             <div className="flex items-center justify-between mb-4">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">পেশাদার নথিপত্র ও সোশ্যাল</p>
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('professional_docs_social')}</p>
                               <Shield size={16} className="text-emerald-500" />
                             </div>
                             <div className="space-y-4">
                               <div>
-                                <label className="text-xs text-slate-500 block mb-1">সার্টিফিকেট/সনদ</label>
+                                <label className="text-xs text-slate-500 block mb-1">{t('certificates')}</label>
                                 <div className="flex gap-2 overflow-x-auto pb-2">
                                   {certificates.length > 0 ? certificates.map((cert, idx) => (
                                     <div key={idx} className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-lg flex-shrink-0 flex items-center justify-center">
                                       <FileText size={20} className="text-slate-500" />
                                     </div>
                                   )) : (
-                                    <p className="text-xs text-slate-400 italic">কোনো নথি আপলোড করা হয়নি</p>
+                                    <p className="text-xs text-slate-400 italic">{t('no_doc_uploaded')}</p>
                                   )}
                                   <label className="w-12 h-12 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-center cursor-pointer hover:border-indigo-500 transition-colors">
                                     <Plus size={16} className="text-slate-400" />
@@ -2749,28 +3123,28 @@ export default function Dashboard({
 
                           <div className={`p-6 rounded-2xl border col-span-1 md:col-span-2 ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
                             <div className="flex items-center justify-between mb-6">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">রেফারেল ও পয়েন্ট স্ট্যাটাস</p>
+                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('referral_point_status')}</p>
                               <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">
                                 <DollarSign size={14} />
-                                {referralHistory.length * 50} পয়েন্ট
+                                {referralHistory.length * 50} {t('points')}
                               </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                               <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
                                 <p className="text-2xl font-black text-indigo-600">{referralHistory.length}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">মোট রেফারেল</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('total_referral')}</p>
                               </div>
                               <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
                                 <p className="text-2xl font-black text-emerald-600">{referralHistory.filter(r => r.case_count >= 10).length}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">সফল রেফারেল</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('successful_referral')}</p>
                               </div>
                               <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
                                 <p className="text-2xl font-black text-amber-600">{referralHistory.length * 50}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">অর্জিত পয়েন্ট</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('earned_points')}</p>
                               </div>
                               <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <p className="text-2xl font-black text-rose-600">০</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">ব্যয়িত পয়েন্ট</p>
+                                <p className="text-2xl font-black text-rose-600">0</p>
+                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('spent_points')}</p>
                               </div>
                             </div>
                           </div>
@@ -2779,22 +3153,78 @@ export default function Dashboard({
                     </div>
 
                     {(currentViewMode === 'lawyer' || currentViewMode === 'clerk') && (
-                      <div className="mt-8 flex justify-end">
+                      <div className="mt-8 flex justify-end gap-3">
                         <button 
-                          onClick={() => {
+                          onClick={async () => {
                             if (isEditingProfile) {
+                              try {
+                                const res = await fetchWithAuth(`/api/users/${userId}`, {
+                                  method: 'PUT',
+                                  headers: {
+                                    'Content-Type': 'application/json'
+                                  },
+                                  body: JSON.stringify({
+                                    fullName: editName,
+                                    mobile: editMobile,
+                                    district: editDistrict,
+                                    policeStation: editThana,
+                                    chamberAddress,
+                                    officeHours,
+                                    barAssociation,
+                                    membershipId,
+                                    socialLinks
+                                  })
+                                });
+                                if (!res.ok) {
+                                  console.error("Failed to update profile to server");
+                                }
+
+                                if (auth.currentUser) {
+                                  await updateProfile(auth.currentUser, { displayName: editName });
+                                  console.log("Firebase Auth profile updated with name:", editName);
+                                  
+                                  // Also update Firestore to be sure
+                                  const docId = firebaseUid || String(userId);
+                                  await updateDoc(doc(db, 'users', docId), {
+                                    fullName: editName,
+                                    mobile: editMobile,
+                                    district: editDistrict,
+                                    policeStation: editThana,
+                                    updatedAt: new Date().toISOString()
+                                  });
+                                }
+                              } catch (e) {
+                                console.error("Error updating profile", e);
+                              }
+                              
                               onUpdateProfile?.({
                                 fullName: editName,
                                 mobile: editMobile,
-                                district: editDistrict
+                                district: editDistrict,
+                                policeStation: editThana,
+                                chamberAddress,
+                                officeHours,
+                                barAssociation,
+                                membershipId,
+                                facebookUrl: socialLinks.facebook,
+                                linkedinUrl: socialLinks.linkedin
                               });
                             }
                             setIsEditingProfile(!isEditingProfile);
                           }}
-                          className={`px-6 py-2 rounded-xl font-bold transition-all ${isEditingProfile ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                          className={`px-6 py-2 rounded-xl font-bold transition-all shadow-sm ${isEditingProfile ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
                         >
-                          {isEditingProfile ? 'সেভ করুন' : 'প্রোফাইল এডিট করুন'}
+                          {isEditingProfile ? t('save') : t('edit_profile')}
                         </button>
+                        
+                        {(currentViewMode === 'lawyer' || currentViewMode === 'clerk') && !isEditingProfile && (
+                          <button
+                            onClick={() => setShowIDCard(true)}
+                            className={`px-6 py-2 rounded-xl font-bold transition-all border flex items-center gap-2 shadow-sm ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white border-slate-200 text-indigo-600 hover:bg-slate-50'}`}
+                          >
+                            <QrCode size={18} /> {t('view_id_card')}
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2834,6 +3264,63 @@ export default function Dashboard({
 
                   <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                     <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
+                      <Lock className="text-indigo-600" />
+                      {t('security_password' as any) || 'Security & Password'}
+                    </h3>
+                    <div className="space-y-4 max-w-md">
+                      <div>
+                        <label className="text-sm font-bold text-slate-500 mb-2 block">{language === 'bn' ? 'নতুন পাসওয়ার্ড' : 'New Password'}</label>
+                        <input 
+                          type="password" 
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className={`w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 ${theme === 'dark' ? 'border-slate-700 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50'}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-bold text-slate-500 mb-2 block">{language === 'bn' ? 'পাসওয়ার্ড নিশ্চিত করুন' : 'Confirm Password'}</label>
+                        <input 
+                          type="password" 
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className={`w-full p-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 ${theme === 'dark' ? 'border-slate-700 bg-slate-800 text-white' : 'border-slate-200 bg-slate-50'}`}
+                        />
+                      </div>
+                      <button 
+                        onClick={async () => {
+                          if (!newPassword || newPassword !== confirmPassword) {
+                            alert(language === 'bn' ? 'পাসওয়ার্ড মিলেনি অথবা খালি' : 'Passwords do not match or empty');
+                            return;
+                          }
+                          setIsUpdatingPassword(true);
+                          try {
+                            const res = await fetchWithAuth(`/api/users/${userId}/password`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ newPassword })
+                            });
+                            if (res.ok) {
+                              alert(language === 'bn' ? 'পাসওয়ার্ড সফলভাবে আপডেট হয়েছে' : 'Password updated successfully');
+                              setNewPassword('');
+                              setConfirmPassword('');
+                            } else {
+                              alert(language === 'bn' ? 'পাসওয়ার্ড আপডেট ব্যর্থ' : 'Failed to update password');
+                            }
+                          } catch (e) {
+                            alert(language === 'bn' ? 'পাসওয়ার্ড আপডেট ব্যর্থ' : 'Failed to update password');
+                          }
+                          setIsUpdatingPassword(false);
+                        }}
+                        disabled={isUpdatingPassword}
+                        className={`px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all ${isUpdatingPassword ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {isUpdatingPassword ? (language === 'bn' ? 'আপডেট হচ্ছে...' : 'Updating...') : (language === 'bn' ? 'পাসওয়ার্ড আপডেট করুন' : 'Update Password')}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+                    <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
                       {theme === 'dark' ? <Moon className="text-indigo-400" /> : <Sun className="text-amber-500" />}
                       {t('theme')}
                     </h3>
@@ -2849,61 +3336,84 @@ export default function Dashboard({
                   </div>
 
                   <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-                    <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
-                      <Share2 className="text-emerald-500" />
-                      রেফার লিংক (Referral Link)
-                    </h3>
-                    <div className="space-y-4">
-                      <p className="text-sm font-medium text-slate-500">আপনার বন্ধুদের সাথে অ্যাপটি শেয়ার করুন এবং রিওয়ার্ড পান।</p>
-                      <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
-                        <p className="text-sm text-indigo-800 dark:text-indigo-200 font-medium">
-                          {currentViewMode === 'client' ? (
-                            <><strong className="block mb-1">অফার:</strong> ‘মামলার অন্যান্য পক্ষ’র কাউকে রেফার করে তাকে সহযোগিতা করুন।’</>
-                          ) : (
-                            <><strong className="block mb-1">অফার:</strong> ‘মামলার অন্যান্য পক্ষ’র কাউকে রেফার করে তাকে সহযোগিতা করুন।’</>
-                          )}
-                        </p>
+                    <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                          <Share2 size={20} />
+                          <span className="text-sm font-black tracking-widest">{language === 'bn' ? 'রেফার লিংক' : 'Referral Link'}</span>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 dark:text-white leading-tight">
+                          {t('special_offer_desc')}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-2 max-w-sm">
+                          <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-emerald-500" 
+                              style={{ width: `${Math.min(100, ((referralHistory.filter(r => r.case_count >= 10).length) / 5) * 100)}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
+                            {referralHistory.filter(r => r.case_count >= 10).length}/5 {t('special_offer_status').split(':')[0]}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="text" 
-                          readOnly 
-                          value={referralCode ? `${window.location.origin}/?ref=${referralCode}` : 'অ্যাকাউন্ট তৈরি করুন'} 
-                          className={`w-full p-4 rounded-xl border outline-none font-mono text-sm ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
-                        />
-                        <button 
-                          onClick={() => {
-                            if (referralCode) {
-                              navigator.clipboard.writeText(`${window.location.origin}/?ref=${referralCode}`);
-                              alert("লিংক কপি করা হয়েছে!");
-                            } else {
-                              alert("রেফার লিংক পেতে রেজিস্ট্রেশন করুন।");
-                            }
-                          }}
-                          className="p-4 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors flex-shrink-0"
-                          title="Copy Link"
-                        >
-                          <Copy size={20} />
-                        </button>
+                      
+                      <div className="flex flex-col gap-3 w-full lg:w-[400px]">
+                        <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-2xl p-2 border border-slate-200 dark:border-slate-700">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={referralCode ? `${window.location.origin}/register?ref=${referralCode}` : t('create_account')} 
+                            className="bg-transparent flex-1 outline-none text-xs text-slate-600 dark:text-slate-300 font-medium px-2 select-all h-full min-w-0"
+                          />
+                            <button 
+                              onClick={() => {
+                                if (referralCode) {
+                                  navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referralCode}`);
+                                  alert(t('link_copied_success') || 'Link copied!');
+                                } else {
+                                  alert(t('register_for_referral'));
+                                }
+                              }}
+                              className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-md shadow-indigo-200 dark:shadow-none"
+                            >
+                              <Copy size={14} />
+                              {t('copy_link')}
+                            </button>
+                          </div>
+                          <button 
+                            onClick={() => {
+                              if (referralCode) {
+                                const link = `${window.location.origin}/register?ref=${referralCode}`;
+                                const text = `Join MDC Diary and manage cases easily: ${link}`;
+                                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                              } else {
+                                alert(t('register_for_referral'));
+                              }
+                            }}
+                            className="w-full px-4 py-3 bg-[#25D366] text-white rounded-2xl font-bold text-xs hover:bg-[#128C7E] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 dark:shadow-none"
+                          >
+                            <MessageSquare size={16} fill="currentColor" />
+                            {t('share_via_whatsapp') || 'Share via WhatsApp'}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {currentViewMode !== 'client' && (
                     <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                       <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
                         <Share2 className="text-emerald-500" />
-                        রেফারেল হিস্ট্রি
+                        {t('referral_history')}
                       </h3>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-800">
                             <tr>
-                              <th className="px-4 py-3">অ্যাকাউন্ট</th>
-                              <th className="px-4 py-3">জয়েন করেছেন</th>
-                              <th className="px-4 py-3">মামলা</th>
-                              <th className="px-4 py-3">প্রোগ্রেস</th>
-                              <th className="px-4 py-3">স্ট্যাটাস</th>
+                              <th className="px-4 py-3">{t('account')}</th>
+                              <th className="px-4 py-3">{t('joined')}</th>
+                              <th className="px-4 py-3">{t('case')}</th>
+                              <th className="px-4 py-3">{t('progress')}</th>
+                              <th className="px-4 py-3">{t('status')}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -2922,9 +3432,9 @@ export default function Dashboard({
                                   </td>
                                   <td className="px-4 py-3">
                                     {isBonusEligible ? (
-                                      <span className="text-emerald-600 font-bold text-xs">যোগ্য</span>
+                                      <span className="text-emerald-600 font-bold text-xs">{t('eligible')}</span>
                                     ) : (
-                                      <span className="text-slate-400 text-xs">চলমান</span>
+                                      <span className="text-slate-400 text-xs">{t('ongoing')}</span>
                                     )}
                                   </td>
                                 </tr>
@@ -2932,327 +3442,20 @@ export default function Dashboard({
                             })}
                             {referralHistory.length === 0 && (
                               <tr>
-                                <td colSpan={5} className="px-4 py-4 text-center text-slate-500">কোনো রেফারেল পাওয়া যায়নি।</td>
+                                <td colSpan={5} className="px-4 py-4 text-center text-slate-500">{t('no_referral_found')}</td>
                               </tr>
                             )}
                           </tbody>
                         </table>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
               )}
 
-              {activeTab === 'recharge' && currentViewMode !== 'client' && (
+              {activeTab === 'recharge' && (
                 <div className="space-y-8 bg-[#e7e6e6] p-4 md:p-8 rounded-3xl">
                   <AdBanner isPremium={subscriptionPackage === 'premium'} />
                   <Recharge userId={userId} />
-                </div>
-              )}
-
-              {activeTab === 'subscription' && currentViewMode !== 'client' && (
-                <div className="space-y-8 bg-[#e7e6e6] p-4 md:p-8 rounded-3xl">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
-                  <div className="max-w-7xl mx-auto">
-                    <div className="text-center mb-8">
-                      <h2 className="text-3xl font-black text-slate-900 mb-4">
-                        {currentViewMode === 'lawyer' && subscriptionTarget === 'clerk' 
-                          ? t('clerk_plan_title') 
-                          : t('select_plan_title')}
-                      </h2>
-                      <p className="text-slate-600 font-medium">
-                        {currentViewMode === 'lawyer' && subscriptionTarget === 'clerk'
-                          ? t('clerk_plan_desc')
-                          : t('select_plan_desc')}
-                      </p>
-                    </div>
-
-                    {currentViewMode === 'lawyer' && (
-                      <div className="flex justify-center mb-10">
-                        <div className="bg-white p-1.5 rounded-2xl inline-flex shadow-sm border border-slate-200">
-                          <button
-                            onClick={() => setSubscriptionTarget('self')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                              subscriptionTarget === 'self'
-                                ? 'bg-indigo-600 text-white shadow-md'
-                                : 'text-slate-600 hover:bg-slate-50'
-                            }`}
-                          >
-                            {t('for_self')}
-                          </button>
-                          <button
-                            onClick={() => setSubscriptionTarget('clerk')}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                              subscriptionTarget === 'clerk'
-                                ? 'bg-indigo-600 text-white shadow-md'
-                                : 'text-slate-600 hover:bg-slate-50'
-                            }`}
-                          >
-                            {t('for_clerk')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-12">
-                      {/* Premium Packages */}
-                      <div>
-                        <div className="flex items-center justify-center gap-3 mb-8">
-                          <div className="h-px w-12 bg-indigo-200"></div>
-                          <h3 className="text-2xl font-black text-slate-900 dark:text-white">{t('premium_package_title')}</h3>
-                          <div className="h-px w-12 bg-indigo-200"></div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          {/* Premium Plan - 1 Month */}
-                          <div className="p-6 rounded-[30px] border-2 border-indigo-200 bg-white relative overflow-hidden hover:border-indigo-400 transition-all">
-                            <div className="mb-6">
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">{t('premium_1_month')}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-indigo-600">৳১০০</span>
-                                <span className="text-slate-500 font-bold text-sm">{t('per_month')}</span>
-                              </div>
-                            </div>
-                            <ul className="space-y-3 mb-8 text-sm">
-                              {[
-                                '২০ বছরের মামলার তথ্য',
-                                'আনলিমিটেড ডকুমেন্ট স্টোরেজ',
-                                'উন্নত AI লিগ্যাল অ্যাসিস্ট্যান্ট',
-                                'মামলার অটোমেটেড ড্রাফটিং',
-                                'অ্যাফিলিয়েট বোনাস ও রিওয়ার্ড',
-                                'বিজ্ঞাপন মুক্ত অভিজ্ঞতা'
-                              ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-2 text-slate-700 font-bold">
-                                  <CheckCircle2 size={16} className="text-indigo-500 flex-shrink-0" />
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button 
-                              onClick={() => handleSubscriptionPayment({ name: 'Premium (1 Month)', price: 100, duration: '1 month' })}
-                              className="w-full py-3 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-sm hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
-                            >
-                              {t('subscribe_now')}
-                              <ChevronRight size={16} />
-                            </button>
-                          </div>
-
-                          {/* Premium Plan - 6 Months */}
-                          <div className="p-6 rounded-[30px] border-4 border-indigo-600 bg-white shadow-xl shadow-indigo-100 relative overflow-hidden transform md:-translate-y-2">
-                            <div className="absolute top-0 right-0 bg-indigo-600 text-white px-4 py-1 rounded-bl-2xl font-black text-[10px] uppercase tracking-widest">
-                              জনপ্রিয়
-                            </div>
-                            <div className="mb-6">
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">{t('premium_6_month')}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-indigo-600">৳৬০০</span>
-                                <span className="text-slate-500 font-bold text-sm">{t('per_6_month')}</span>
-                              </div>
-                            </div>
-                            <ul className="space-y-3 mb-8 text-sm">
-                              {[
-                                t('feature_20_years'),
-                                t('feature_unlimited_docs'),
-                                t('feature_ai_assistant'),
-                                t('feature_automated_drafting'),
-                                t('feature_affiliate_bonus'),
-                                t('feature_ad_free')
-                              ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-2 text-slate-700 font-bold">
-                                  <CheckCircle2 size={16} className="text-indigo-500 flex-shrink-0" />
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button 
-                              onClick={() => handleSubscriptionPayment({ name: 'Premium (6 Months)', price: 600, duration: '6 months' })}
-                              className="w-full py-3 rounded-xl bg-indigo-600 text-white font-black text-sm hover:bg-indigo-700 transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
-                            >
-                              {t('subscribe_now')}
-                              <ChevronRight size={16} />
-                            </button>
-                          </div>
-
-                          {/* Premium Plan - 12 Months */}
-                          <div className="p-6 rounded-[30px] border-2 border-indigo-200 bg-white relative overflow-hidden hover:border-indigo-400 transition-all">
-                            <div className="absolute top-0 right-0 bg-emerald-500 text-white px-4 py-1 rounded-bl-2xl font-black text-[10px] uppercase tracking-widest">
-                              সাশ্রয়ী
-                            </div>
-                            <div className="mb-6">
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">{t('premium_12_month')}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-indigo-600">৳১০০০</span>
-                                <span className="text-slate-500 font-bold text-sm">{t('per_year')}</span>
-                              </div>
-                            </div>
-                            <ul className="space-y-3 mb-8 text-sm">
-                              {[
-                                t('feature_20_years'),
-                                t('feature_unlimited_docs'),
-                                t('feature_ai_assistant'),
-                                t('feature_automated_drafting'),
-                                t('feature_affiliate_bonus'),
-                                t('feature_ad_free')
-                              ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-2 text-slate-700 font-bold">
-                                  <CheckCircle2 size={16} className="text-indigo-500 flex-shrink-0" />
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button 
-                              onClick={() => handleSubscriptionPayment({ name: 'Premium (12 Months)', price: 1000, duration: '12 months' })}
-                              className="w-full py-3 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-sm hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
-                            >
-                              {t('subscribe_now')}
-                              <ChevronRight size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Classic Packages */}
-                      <div>
-                        <div className="flex items-center justify-center gap-3 mb-8">
-                          <div className="h-px w-12 bg-amber-200"></div>
-                          <h3 className="text-2xl font-black text-slate-900 dark:text-white">{t('classic_package_title')}</h3>
-                          <div className="h-px w-12 bg-amber-200"></div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          {/* Classic Plan - 1 Month */}
-                          <div className="p-6 rounded-[30px] border-2 border-amber-200 bg-white relative overflow-hidden hover:border-amber-400 transition-all">
-                            <div className="mb-6">
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">{t('classic_1_month')}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-amber-600">৳৫০</span>
-                                <span className="text-slate-500 font-bold text-sm">{t('per_month')}</span>
-                              </div>
-                            </div>
-                            <ul className="space-y-3 mb-8 text-sm">
-                              {[
-                                t('feature_20_years'),
-                                t('feature_unlimited_docs'),
-                                t('feature_ai_assistant'),
-                                t('feature_affiliate_bonus'),
-                                t('feature_limited_ads')
-                              ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-2 text-slate-700 font-bold">
-                                  <CheckCircle2 size={16} className="text-amber-500 flex-shrink-0" />
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button 
-                              onClick={() => handleSubscriptionPayment({ name: 'Classic (1 Month)', price: 50, duration: '1 month' })}
-                              className="w-full py-3 rounded-xl bg-amber-50 text-amber-600 font-bold text-sm hover:bg-amber-100 transition-all flex items-center justify-center gap-2"
-                            >
-                              {t('subscribe_now')}
-                              <ChevronRight size={16} />
-                            </button>
-                          </div>
-
-                          {/* Classic Plan - 6 Months */}
-                          <div className="p-6 rounded-[30px] border-2 border-amber-200 bg-white relative overflow-hidden hover:border-amber-400 transition-all">
-                            <div className="mb-6">
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">{t('classic_6_month')}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-amber-600">৳৩০০</span>
-                                <span className="text-slate-500 font-bold text-sm">{t('per_6_month')}</span>
-                              </div>
-                            </div>
-                            <ul className="space-y-3 mb-8 text-sm">
-                              {[
-                                '২০ বছরের মামলার তথ্য',
-                                'আনলিমিটেড ডকুমেন্ট স্টোরেজ',
-                                'উন্নত AI লিগ্যাল অ্যাসিস্ট্যান্ট',
-                                'অ্যাফিলিয়েট বোনাস ও রিওয়ার্ড',
-                                'সীমিত বিজ্ঞাপন'
-                              ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-2 text-slate-700 font-bold">
-                                  <CheckCircle2 size={16} className="text-amber-500 flex-shrink-0" />
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button 
-                              onClick={() => handleSubscriptionPayment({ name: 'Classic (6 Months)', price: 300, duration: '6 months' })}
-                              className="w-full py-3 rounded-xl bg-amber-50 text-amber-600 font-bold text-sm hover:bg-amber-100 transition-all flex items-center justify-center gap-2"
-                            >
-                              সাবস্ক্রিপশন নিন
-                              <ChevronRight size={16} />
-                            </button>
-                          </div>
-
-                          {/* Classic Plan - 12 Months */}
-                          <div className="p-6 rounded-[30px] border-2 border-amber-200 bg-white relative overflow-hidden hover:border-amber-400 transition-all">
-                            <div className="mb-6">
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">{t('classic_12_month')}</h3>
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-black text-amber-600">৳৬০০</span>
-                                <span className="text-slate-500 font-bold text-sm">{t('per_year')}</span>
-                              </div>
-                            </div>
-                            <ul className="space-y-3 mb-8 text-sm">
-                              {[
-                                '২০ বছরের মামলার তথ্য',
-                                'আনলিমিটেড ডকুমেন্ট স্টোরেজ',
-                                'উন্নত AI লিগ্যাল অ্যাসিস্ট্যান্ট',
-                                'অ্যাফিলিয়েট বোনাস ও রিওয়ার্ড',
-                                'সীমিত বিজ্ঞাপন'
-                              ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-2 text-slate-700 font-bold">
-                                  <CheckCircle2 size={16} className="text-amber-500 flex-shrink-0" />
-                                  <span>{feature}</span>
-                                </li>
-                              ))}
-                            </ul>
-                            <button 
-                              onClick={() => handleSubscriptionPayment({ name: 'Classic (12 Months)', price: 600, duration: '12 months' })}
-                              className="w-full py-3 rounded-xl bg-amber-50 text-amber-600 font-bold text-sm hover:bg-amber-100 transition-all flex items-center justify-center gap-2"
-                            >
-                              সাবস্ক্রিপশন নিন
-                              <ChevronRight size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Free Plan */}
-                      <div className="flex justify-center">
-                        <div className={`p-6 rounded-[30px] border-2 transition-all max-w-sm w-full ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-                          <div className="mb-6">
-                            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">{t('free_plan_title')}</h3>
-                            <div className="flex items-baseline gap-1">
-                              <span className="text-3xl font-black text-slate-900 dark:text-white">৳০</span>
-                              <span className="text-slate-500 font-bold text-sm">{t('per_month')}</span>
-                            </div>
-                          </div>
-                          <ul className="space-y-3 mb-8 text-sm">
-                            {[
-                              t('feature_daily_diary'),
-                              t('feature_general_calendar'),
-                              t('feature_ai_assistant'),
-                              t('feature_emergency_numbers')
-                            ].map((feature, i) => (
-                              <li key={i} className="flex items-center gap-2 text-slate-600 dark:text-slate-400 font-medium">
-                                <CheckCircle2 size={16} className="text-slate-300 flex-shrink-0" />
-                                <span>{feature}</span>
-                              </li>
-                            ))}
-                          </ul>
-                          <button className="w-full py-3 rounded-xl border-2 border-slate-200 text-slate-500 font-bold hover:bg-slate-50 transition-all text-sm">
-                            {t('currently_active')}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-16 bg-white p-8 rounded-[40px] border border-slate-100 text-center">
-                      <h3 className="text-xl font-bold text-slate-900 mb-4">{t('why_premium_title')}</h3>
-                      <p className="text-slate-600 max-w-2xl mx-auto leading-relaxed">
-                        {t('why_premium_desc')}
-                      </p>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -3412,7 +3615,7 @@ export default function Dashboard({
                       <div className="flex items-center justify-between mb-8">
                         <div>
                           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{t('cases')}</h2>
-                          <p className="text-slate-500 font-medium">সকল মামলার তালিকা এবং বিস্তারিত তথ্য</p>
+                          <p className="text-slate-500 font-medium">{t('all_case_list_desc')}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button 
@@ -3420,7 +3623,7 @@ export default function Dashboard({
                             className={`p-3 rounded-xl transition-all shadow-sm flex items-center gap-2 font-bold ${isCaseSearchOpen ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                           >
                             <Search size={20} />
-                            {language === 'bn' ? 'সার্চ করুন' : 'Search'}
+                            {t('search')}
                           </button>
                         </div>
                       </div>
@@ -3433,30 +3636,30 @@ export default function Dashboard({
                         >
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-2">
-                              <label className="text-xs font-bold text-slate-400 uppercase">মামলা নং</label>
+                              <label className="text-xs font-bold text-slate-400 uppercase">{t('case_no')}</label>
                               <input 
                                 type="text"
-                                placeholder="মামলা নং লিখুন..."
+                                placeholder={t('enter_case_no')}
                                 value={caseSearchQuery}
                                 onChange={(e) => setCaseSearchQuery(e.target.value)}
                                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                               />
                             </div>
                             <div className="space-y-2">
-                              <label className="text-xs font-bold text-slate-400 uppercase">থানা (ঐচ্ছিক)</label>
+                              <label className="text-xs font-bold text-slate-400 uppercase">{t('thana_optional')}</label>
                               <input 
                                 type="text"
-                                placeholder="থানার নাম লিখুন..."
+                                placeholder={t('enter_thana_name')}
                                 value={policeStationSearchQuery}
                                 onChange={(e) => setPoliceStationSearchQuery(e.target.value)}
                                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                               />
                             </div>
                             <div className="space-y-2">
-                              <label className="text-xs font-bold text-slate-400 uppercase">মোবাইল নং</label>
+                              <label className="text-xs font-bold text-slate-400 uppercase">{t('mobile_no')}</label>
                               <input 
                                 type="text"
-                                placeholder="মোবাইল নং লিখুন..."
+                                placeholder={t('enter_mobile_no')}
                                 value={mobileSearchQuery}
                                 onChange={(e) => setMobileSearchQuery(e.target.value)}
                                 className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
@@ -3472,12 +3675,12 @@ export default function Dashboard({
                               }}
                               className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-50 rounded-lg transition-colors"
                             >
-                              রিসেট
+                              {t('reset')}
                             </button>
                             <button 
                               className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-100"
                             >
-                              সার্চ করুন
+                              {t('search')}
                             </button>
                           </div>
                         </motion.div>
@@ -3515,28 +3718,28 @@ export default function Dashboard({
                         return (
                           <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800">
                             <FileText className="mx-auto text-slate-300 mb-4" size={48} />
-                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">কোনো মামলা পাওয়া যায়নি</h3>
+                            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">{t('no_case_found')}</h3>
                           </div>
                         );
                       }
 
                       const groupedCases = searchedCases.reduce((acc, c) => {
-                          const court = c.courtName || 'অন্যান্য আদালত';
+                          const court = c.courtName || t('other_court');
                           if (!acc[court]) acc[court] = [];
                           acc[court].push(c);
                           return acc;
                         }, {} as Record<string, Case[]>);
 
                         const stepOrder: Record<string, number> = {
-                          "রায়": 1,
-                          "যুক্তি তর্ক": 2,
-                          "স্বাক্ষী": 3,
-                          "জেরা": 4,
-                          "চার্জ গঠন": 5,
-                          "হাজিরা": 6,
-                          "সময়": 7,
-                          "সমন": 8,
-                          "ওয়ারেন্ট": 9
+                          [t('action_judgment')]: 1,
+                          [t('action_argument')]: 2,
+                          [t('action_witness')]: 3,
+                          [t('action_cross_exam')]: 4,
+                          [t('action_charge_frame')]: 5,
+                          [t('action_attendance')]: 6,
+                          [t('action_time')]: 7,
+                          [t('action_summons')]: 8,
+                          [t('action_warrant')]: 9
                         };
 
                         const getStepPriority = (order?: string) => {
@@ -3558,15 +3761,15 @@ export default function Dashboard({
                                 <table className="court-table">
                                   <thead>
                                     <tr className="text-red">
-                                      <th>ক্রমিক</th>
-                                      <th>মামলা</th>
-                                      <th>পদক্ষেপ</th>
-                                      <th>মুহুরি</th>
-                                      <th>কল</th>
-                                      <th>পক্ষ</th>
-                                      <th>হিস্ট্রি</th>
-                                      <th>রেজাল্ট</th>
-                                      <th>অ্যাকশন</th>
+                                      <th>{t('sl_no')}</th>
+                                      <th>{t('case_name')}</th>
+                                      <th>{t('step')}</th>
+                                      <th>{t('clerk_name')}</th>
+                                      <th>{t('call')}</th>
+                                      <th>{t('party')}</th>
+                                      <th>{t('history')}</th>
+                                      <th>{t('result')}</th>
+                                      <th>{t('action')}</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -3613,7 +3816,7 @@ export default function Dashboard({
                                         </td>
                                         <td>
                                           <span className={isUserPetitioner(c) ? 'text-emerald-600' : 'text-rose-600'}>
-                                            {isUserPetitioner(c) ? 'বাদী' : 'আসামী'}
+                                            {isUserPetitioner(c) ? t('petitioner') : t('respondent')}
                                           </span>
                                         </td>
                                         <td>
@@ -3622,7 +3825,7 @@ export default function Dashboard({
                                             className="p-1.5 bg-indigo-100 text-indigo-600 rounded-lg hover:bg-indigo-200 transition-colors flex items-center gap-1 mx-auto"
                                           >
                                             <Clock size={14} />
-                                            <span className="text-[10px] font-bold">হিস্ট্রি</span>
+                                            <span className="text-[10px] font-bold">{t('history')}</span>
                                           </button>
                                         </td>
                                         <td>
@@ -3640,14 +3843,14 @@ export default function Dashboard({
                                             <button 
                                               onClick={() => setSelectedCaseForCard(c)}
                                               className="p-1.5 bg-emerald-100 text-emerald-600 rounded-lg hover:bg-emerald-200 transition-colors flex items-center gap-1"
-                                              title="কেস কার্ড"
+                                              title={t('case_card')}
                                             >
                                               <CreditCard size={14} />
                                             </button>
                                             <button 
                                               onClick={() => handleDeleteCase(c.id)}
                                               className="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200 transition-colors flex items-center gap-1"
-                                              title="ডিলিট করুন"
+                                              title={t('delete')}
                                             >
                                               <Trash2 size={14} />
                                             </button>
@@ -3684,7 +3887,14 @@ export default function Dashboard({
                     <AdBanner isPremium={subscriptionPackage === 'premium'} />
                   </div>
                   <div className="flex-1">
-                    <AffiliateZone userType={currentViewMode} userId={userId} />
+                    <AffiliateZone 
+                      userType={currentViewMode} 
+                      userId={userId} 
+                      referralCode={referralCode} 
+                      t={t}
+                      language={language}
+                      onUpdateProfile={onUpdateProfile}
+                    />
                   </div>
                 </div>
               )}
@@ -3697,40 +3907,44 @@ export default function Dashboard({
                 </div>
               )}
 
-              {activeTab === 'documents' && (
-                isSubscribed ? (
-                  <div className="h-full flex flex-col">
-                    <div className="flex-1">
-                      <DocumentManager userId={userId} onAddDocument={handleAddDocument} />
-                    </div>
+              {activeTab === 'religious' && (
+                <div className="h-full flex flex-col">
+                  <div className="flex-1">
+                    <ReligiousTextsView t={t} language={language} />
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <p className="text-slate-600 font-bold">ডকুমেন্টস মেনু ব্যবহার করতে সাবস্ক্রিপশন কিনুন।</p>
-                    <button 
-                      onClick={() => setShowSubscriptionPrompt(true)}
-                      className="mt-4 px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
-                    >
-                      সাবস্ক্রিপশন কিনুন
-                    </button>
-                  </div>
-                )
+                </div>
               )}
 
-              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'library' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'professional_services' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'documents' && activeTab !== 'profile' && (
+              {activeTab === 'invoices' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  {currentViewMode === 'advertiser' ? (
+                    <AdInvoicesView language={language} />
+                  ) : (
+                    <InvoicesView t={t} language={language} />
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'legal_drafts' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <LegalDraftsView language={language} />
+                </div>
+              )}
+
+              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <AdBanner isPremium={subscriptionPackage === 'premium'} />
                   <div className="bg-indigo-100 p-6 rounded-full mb-6 mt-8">
                     <Bot size={48} className="text-indigo-600" />
                   </div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-2">{menuItems.find(i => i.id === activeTab)?.label}</h3>
-                  <p className="text-slate-500 max-w-md mb-8">এই ফিচারটি বর্তমানে ডেভেলপমেন্ট মোডে আছে। খুব শীঘ্রই এটি আপনার জন্য উন্মুক্ত করা হবে।</p>
+                  <p className="text-slate-500 max-w-md mb-8">{t('feature_in_development')}</p>
                   <button 
                     onClick={() => setActiveTab('dashboard')}
                     className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2"
                   >
                     <ChevronRight className="rotate-180" size={20} />
-                    ড্যাশবোর্ডে ফিরে যান
+                    {t('back_to_dashboard')}
                   </button>
                 </div>
               )}
@@ -3750,16 +3964,14 @@ export default function Dashboard({
           <Calendar size={24} />
           <span className="text-[10px] font-bold uppercase">{t('calendar')}</span>
         </button>
-        {currentViewMode !== 'client' && (
-          <div className="relative -top-8">
-            <button 
-              onClick={() => setIsCaseFormOpen(true)}
-              className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-200 border-4 border-white"
-            >
-              <Plus size={28} />
-            </button>
-          </div>
-        )}
+        <div className="relative -top-8">
+          <button 
+            onClick={() => setIsCaseFormOpen(true)}
+            className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-200 border-4 border-white"
+          >
+            <Plus size={28} />
+          </button>
+        </div>
         <button onClick={() => handleTabChange('cases')} className={`flex flex-col items-center gap-1 ${activeTab === 'cases' ? 'text-indigo-600' : 'text-slate-400'}`}>
           <FileText size={24} />
           <span className="text-[10px] font-bold uppercase">{t('cases')}</span>
@@ -3782,7 +3994,7 @@ export default function Dashboard({
             >
               <div className="p-8 overflow-y-auto custom-scrollbar">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-2xl font-black text-slate-900">সাবস্ক্রিপশন পেমেন্ট</h3>
+                  <h3 className="text-2xl font-black text-slate-900">{t('subscription_payment')}</h3>
                   <button 
                     onClick={() => setShowSubscriptionPayment(false)}
                     className="p-2 hover:bg-slate-100 rounded-full transition-colors"
@@ -3796,14 +4008,14 @@ export default function Dashboard({
                     <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
                       <Clock size={40} className="text-amber-600" />
                     </div>
-                    <h4 className="text-xl font-bold text-slate-900 mb-2">রিকোয়েস্ট জমা হয়েছে!</h4>
-                    <p className="text-slate-500">আপনার সাবস্ক্রিপশন রিকোয়েস্টটি অ্যাডমিন প্যানেলে পাঠানো হয়েছে। ভেরিফিকেশন শেষে দ্রুত এটি চালু করে দেওয়া হবে।</p>
+                    <h4 className="text-xl font-bold text-slate-900 mb-2">{t('request_submitted')}</h4>
+                    <p className="text-slate-500">{t('subscription_processing_msg')}</p>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     <div className="p-6 bg-indigo-50 rounded-3xl border border-indigo-100">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-indigo-600 font-bold text-sm">নির্বাচিত প্ল্যান</span>
+                        <span className="text-indigo-600 font-bold text-sm">{t('selected_plan')}</span>
                         <span className="px-3 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-full uppercase">
                           {selectedPlan.duration}
                         </span>
@@ -3818,11 +4030,11 @@ export default function Dashboard({
                       className="w-full py-4 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-2xl font-bold text-lg hover:opacity-90 transition-all flex items-center justify-center gap-3 shadow-lg shadow-indigo-200"
                     >
                       {isOnlinePaymentLoading ? (
-                        <span className="animate-pulse">প্রসেসিং হচ্ছে...</span>
+                        <span className="animate-pulse">{t('processing')}</span>
                       ) : (
                         <>
                           <CreditCard size={22} />
-                          অনলাইনে পেমেন্ট করুন (SSLCommerz)
+                          {t('pay_online')}
                         </>
                       )}
                     </button>
@@ -3832,7 +4044,7 @@ export default function Dashboard({
                         <div className="w-full border-t border-slate-200"></div>
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-white px-4 text-slate-400 font-bold">অথবা ম্যানুয়ালি</span>
+                        <span className="bg-white px-4 text-slate-400 font-bold">{t('or_manually')}</span>
                       </div>
                     </div>
 
@@ -3850,8 +4062,7 @@ export default function Dashboard({
       </AnimatePresence>
 
       {/* Floating Legal AI Bot Button */}
-      {currentViewMode !== 'client' && (
-        <motion.button
+      <motion.button
           drag
           dragMomentum={false}
           dragConstraints={{
@@ -3868,16 +4079,19 @@ export default function Dashboard({
               setAiButtonSide('right');
             }
           }}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
           onClick={() => setIsLegalAIOpen(!isLegalAIOpen)}
           type="button"
-          className={`fixed top-1/2 -translate-y-1/2 ${aiButtonSide === 'right' ? 'right-0 rounded-l-2xl border-r-0' : 'left-0 rounded-r-2xl border-l-0'} w-12 h-16 bg-[#ff0c0c] text-white flex items-center justify-center shadow-xl hover:opacity-90 transition-all z-[35] border-2 border-white`}
-          title={t('legal_ai')}
+          className={`fixed top-1/2 -translate-y-1/2 ${aiButtonSide === 'right' ? 'right-0 rounded-l-3xl border-r-0' : 'left-0 rounded-r-3xl border-l-0'} w-14 py-3 bg-gradient-to-b from-indigo-600 to-violet-600 text-white flex flex-col items-center gap-1.5 shadow-2xl hover:brightness-110 transition-all z-[35] border-2 border-white/30 backdrop-blur-sm`}
         >
-          <Bot size={24} />
+          <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center shadow-inner">
+            <Bot size={20} className="animate-pulse" />
+          </div>
+          <span className="font-bold text-[10px] uppercase tracking-tighter text-center leading-tight px-1">
+            {t('ask_ai' as any)}
+          </span>
         </motion.button>
-      )}
 
       {/* Legal AI Modal */}
       <AnimatePresence>
@@ -3905,7 +4119,7 @@ export default function Dashboard({
                     <h3 className="font-bold">{t('legal_ai_assistant')}</h3>
                     {userType !== 'super_admin' && (
                       <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-medium border border-white/30">
-                        {t('points_label')}: {points || 0}
+                        {t('points_label')}: {userPoints || 0}
                       </span>
                     )}
                   </div>
@@ -3956,21 +4170,37 @@ export default function Dashboard({
             </div>
 
             <div className="p-3 border-t border-slate-100 bg-white">
-              <form onSubmit={handleAiSubmit} className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={aiQuery}
-                  onChange={(e) => setAiQuery(e.target.value)}
-                  placeholder="প্রশ্ন লিখুন..."
-                  className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-full outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-sm"
-                />
-                <button 
-                  type="submit"
-                  disabled={isAiLoading || !aiQuery.trim()}
-                  className="w-10 h-10 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shrink-0"
-                >
-                  <Send size={18} />
-                </button>
+              <form onSubmit={handleAiSubmit} className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1">
+                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t('voice_command')}>
+                    <Mic size={18} />
+                  </button>
+                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t('attach_file')}>
+                    <Paperclip size={18} />
+                  </button>
+                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t('select_element')}>
+                    <MousePointer2 size={18} />
+                  </button>
+                  <input 
+                    type="text" 
+                    value={aiQuery}
+                    onChange={(e) => setAiQuery(e.target.value)}
+                    placeholder={t('ai_memory_placeholder')}
+                    className="flex-1 px-2 py-2 bg-transparent outline-none text-sm font-medium"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={isAiLoading || !aiQuery.trim()}
+                    className="w-10 h-10 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shrink-0 shadow-lg shadow-indigo-100"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+                <div className="flex justify-center">
+                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                     Press <span className="bg-slate-100 px-1 py-0.5 rounded border border-slate-200 text-slate-500 mx-1">Enter</span> to send
+                   </p>
+                </div>
               </form>
             </div>
           </motion.div>
@@ -3979,17 +4209,21 @@ export default function Dashboard({
 
       {/* Case Form Modal */}
       <AnimatePresence>
-        {isCaseFormOpen && (
+        {(isCaseFormOpen || isJoinFormOpen) && (
           <CaseForm 
             onSave={handleSaveCase} 
+            onJoin={handleJoinCase}
             onCancel={() => {
               setIsCaseFormOpen(false);
+              setIsJoinFormOpen(false);
               setEditingCase(null);
             }} 
             initialData={editingCase}
+            initialMode={isJoinFormOpen ? 'join' : (editingCase ? 'detailed' : 'quick')}
             language={language}
             userDistrict={userDistrict}
             userCountry={userCountry}
+            existingCases={cases}
             canEditPetitioner={!editingCase || isUserPetitioner(editingCase) || (!isUserPetitioner(editingCase) && !isUserRespondent(editingCase))}
             canEditRespondent={!editingCase || isUserRespondent(editingCase) || (!isUserPetitioner(editingCase) && !isUserRespondent(editingCase))}
             userType={currentViewMode}
@@ -4029,21 +4263,7 @@ export default function Dashboard({
       </AnimatePresence>
 
       {/* Join Case Modal */}
-      <AnimatePresence>
-        {isJoinFormOpen && (
-          <JoinCaseForm 
-            onJoin={handleJoinCase} 
-            onCancel={() => setIsJoinFormOpen(false)} 
-            language={language}
-            existingCases={cases}
-            userDistrict={userDistrict}
-            userCountry={userCountry}
-            userType={currentViewMode}
-            userName={userName}
-            userMobile={userMobile}
-          />
-        )}
-      </AnimatePresence>
+      {/* Removed - unified with CaseForm above */}
 
       <CaseHistoryModal 
         isOpen={!!selectedCaseForHistory}
@@ -4071,7 +4291,7 @@ export default function Dashboard({
               <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                   <CreditCard className="text-indigo-600" size={20} />
-                  কেস কার্ড প্রো
+                  {t('case_card_pro')}
                 </h3>
                 <button 
                   onClick={() => setSelectedCaseForCard(null)}
@@ -4085,9 +4305,8 @@ export default function Dashboard({
                   caseData={selectedCaseForCard}
                   isPetitioner={isUserPetitioner(selectedCaseForCard)}
                   isRespondent={isUserRespondent(selectedCaseForCard)}
-                  onUpdate={(id, nextDate, order, selectedParty) => {
-                    handleUpdateCaseOrder(id, nextDate, order);
-                    handleUpdateSelectedParty(id, selectedParty);
+                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility) => {
+                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility);
                   }}
                   onAddDocument={handleAddDocument}
                   onCaseNumberClick={(caseNum) => {
@@ -4173,7 +4392,7 @@ export default function Dashboard({
                   <button 
                     onClick={() => {
                       setShowSubscriptionPrompt(false);
-                      setActiveTab('recharge');
+                      setActiveTab('subscription');
                     }}
                     className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                   >
@@ -4239,7 +4458,7 @@ export default function Dashboard({
                       type="text" 
                       value={taskCaseNumber}
                       onChange={(e) => setTaskCaseNumber(e.target.value)}
-                      placeholder="যেমন: ১২৩/২৪"
+                      placeholder="e.g., 123/24"
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                     />
                   </div>
@@ -4249,7 +4468,7 @@ export default function Dashboard({
                       type="text" 
                       value={taskCourtName}
                       onChange={(e) => setTaskCourtName(e.target.value)}
-                      placeholder="যেমন: জজ কোর্ট"
+                      placeholder="e.g., Judge Court"
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                     />
                   </div>
@@ -4327,29 +4546,25 @@ export default function Dashboard({
                       caseNumber: taskCaseNumber,
                       assignedTo: taskAssignedTo,
                       assignedBy: userName,
+                      courtName: taskCourtName,
+                      user_id: firebaseUid || String(userId)
                     };
 
-                    if (editingTask) {
-                      // For now local update, or we could add updateTask service
-                      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
-                    } else {
-                      try {
+                    try {
+                      if (editingTask) {
+                        await updateTaskService(editingTask.id.toString(), taskData);
+                      } else {
                         await createTask(taskData);
-                      } catch (err) {
-                        console.error("Error creating task:", err);
-                        const newTask: Task = {
-                          id: Date.now(),
-                          ...taskData,
-                          created_at: new Date().toISOString()
-                        };
-                        setTasks(prev => [newTask, ...prev]);
                       }
+                      setIsTaskFormOpen(false);
+                    } catch (err) {
+                      console.error("Error saving task:", err);
+                      alert(language === 'bn' ? 'টাস্ক সংরক্ষণ করতে সমস্যা হয়েছে।' : 'Failed to save task.');
                     }
-                    setIsTaskFormOpen(false);
                   }}
                   className="w-full py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                 >
-                  সেভ করুন
+                  {t('save')}
                 </button>
               </div>
             </motion.div>
@@ -4367,15 +4582,15 @@ export default function Dashboard({
             className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[300px]"
           >
             <div className="flex-1">
-              <p className="font-bold text-sm">মামলাটি ডিলিট করা হয়েছে</p>
-              <p className="text-xs text-slate-400">আপনি কি এটি ফেরত আনতে চান?</p>
+              <p className="font-bold text-sm">{t('deleted_msg')}</p>
+              <p className="text-xs text-slate-400">{t('want_to_undo')}</p>
             </div>
             <button
               onClick={handleUndoDelete}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
             >
               <RotateCcw size={16} />
-              আন্ডু (Undo)
+              {t('undo')}
             </button>
             <button
               onClick={() => setShowUndoToast(false)}
@@ -4384,6 +4599,57 @@ export default function Dashboard({
               <X size={18} />
             </button>
           </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Digital ID Card Modal */}
+      <AnimatePresence>
+        {showIDCard && (
+          <div className="fixed inset-0 z-[300] flex flex-col items-center p-4 bg-slate-900/90 backdrop-blur-xl overflow-y-auto">
+            <div className="min-h-full py-12 flex flex-col items-center w-full">
+              <button 
+                onClick={() => setShowIDCard(false)}
+                className="mb-8 p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl transition-all self-center sm:self-end"
+                title="Close"
+              >
+                <X size={28} />
+              </button>
+              
+              <div className="w-full flex justify-center max-w-7xl mx-auto">
+                <ProfessionalIDCard 
+                  userName={userName}
+                  userType={currentViewMode === 'clerk' ? t('role_clerk') : t('role_lawyer')}
+                  userId={userId || '0000'}
+                  userDistrict={userDistrict}
+                  userMobile={userMobile}
+                  userEmail={userName + "@example.com"} 
+                  barAssociation={barAssociation}
+                  chamberAddress={chamberAddress}
+                  sponsorName={currentViewMode === 'clerk' ? sponsorName : undefined}
+                  sponsorMobile={currentViewMode === 'clerk' ? sponsorMobile : undefined}
+                  profilePicture={profilePic}
+                  isPremium={subscriptionPackage === 'premium'}
+                  language={language}
+                  theme={theme}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Fullscreen Ad Reward System */}
+      <AnimatePresence>
+        {showFullscreenAd && (
+          <FullscreenAdViewer 
+            language={language}
+            userType={currentViewMode}
+            onClose={() => setShowFullscreenAd(false)}
+            onPointsEarned={(earned) => {
+              const newPoints = userPoints + earned;
+              setUserPoints(newPoints);
+              onUpdateProfile?.({ points: newPoints });
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

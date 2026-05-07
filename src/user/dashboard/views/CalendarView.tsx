@@ -27,8 +27,9 @@ interface CalendarViewProps {
   onViewHistory: (c: Case) => void;
   language: 'bn' | 'en' | 'hi' | 'ur';
   userType?: string;
-  govtHolidays?: string[];
+  govtHolidays?: string[] | Record<string, string>;
   getBanglaDate?: (date: Date) => string;
+  t: (key: any) => string;
 }
 
 const BookView = ({ 
@@ -38,7 +39,7 @@ const BookView = ({
   onPrev, 
   onNext, 
   onViewCard, 
-  language 
+  t 
 }: { 
   date: string; 
   cases: Case[]; 
@@ -46,7 +47,7 @@ const BookView = ({
   onPrev: () => void; 
   onNext: () => void; 
   onViewCard: (c: Case) => void;
-  language: string;
+  t: (key: any) => string;
 }) => {
   const groupedByCourt = cases.reduce((acc, c) => {
     if (!acc[c.courtName]) acc[c.courtName] = [];
@@ -80,27 +81,27 @@ const BookView = ({
         className="bg-white w-full max-w-5xl h-[90vh] rounded-r-3xl shadow-2xl flex flex-col relative overflow-hidden border-l-[12px] border-indigo-900"
       >
         {/* Book Header */}
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-900 rounded-2xl flex items-center justify-center text-white shadow-lg">
-              <Book size={24} />
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-50 gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 overflow-hidden w-full sm:w-auto">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-900 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
+              <Book size={20} className="sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                {language === 'bn' ? 'তারিখের ডায়েরি' : 'Date Diary'}
+            <div className="overflow-hidden">
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight truncate">
+                {t('date_diary')}
               </h3>
-              <p className="text-indigo-600 font-bold">{date}</p>
+              <p className="text-indigo-600 font-bold text-sm sm:text-base">{date}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={onPrev} className="p-3 hover:bg-white rounded-xl transition-all border border-slate-200 text-slate-600 shadow-sm">
-              <ArrowLeft size={20} />
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
+            <button onClick={onPrev} className="p-2 sm:p-3 hover:bg-white rounded-xl transition-all border border-slate-200 text-slate-600 shadow-sm">
+              <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
             </button>
-            <button onClick={onNext} className="p-3 hover:bg-white rounded-xl transition-all border border-slate-200 text-slate-600 shadow-sm">
-              <ArrowRight size={20} />
+            <button onClick={onNext} className="p-2 sm:p-3 hover:bg-white rounded-xl transition-all border border-slate-200 text-slate-600 shadow-sm">
+              <ArrowRight size={18} className="sm:w-5 sm:h-5" />
             </button>
-            <button onClick={onClose} className="p-3 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all border border-slate-200 text-slate-400 shadow-sm ml-4">
-              <X size={20} />
+            <button onClick={onClose} className="p-2 sm:p-3 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all border border-slate-200 text-slate-400 shadow-sm ml-2 sm:ml-4">
+              <X size={18} className="sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
@@ -120,7 +121,12 @@ const BookView = ({
                     {Object.entries(getGroupedByStep(courtCases)).map(([step, stepCases]) => (
                       <div key={step} className="space-y-4">
                         <h5 className="text-sm font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-lg inline-block">
-                          {step}
+                          {step === 'সমন' ? t('action_summons') : 
+                           step === 'স্বাক্ষী' ? t('action_witness') : 
+                           step === 'জেরা' ? t('action_cross_exam') : 
+                           step === 'যক্তিতর্ক' ? t('action_argument') : 
+                           step === 'রায়' ? t('action_judgment') : 
+                           t('other_label')}
                         </h5>
                         <div className="space-y-4">
                           {stepCases.map(c => (
@@ -128,7 +134,7 @@ const BookView = ({
                               <div className="flex items-start justify-between mb-4">
                                 <div>
                                   <h6 className="font-bold text-slate-900 text-lg">{c.caseNumber}</h6>
-                                  <p className="text-xs text-slate-500 font-medium">{c.petitioner} বনাম {c.respondent}</p>
+                                  <p className="text-xs text-slate-500 font-medium">{c.petitioner} {t('vs')} {c.respondent}</p>
                                 </div>
                                 <button 
                                   onClick={() => onViewCard(c)}
@@ -140,10 +146,10 @@ const BookView = ({
                               
                               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-50">
                                 <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-all">
-                                  <FileText size={14} /> {language === 'bn' ? 'ডকুমেন্ট' : 'Documents'}
+                                  <FileText size={14} /> {t('documents')}
                                 </button>
                                 <button className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold hover:bg-emerald-600 hover:text-white transition-all">
-                                  <Video size={14} /> {language === 'bn' ? 'সামনাসামনি হতে চাই' : 'Face to Face'}
+                                  <Video size={14} /> {t('face_to_face')}
                                 </button>
                               </div>
                             </div>
@@ -158,14 +164,14 @@ const BookView = ({
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
               <CalendarIcon size={64} className="text-slate-300" />
-              <p className="text-xl font-bold text-slate-500">এই তারিখে কোন মামলা নেই</p>
+              <p className="text-xl font-bold text-slate-500">{t('no_case_on_date')}</p>
             </div>
           )}
         </div>
 
         {/* Book Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">© ডিজিটাল ডায়েরি - {date}</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">© {t('digital_diary')} - {date}</p>
         </div>
       </motion.div>
     </motion.div>
@@ -183,9 +189,24 @@ export const CalendarView = ({
   language,
   userType,
   govtHolidays = [],
-  getBanglaDate
+  getBanglaDate,
+  t
 }: CalendarViewProps) => {
   const [showBookView, setShowBookView] = useState(false);
+  const [hoveredHolidayReason, setHoveredHolidayReason] = useState<string | null>(null);
+
+  const getHolidayReason = (dateStr: string, dayOfWeek: number) => {
+    if (govtHolidays) {
+      if (Array.isArray(govtHolidays)) {
+        if (govtHolidays.includes(dateStr)) return language === 'bn' ? 'সরকারি ছুটি' : 'Govt Holiday';
+      } else {
+        if (govtHolidays[dateStr]) return govtHolidays[dateStr];
+      }
+    }
+    if (dayOfWeek === 5) return language === 'bn' ? 'সাপ্তাহিক ছুটি (শুক্রবার)' : 'Weekly Holiday (Friday)';
+    if (dayOfWeek === 6) return language === 'bn' ? 'সাপ্তাহিক ছুটি (শনিবার)' : 'Weekly Holiday (Saturday)';
+    return '';
+  };
   const [bookDate, setBookDate] = useState<string | null>(null);
 
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
@@ -264,6 +285,22 @@ export const CalendarView = ({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <AnimatePresence>
+        {hoveredHolidayReason && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 10, x: '-50%' }}
+            animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, scale: 0.8, y: 10, x: '-50%' }}
+            className="fixed bottom-24 left-1/2 z-[200] px-6 py-3 bg-rose-600 text-white rounded-2xl shadow-2xl font-bold flex items-center gap-3 backdrop-blur-md border border-white/20"
+          >
+            <div className="w-8 h-8 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+              <CalendarIcon size={18} />
+            </div>
+            <span className="whitespace-nowrap">{hoveredHolidayReason}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showBookView && bookDate && (
           <BookView 
             date={bookDate}
@@ -272,7 +309,7 @@ export const CalendarView = ({
             onPrev={() => navigateDate('prev')}
             onNext={() => navigateDate('next')}
             onViewCard={onViewCard}
-            language={language}
+            t={t}
           />
         )}
       </AnimatePresence>
@@ -304,7 +341,7 @@ export const CalendarView = ({
               onClick={() => setCurrentMonth(new Date())}
               className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
             >
-              আজ
+              {t('today')}
             </button>
             <button 
               onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
@@ -338,14 +375,27 @@ export const CalendarView = ({
               const isToday = new Date().toDateString() === dateObj.toDateString();
               
               const dayOfWeek = dateObj.getDay(); // 0: Sun, 1: Mon, ..., 5: Fri, 6: Sat
-              const isHoliday = dayOfWeek === 5 || dayOfWeek === 6 || govtHolidays.includes(dateStr);
+              const isGovtHoliday = Array.isArray(govtHolidays) ? govtHolidays.includes(dateStr) : !!govtHolidays?.[dateStr];
+              const isHoliday = dayOfWeek === 5 || dayOfWeek === 6 || isGovtHoliday;
+              const reason = getHolidayReason(dateStr, dayOfWeek);
               
               const bnDate = getBanglaDate ? getBanglaDate(dateObj) : '';
+              
+              const isLawyerOrClerk = userType === 'lawyer' || userType === 'clerk';
+              const todayStr = new Date().toISOString().split('T')[0];
+              const isPast = dateStr < todayStr;
+              const shouldBlink = isLawyerOrClerk && isPast && dayCases.length > 0;
+              const isPastOrToday = dateStr <= todayStr;
+              const shouldHighlightPending = isLawyerOrClerk && isPastOrToday && dayCases.length > 0;
 
               return (
                 <button
                   key={day}
                   onClick={() => handleDateClick(dateStr)}
+                  onMouseEnter={() => isHoliday && setHoveredHolidayReason(reason)}
+                  onMouseLeave={() => setHoveredHolidayReason(null)}
+                  onTouchStart={() => isHoliday && setHoveredHolidayReason(reason)}
+                  onTouchEnd={() => setHoveredHolidayReason(null)}
                   className={`
                     aspect-square rounded-2xl border transition-all duration-300 relative group p-2 flex flex-col justify-between
                     ${isSelected 
@@ -356,17 +406,23 @@ export const CalendarView = ({
                           ? 'bg-rose-50 border-rose-100 text-rose-600'
                           : 'bg-white border-slate-100 hover:border-indigo-200 hover:bg-slate-50'
                     }
-                    ${userType === 'client' && dayCases.length > 0 ? 'animate-blink' : ''}
+                    ${shouldBlink ? 'animate-blink border-rose-500 shadow-rose-200 shadow-md' : ''}
                   `}
                 >
-                  <div className="flex justify-start w-full">
+                  {shouldHighlightPending && (
+                    <div className="absolute inset-2 rounded-full bg-rose-500/20 animate-ping" />
+                  )}
+                  {shouldHighlightPending && (
+                    <div className="absolute inset-0 rounded-2xl bg-rose-500/10 animate-pulse border-2 border-rose-500/30" />
+                  )}
+                  <div className="flex justify-start w-full relative z-10">
                     <span className={`text-xl sm:text-2xl font-black ${isSelected || isToday ? 'text-white' : isHoliday ? 'text-rose-600' : 'text-slate-700'}`}>
                       {day}
                     </span>
                   </div>
                   
                   {bnDate && (
-                    <div className="flex justify-end w-full mt-auto">
+                    <div className="flex justify-end w-full mt-auto relative z-10">
                       <span className={`text-sm sm:text-base font-bold ${isSelected || isToday ? 'text-white/90' : 'text-indigo-600'}`}>
                         {bnDate}
                       </span>
@@ -406,7 +462,7 @@ export const CalendarView = ({
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm h-full flex flex-col">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-bold text-slate-900">
-              {selectedDate ? `তারিখ: ${selectedDate}` : 'আজকের শিডিউল'}
+              {selectedDate ? `${language === 'bn' ? 'তারিখ:' : 'Date:'} ${selectedDate}` : t('today_schedule')}
             </h3>
             <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400">
               <Clock size={20} />
@@ -469,7 +525,7 @@ export const CalendarView = ({
                   className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40 py-20"
                 >
                   <CalendarIcon size={48} className="text-slate-300" />
-                  <p className="text-sm font-bold text-slate-500">এই তারিখে কোন মামলা নেই</p>
+                  <p className="text-sm font-bold text-slate-500">{t('no_case_on_date')}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -478,11 +534,11 @@ export const CalendarView = ({
           {selectedDateCases.length > 0 && (
             <div className="mt-8 p-6 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-80">মোট মামলা</p>
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{t('total_cases')}</p>
                 <CheckCircle2 size={16} />
               </div>
-              <h4 className="text-2xl font-black">{selectedDateCases.length} টি</h4>
-              <p className="text-xs font-medium text-indigo-100 mt-1">সবগুলো মামলার প্রস্তুতি সম্পন্ন করুন।</p>
+              <h4 className="text-2xl font-black">{selectedDateCases.length}</h4>
+              <p className="text-xs font-medium text-indigo-100 mt-1">{t('finish_all_preparation')}</p>
             </div>
           )}
         </div>

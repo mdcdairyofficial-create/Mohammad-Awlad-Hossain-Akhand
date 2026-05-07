@@ -21,11 +21,19 @@ interface Template {
 export default function ProfessionalResources({ user }: ProfessionalResourcesProps) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [points, setPoints] = useState(0);
   const [watchingAd, setWatchingAd] = useState(false);
   const [showAdModal, setShowAdModal] = useState(false);
   const [adCountdown, setAdCountdown] = useState(10);
+  
+  const [searchParams, setSearchParams] = useState({
+    district: '',
+    type: 'lawyer'
+  });
+  const [searchResults, setSearchResults] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -239,6 +247,22 @@ export default function ProfessionalResources({ user }: ProfessionalResourcesPro
     }
   };
 
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/users/search?district=${encodeURIComponent(searchParams.district)}&type=${searchParams.type}`);
+      const data = await res.json();
+      if (data.success) {
+        setSearchResults(data.users);
+      }
+    } catch (error) {
+      console.error("Search failed", error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Ad Modal */}
@@ -399,7 +423,10 @@ export default function ProfessionalResources({ user }: ProfessionalResourcesPro
             </div>
             <h3 className="text-xl font-bold mb-2">পেশাদার ডিরেক্টরি</h3>
             <p className="text-slate-500 mb-6">অন্যান্য উকিল বা মুহুরিদের সাথে নেটওয়ার্কিং করুন।</p>
-            <button className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2">
+            <button 
+              onClick={() => setShowSearchModal(true)}
+              className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
+            >
               <Search size={20} />
               খুঁজুন
             </button>
@@ -419,6 +446,113 @@ export default function ProfessionalResources({ user }: ProfessionalResourcesPro
           </div>
         </div>
       </div>
+
+      {/* Search Modal */}
+      <AnimatePresence>
+        {showSearchModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <h3 className="text-xl font-bold text-slate-800">পেশাদার ডিরেক্টরি খুঁজুন</h3>
+                <button 
+                  onClick={() => {
+                    setShowSearchModal(false);
+                    setSearchResults([]);
+                    setSearchParams({ district: '', type: 'lawyer' });
+                  }}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-6 overflow-y-auto">
+                <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                  <div className="sm:col-span-1">
+                    <label className="block text-sm font-bold text-slate-700 mb-1">ধরণ</label>
+                    <select
+                      value={searchParams.type}
+                      onChange={e => setSearchParams({...searchParams, type: e.target.value})}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    >
+                      <option value="lawyer">উকিল</option>
+                      <option value="clerk">মুহুরি</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-1">
+                    <label className="block text-sm font-bold text-slate-700 mb-1">জেলা</label>
+                    <input
+                      type="text"
+                      value={searchParams.district}
+                      onChange={e => setSearchParams({...searchParams, district: e.target.value})}
+                      placeholder="যেমন: ঢাকা"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-1 flex items-end">
+                    <button
+                      type="submit"
+                      disabled={searching}
+                      className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {searching ? 'খোঁজা হচ্ছে...' : <><Search size={20} /> খুঁজুন</>}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="space-y-4">
+                  {searchResults.length > 0 ? (
+                    searchResults.map(pro => (
+                      <div key={pro.id} className="p-4 rounded-2xl border border-slate-100 bg-slate-50 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center overflow-hidden shrink-0">
+                            {pro.profile_picture ? (
+                              <img src={pro.profile_picture} alt={pro.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <Users className="text-emerald-600" size={24} />
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-slate-800">{pro.name}</h4>
+                            <p className="text-xs text-slate-500">{pro.user_type === 'lawyer' ? 'উকিল' : 'মুহুরি'} • {pro.district || 'জেলা অজানা'}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <a 
+                            href={`tel:${pro.mobile}`}
+                            className="p-2 bg-emerald-100 text-emerald-700 rounded-lg hover:bg-emerald-200 transition-colors"
+                            title="কল করুন"
+                          >
+                            <ExternalLink size={18} />
+                          </a>
+                          <a 
+                            href={`https://wa.me/${pro.mobile.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
+                            title="হোয়াটসঅ্যাপ"
+                          >
+                            <Users size={18} />
+                          </a>
+                        </div>
+                      </div>
+                    ))
+                  ) : !searching && searchParams.district ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <p>দুঃখিত, এই জেলায় কোনো {searchParams.type === 'lawyer' ? 'উকিল' : 'মুহুরি'} পাওয়া যায়নি।</p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Upload Modal */}
       <AnimatePresence>

@@ -34,12 +34,14 @@ interface CasesViewProps {
   onAddCase: () => void;
   onJoinCase: () => void;
   onEditCase: (c: Case) => void;
-  onDeleteCase: (id: number) => void;
+  onDeleteCase: (id: string | number) => void;
   onViewHistory: (c: Case) => void;
   onViewCard: (c: Case) => void;
   t: (key: string) => string;
   language: 'bn' | 'en' | 'hi' | 'ur';
   isPremium?: boolean;
+  isPremiumForAds?: boolean;
+  userType?: string;
 }
 
 export const CasesView = ({
@@ -60,8 +62,12 @@ export const CasesView = ({
   onViewCard,
   t,
   language,
-  isPremium = false
+  isPremium = false,
+  isPremiumForAds = false,
+  userType = 'lawyer'
 }: CasesViewProps) => {
+  const [selectedDistrict, setSelectedDistrict] = React.useState('all');
+  const isClient = userType === 'client';
   const filteredCases = cases.filter(c => {
     const matchesSearch = 
       c.caseNumber.toLowerCase().includes(caseSearchQuery.toLowerCase()) ||
@@ -71,13 +77,14 @@ export const CasesView = ({
     
     const matchesType = caseFilter === 'all' || c.caseType === caseFilter;
     const matchesStatus = caseStatusFilter === 'all' || c.status === caseStatusFilter;
+    const matchesDistrict = selectedDistrict === 'all' || c.district === selectedDistrict;
     
-    return matchesSearch && matchesType && matchesStatus;
+    return matchesSearch && matchesType && matchesStatus && matchesDistrict;
   });
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <AdBanner isPremium={isPremium} />
+      <AdBanner isPremium={isPremiumForAds} />
       
       {/* Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -85,22 +92,24 @@ export const CasesView = ({
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">
             {t('my_cases')} <span className="text-indigo-600 ml-2">({filteredCases.length})</span>
           </h2>
-          <p className="text-slate-500 font-medium mt-1">আপনার সকল মামলার তালিকা ও আপডেট এখানে পাবেন।</p>
+          <p className="text-slate-500 font-medium mt-1">{t('all_cases_info')}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button 
-            onClick={onJoinCase}
-            className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-bold hover:bg-indigo-100 transition-all flex items-center gap-2 border border-indigo-100"
-          >
-            <Plus size={20} /> মামলা যুক্ত করুন
-          </button>
-          <button 
-            onClick={onAddCase}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 flex items-center gap-2"
-          >
-            <Plus size={20} /> নতুন মামলা
-          </button>
-        </div>
+        {!isClient && (
+          <div className="flex flex-wrap items-center gap-3">
+            <button 
+              onClick={onJoinCase}
+              className="px-6 py-3 bg-indigo-50 text-indigo-600 rounded-2xl font-bold hover:bg-indigo-100 transition-all flex items-center gap-2 border border-indigo-100"
+            >
+              <Plus size={20} /> {t('join')}
+            </button>
+            <button 
+              onClick={onAddCase}
+              className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 flex items-center gap-2"
+            >
+              <Plus size={20} /> {t('add_case_btn')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filters & Search */}
@@ -110,7 +119,7 @@ export const CasesView = ({
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={20} />
             <input 
               type="text" 
-              placeholder="মামলা নম্বর, আদালত বা নাম দিয়ে খুঁজুন..."
+              placeholder={t('search_cases')}
               value={caseSearchQuery}
               onChange={(e) => setCaseSearchQuery(e.target.value)}
               className="w-full pl-12 pr-6 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition-all"
@@ -140,12 +149,12 @@ export const CasesView = ({
               onChange={(e) => setCaseFilter(e.target.value as any)}
               className="bg-transparent border-none outline-none text-sm font-bold text-slate-600"
             >
-              <option value="all">সব টাইপ</option>
-              <option value="Civil">দেওয়ানী</option>
-              <option value="Criminal">ফৌজদারী</option>
-              <option value="High Court">হাইকোর্ট</option>
-              <option value="Supreme Court">সুপ্রিম কোর্ট</option>
-              <option value="Other">অন্যান্য</option>
+              <option value="all">{t('all_cases_list')}</option>
+              <option value="Civil">Civil</option>
+              <option value="Criminal">Criminal</option>
+              <option value="High Court">High Court</option>
+              <option value="Supreme Court">Supreme Court</option>
+              <option value="Other">Other</option>
             </select>
           </div>
           <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
@@ -155,14 +164,27 @@ export const CasesView = ({
               onChange={(e) => setCaseStatusFilter(e.target.value as any)}
               className="bg-transparent border-none outline-none text-sm font-bold text-slate-600"
             >
-              <option value="all">সব স্ট্যাটাস</option>
-              <option value="running">চলমান</option>
-              <option value="disposed">নিষ্পত্তি</option>
-              <option value="stayed">স্থগিত</option>
+              <option value="all">{t('all_status')}</option>
+              <option value="running">{t('running')}</option>
+              <option value="disposed">{t('disposed')}</option>
+              <option value="stayed">{t('stayed')}</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
+            <MapPin size={16} className="text-slate-400" />
+            <select 
+              value={selectedDistrict}
+              onChange={(e) => setSelectedDistrict(e.target.value)}
+              className="bg-transparent border-none outline-none text-sm font-bold text-slate-600"
+            >
+              <option value="all">{language === 'bn' ? 'সব জেলা' : 'All Districts'}</option>
+              {['Dhaka', 'Chittagong', 'Sylhet', 'Rajshahi', 'Khulna', 'Barisal', 'Rangpur', 'Mymensingh'].map(d => (
+                <option key={d} value={d}>{d}</option>
+              ))}
             </select>
           </div>
           <button className="ml-auto px-4 py-2 text-indigo-600 text-sm font-bold hover:bg-indigo-50 rounded-xl transition-all flex items-center gap-2">
-            <Download size={16} /> রিপোর্ট ডাউনলোড
+            <Download size={16} /> {t('download_report')}
           </button>
         </div>
       </div>
@@ -193,16 +215,19 @@ export const CasesView = ({
                       <button 
                         onClick={() => onViewCard(c)}
                         className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
-                        title="কেস কার্ড প্রো"
+                        title={t('case_card_pro')}
                       >
                         <CreditCard size={18} />
                       </button>
-                      <button 
-                        onClick={() => onEditCase(c)}
-                        className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
-                      >
-                        <Edit2 size={18} />
-                      </button>
+                      {!isClient && (
+                        <button 
+                          onClick={() => onEditCase(c)}
+                          className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
+                          title={t('edit_case')}
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </div>
                   {/* Decorative Background */}
@@ -217,7 +242,7 @@ export const CasesView = ({
                         <MapPin size={20} />
                       </div>
                       <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">আদালত</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('court_label')}</p>
                         <p className="text-sm font-bold text-slate-700 leading-tight">{c.courtName}</p>
                       </div>
                     </div>
@@ -226,7 +251,7 @@ export const CasesView = ({
                         <Calendar size={20} />
                       </div>
                       <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">পরবর্তী তারিখ</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('next_date')}</p>
                         <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>
                       </div>
                     </div>
@@ -235,7 +260,7 @@ export const CasesView = ({
                         <User size={20} />
                       </div>
                       <div className="flex-1">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">পক্ষসমূহ</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('parties_info')}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{c.petitioner}</span>
                           <span className="text-[10px] font-black text-slate-300 italic">vs</span>
@@ -251,14 +276,16 @@ export const CasesView = ({
                       onClick={() => onViewHistory(c)}
                       className="flex-1 py-3 bg-slate-50 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
                     >
-                      <History size={14} /> ইতিহাস
+                      <History size={14} /> {t('case_history_title')}
                     </button>
-                    <button 
-                      onClick={() => onDeleteCase(c.id)}
-                      className="p-3 text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    {!isClient && (
+                      <button 
+                        onClick={() => onDeleteCase(c.id)}
+                        className="p-3 text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -270,9 +297,9 @@ export const CasesView = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">মামলা নম্বর</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">আদালত</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">পরবর্তী তারিখ</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('case_number')}</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('court_label')}</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('next_date')}</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">স্ট্যাটাস</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">অ্যাকশন</th>
               </tr>
@@ -302,20 +329,26 @@ export const CasesView = ({
                       c.status === 'running' ? 'bg-emerald-50 text-emerald-600' : 
                       c.status === 'disposed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-600'
                     }`}>
-                      {c.status}
+                      {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+                      {/* @ts-ignore */}
+                      {t(c.status) || c.status}
                     </span>
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => onViewCard(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                      <button onClick={() => onViewCard(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('case_card_pro')}>
                         <CreditCard size={18} />
                       </button>
-                      <button onClick={() => onEditCase(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
-                        <Edit2 size={18} />
-                      </button>
-                      <button onClick={() => onDeleteCase(c.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all">
-                        <Trash2 size={18} />
-                      </button>
+                      {!isClient && (
+                        <>
+                          <button onClick={() => onEditCase(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
+                            <Edit2 size={18} />
+                          </button>
+                          <button onClick={() => onDeleteCase(c.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" title={t('delete_case')}>
+                            <Trash2 size={18} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -331,8 +364,8 @@ export const CasesView = ({
             <Search size={40} />
           </div>
           <div>
-            <h4 className="text-xl font-bold text-slate-900">কোন মামলা পাওয়া যায়নি</h4>
-            <p className="text-slate-500 font-medium">আপনার সার্চ বা ফিল্টার পরিবর্তন করে দেখুন।</p>
+            <h4 className="text-xl font-bold text-slate-900">{t('no_cases_found')}</h4>
+            <p className="text-slate-500 font-medium">{t('change_search_filter')}</p>
           </div>
           <button 
             onClick={() => {
@@ -342,7 +375,7 @@ export const CasesView = ({
             }}
             className="text-indigo-600 font-bold hover:underline"
           >
-            সব ফিল্টার রিসেট করুন
+            {t('reset_filters')}
           </button>
         </div>
       )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, User, Bot, Shield, Phone, MessageSquare, X, ChevronRight, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { auth } from '../../firebase';
 import { subscribeToMessages, sendMessage } from '../../services/user/featureService';
 import { SupportMessage } from '../../types';
 
@@ -11,7 +12,7 @@ export default function SupportChat({ userId, userName }: { userId: string, user
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !auth.currentUser) return;
     const unsub = subscribeToMessages(userId, (data) => {
       setMessages(data);
     });

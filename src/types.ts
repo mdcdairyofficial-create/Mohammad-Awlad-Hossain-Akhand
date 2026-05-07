@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'country_manager' | 'district_admin' | 'lawyer' | 'clerk' | 'admin' | 'client';
+export type UserRole = 'super_admin' | 'country_manager' | 'district_admin' | 'bar_admin' | 'lawyer' | 'clerk' | 'admin' | 'client' | 'bar_association' | 'advertiser';
 
 export interface CaseHistoryEntry {
   date: string;
@@ -7,7 +7,7 @@ export interface CaseHistoryEntry {
 }
 
 export interface Case {
-  id: number;
+  id: string | number;
   caseNumber: string;
   rawCaseNumber?: string;
   court?: string;
@@ -39,7 +39,7 @@ export interface Case {
   lastEditedBySide?: string;
   reportedErrorBySide?: string;
   visibility?: 'public' | 'private';
-  user_id?: number;
+  user_id?: string | number;
   selectedParty?: 'petitioner' | 'respondent' | 'accused';
   caseYear?: string;
   policeStation?: string;
@@ -52,7 +52,8 @@ export interface Case {
   documents?: { name: string; type: string; url: string }[];
   clerkCanCall?: boolean;
   lawyerCanCall?: boolean;
-  created_at?: string;
+  created_at?: any;
+  priority?: 'low' | 'medium' | 'high';
 }
 
 export interface Notification {
@@ -80,6 +81,7 @@ export interface Task {
   caseNumber?: string;
   category?: 'attendance' | 'filing' | 'copy' | 'fee' | 'other';
   courtName?: string;
+  user_id?: string | number;
   created_at: string;
 }
 

@@ -25,6 +25,7 @@ interface TasksViewProps {
   language: 'bn' | 'en' | 'hi' | 'ur';
   t: (key: string) => string;
   isPremium?: boolean;
+  isPremiumForAds?: boolean;
 }
 
 export const TasksView = ({
@@ -35,14 +36,15 @@ export const TasksView = ({
   onToggleTask,
   language,
   t,
-  isPremium = false
+  isPremium = false,
+  isPremiumForAds = false
 }: TasksViewProps) => {
   const pendingTasks = tasks.filter(t => t.status !== 'completed');
   const completedTasks = tasks.filter(t => t.status === 'completed');
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <AdBanner isPremium={isPremium} />
+      <AdBanner isPremium={isPremiumForAds} />
       
       {/* Header Section */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -50,13 +52,13 @@ export const TasksView = ({
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">
             {t('tasks')} <span className="text-indigo-600 ml-2">({pendingTasks.length})</span>
           </h2>
-          <p className="text-slate-500 font-medium mt-1">আপনার দৈনন্দিন কাজের তালিকা ও অগ্রগতি এখানে ম্যানেজ করুন।</p>
+          <p className="text-slate-500 font-medium mt-1">{t('tasks_subtitle')}</p>
         </div>
         <button 
           onClick={onAddTask}
           className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 flex items-center gap-2"
         >
-          <Plus size={20} /> নতুন টাস্ক
+          <Plus size={20} /> {t('new_task')}
         </button>
       </div>
 
@@ -65,7 +67,7 @@ export const TasksView = ({
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between px-4">
             <h3 className="text-xl font-bold text-slate-900 flex items-center gap-3">
-              <Clock className="text-amber-500" size={24} /> চলমান কাজসমূহ
+              <Clock className="text-amber-500" size={24} /> {t('pending_tasks')}
             </h3>
             <span className="px-3 py-1 bg-amber-50 text-amber-600 text-xs font-black rounded-full border border-amber-100 uppercase tracking-wider">
               {pendingTasks.length} টি
@@ -98,7 +100,7 @@ export const TasksView = ({
                             <h4 className="text-lg font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{task.title}</h4>
                             {task.caseNumber && (
                               <p className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-1">
-                                <Briefcase size={12} /> মামলা: {task.caseNumber}
+                                <Briefcase size={12} /> {t('task_case_number')}: {task.caseNumber}
                               </p>
                             )}
                           </div>
@@ -119,13 +121,13 @@ export const TasksView = ({
                                   onClick={() => onEditTask(task)}
                                   className="w-full flex items-center gap-3 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors"
                                 >
-                                  <Edit2 size={16} /> এডিট
+                                  <Edit2 size={16} /> {t('edit')}
                                 </button>
                                 <button 
                                   onClick={() => onDeleteTask(task.id)}
                                   className="w-full flex items-center gap-3 px-4 py-2 text-sm font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
                                 >
-                                  <Trash2 size={16} /> ডিলিট
+                                  <Trash2 size={16} /> {t('delete')}
                                 </button>
                               </div>
                             </div>
@@ -159,7 +161,7 @@ export const TasksView = ({
               ) : (
                 <div className="py-20 text-center space-y-4 opacity-40">
                   <CheckCircle2 size={64} className="text-slate-300 mx-auto" />
-                  <p className="text-lg font-bold text-slate-500">সব কাজ সম্পন্ন হয়েছে!</p>
+                  <p className="text-lg font-bold text-slate-500">{t('all_tasks_done')}</p>
                 </div>
               )}
             </AnimatePresence>
@@ -171,10 +173,10 @@ export const TasksView = ({
           {/* Stats Card */}
           <div className="bg-indigo-600 p-8 rounded-[2.5rem] text-white shadow-2xl shadow-indigo-100 relative overflow-hidden">
             <div className="relative z-10 space-y-6">
-              <h3 className="text-xl font-bold">কাজের অগ্রগতি</h3>
+              <h3 className="text-xl font-bold">{t('task_progress')}</h3>
               <div className="flex items-end gap-4">
                 <h4 className="text-5xl font-black">{Math.round((completedTasks.length / (tasks.length || 1)) * 100)}%</h4>
-                <p className="text-indigo-100 font-bold text-sm mb-2 uppercase tracking-widest">সম্পন্ন</p>
+                <p className="text-indigo-100 font-bold text-sm mb-2 uppercase tracking-widest">{t('task_done')}</p>
               </div>
               <div className="w-full h-3 bg-white/20 rounded-full overflow-hidden">
                 <motion.div 
@@ -185,11 +187,11 @@ export const TasksView = ({
               </div>
               <div className="grid grid-cols-2 gap-4 pt-4">
                 <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md border border-white/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">মোট কাজ</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">{t('total_work')}</p>
                   <p className="text-xl font-bold">{tasks.length}</p>
                 </div>
                 <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-md border border-white/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">চলমান</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">{t('ongoing')}</p>
                   <p className="text-xl font-bold">{pendingTasks.length}</p>
                 </div>
               </div>
@@ -200,7 +202,7 @@ export const TasksView = ({
           {/* Completed Tasks List */}
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
             <h3 className="text-xl font-bold text-slate-900 flex items-center gap-3">
-              <CheckCircle2 className="text-emerald-500" size={24} /> সম্পন্ন কাজসমূহ
+              <CheckCircle2 className="text-emerald-500" size={24} /> {t('completed_tasks')}
             </h3>
             <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
               {completedTasks.map((task) => (
@@ -224,7 +226,7 @@ export const TasksView = ({
                 </div>
               ))}
               {completedTasks.length === 0 && (
-                <p className="text-center text-sm font-bold text-slate-400 py-8 italic">কোন কাজ সম্পন্ন হয়নি</p>
+                <p className="text-center text-sm font-bold text-slate-400 py-8 italic">{t('no_tasks_done')}</p>
               )}
             </div>
           </div>

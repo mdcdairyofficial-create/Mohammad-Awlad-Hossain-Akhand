@@ -1,19 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Shield, CheckCircle, XCircle, FileText, CreditCard, LayoutDashboard, MessageSquare, Bell, Send, Clock, User as UserIcon, Search, TrendingUp, PieChart as PieChartIcon, BarChart as BarChartIcon } from 'lucide-react';
+import { Users, Shield, CheckCircle, XCircle, FileText, CreditCard, LayoutDashboard, MessageSquare, Bell, Send, Clock, User as UserIcon, Search, TrendingUp, PieChart as PieChartIcon, BarChart as BarChartIcon, MapPin } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { sendGlobalNotification, subscribeToAllSupportChats, subscribeToMessages, sendMessage } from '../services/user/featureService';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 import { auth } from '../firebase';
+
+import { BANGLADESH_DISTRICTS, getPoliceStations } from '../constants';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 import { onAuthStateChanged } from 'firebase/auth';
+import { fetchWithAuth } from '../lib/api';
 
 interface User {
   id: number;
   name: string;
   mobile: string;
   user_type: string;
+  district?: string;
+  thana?: string;
   created_at: string;
   subscription_package?: string;
   subscription_end_date?: string;
   wallet_balance?: number;
+  is_approved?: number;
 }
 
 interface Case {
@@ -71,15 +83,31 @@ interface SupportChat {
   unread_count?: number;
 }
 
+interface AffiliateReferral {
+  id: number;
+  referrer_id: string;
+  referrer_name: string;
+  new_user_id: number;
+  new_user_name: string;
+  new_user_mobile: string;
+  user_type: string;
+  district: string;
+  thana: string;
+  status: string;
+  created_at: string;
+}
+
 export default function AdminPanel({ userType, userId }: { userType: string, userId: number }) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'cases' | 'recharge' | 'subscriptions' | 'sub_requests' | 'affiliate_proofs' | 'createUser' | 'recycleBin' | 'support_messages' | 'global_notifications'>('dashboard');
-  const [userFilter, setUserFilter] = useState<'all' | 'lawyer' | 'clerk' | 'client' | 'admin' | 'super_admin'>('all');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'cases' | 'recharge' | 'subscriptions' | 'sub_requests' | 'affiliate_proofs' | 'affiliate_referrals' | 'createUser' | 'recycleBin' | 'support_messages' | 'global_notifications'>('dashboard');
+  const [userFilter, setUserFilter] = useState<'all' | 'lawyer' | 'clerk' | 'client' | 'admin' | 'super_admin' | 'bar_association' | 'advertiser'>('all');
+  const [thanaFilter, setThanaFilter] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [cases, setCases] = useState<Case[]>([]);
   const [rechargeRequests, setRechargeRequests] = useState<RechargeRequest[]>([]);
   const [subscriptionRequests, setSubscriptionRequests] = useState<SubscriptionRequest[]>([]);
   const [affiliateProofs, setAffiliateProofs] = useState<AffiliateProof[]>([]);
+  const [affiliateReferrals, setAffiliateReferrals] = useState<AffiliateReferral[]>([]);
   const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
   const [selectedChat, setSelectedChat] = useState<SupportChat | null>(null);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -102,9 +130,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
   const [processingId, setProcessingId] = useState<number | null>(null);
 
   const adminFetch = async (url: string, options: RequestInit = {}) => {
-    const headers = new Headers(options.headers || {});
-    headers.set('x-admin-id', userId.toString());
-    return fetch(url, { ...options, headers });
+    return fetchWithAuth(url, options);
   };
 
   const appointDistrictAdmin = async (targetUserId: number, district: string) => {
@@ -182,22 +208,20 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
     setError(null);
     try {
       if (activeTab === 'dashboard') {
-        const response = await adminFetch('/api/admin/stats');
+        const response = await adminFetch(`/api/admin/stats?role=${userType}&userId=${userId}`);
         if (!response.ok) throw new Error('Failed to fetch stats');
         setStats(await response.json());
       } else if (activeTab === 'users' || activeTab === 'subscriptions') {
-        const response = await adminFetch('/api/admin/users');
+        // Hierarchical Fetch: Get only relevant users based on the admin's role
+        const currentUser = JSON.parse(localStorage.getItem('appUser') || '{}');
+        const response = await adminFetch(`/api/admin/managed-users?role=${userType}&userId=${userId}&district=${currentUser.district}&country=${currentUser.country}`);
         if (!response.ok) throw new Error('Failed to fetch users');
-        setUsers(await response.json());
+        const data = await response.json();
+        setUsers(data.users || []);
       } else if (activeTab === 'cases') {
         const response = await adminFetch('/api/admin/cases');
         if (!response.ok) throw new Error('Failed to fetch cases');
-        const text = await response.text();
-        try {
-          setCases(JSON.parse(text));
-        } catch (e) {
-          console.error('Failed to parse JSON for admin cases. Response:', text.substring(0, 100));
-        }
+        setCases(await response.json());
       } else if (activeTab === 'recharge') {
         const response = await adminFetch('/api/admin/recharge-requests');
         if (!response.ok) throw new Error('Failed to fetch recharge requests');
@@ -211,11 +235,33 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
         if (!response.ok) throw new Error('Failed to fetch affiliate proofs');
         const data = await response.json();
         setAffiliateProofs(data.proofs || []);
+      } else if (activeTab === 'affiliate_referrals') {
+        const response = await adminFetch('/api/admin/affiliate-referrals');
+        if (!response.ok) throw new Error('Failed to fetch referrals');
+        const data = await response.json();
+        setAffiliateReferrals(data.referrals || []);
       }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateStatus = async (targetUserId: number, isApproved: boolean, subDays?: number) => {
+    setProcessingId(targetUserId);
+    try {
+      const response = await adminFetch('/api/admin/update-user-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: targetUserId, isApproved, subscriptionDays: subDays })
+      });
+      if (!response.ok) throw new Error('Update failed');
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -361,10 +407,19 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 
   const filteredUsers = users.filter(u => {
     const matchesFilter = userFilter === 'all' || u.user_type === userFilter;
+    const matchesThana = !thanaFilter || (u.thana && u.thana.toLowerCase().includes(thanaFilter.toLowerCase()));
     const matchesSearch = u.name.toLowerCase().includes(userSearch.toLowerCase()) || 
                          u.mobile.includes(userSearch);
-    return matchesFilter && matchesSearch;
+    return matchesFilter && matchesThana && matchesSearch;
   });
+
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserMobile, setNewUserMobile] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserDistrict, setNewUserDistrict] = useState('');
+  const [newUserThana, setNewUserThana] = useState('');
+  const [newUserType, setNewUserType] = useState('client');
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -417,6 +472,12 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
           <CheckCircle size={18} /> অ্যাফিলিয়েট প্রমাণ
         </button>
         <button 
+          onClick={() => setActiveTab('affiliate_referrals')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'affiliate_referrals' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}
+        >
+          <TrendingUp size={18} /> অ্যাফিলিয়েট সাইন-আপ
+        </button>
+        <button 
           onClick={() => setActiveTab('createUser')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'createUser' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}
         >
@@ -456,18 +517,30 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 
       {activeTab === 'users' && (
         <div className="space-y-4 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
-              value={userSearch}
-              onChange={(e) => setUserSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              />
+            </div>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="থানা দিয়ে ফিল্টার করুন..."
+                value={thanaFilter}
+                onChange={(e) => setThanaFilter(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+              />
+            </div>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2">
-            {['all', 'lawyer', 'clerk', 'client', 'admin'].map((filter) => (
+            {['all', 'lawyer', 'clerk', 'client', 'bar_association', 'advertiser', 'admin'].map((filter) => (
               <button
                 key={filter}
                 onClick={() => setUserFilter(filter as any)}
@@ -478,7 +551,9 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                 {filter === 'all' ? 'সব' : 
                  filter === 'lawyer' ? 'আইনজীবী' : 
                  filter === 'clerk' ? 'মুহুরী' : 
-                 filter === 'client' ? 'মক্কেল' : 'অ্যাডমিন'}
+                 filter === 'client' ? 'পক্ষ' :
+                 filter === 'bar_association' ? 'বার অ্যাসোসিয়েশন' :
+                 filter === 'advertiser' ? 'বিজ্ঞাপনদাতা' : 'অ্যাডমিন'}
               </button>
             ))}
           </div>
@@ -612,6 +687,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                   <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-500">
                     <th className="p-4 font-medium">নাম</th>
                     <th className="p-4 font-medium">মোবাইল</th>
+                    <th className="p-4 font-medium">থানা</th>
                     <th className="p-4 font-medium">ধরন</th>
                     <th className="p-4 font-medium">ওয়ালেট</th>
                     <th className="p-4 font-medium">যোগদানের তারিখ</th>
@@ -623,18 +699,23 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                     <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4 text-slate-800 font-medium">{user.name}</td>
                       <td className="p-4 text-slate-600">{user.mobile}</td>
+                      <td className="p-4 text-slate-500 text-sm">{user.thana || 'N/A'}</td>
                       <td className="p-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           user.user_type === 'admin' ? 'bg-indigo-100 text-indigo-800' :
                           user.user_type === 'country_manager' ? 'bg-emerald-100 text-emerald-800' :
                           user.user_type === 'lawyer' ? 'bg-blue-100 text-blue-800' :
                           user.user_type === 'clerk' ? 'bg-emerald-100 text-emerald-800' :
+                          user.user_type === 'bar_association' ? 'bg-purple-100 text-purple-800' :
+                          user.user_type === 'advertiser' ? 'bg-amber-100 text-amber-800' :
                           'bg-slate-100 text-slate-800'
                         }`}>
                           {user.user_type === 'admin' ? 'অ্যাডমিন' : 
                            user.user_type === 'country_manager' ? 'কান্ট্রি ম্যানেজার' :
                            user.user_type === 'lawyer' ? 'আইনজীবী' : 
-                           user.user_type === 'clerk' ? 'ক্লার্ক' : 'মক্কেল'}
+                           user.user_type === 'clerk' ? 'মুহুরী' : 
+                           user.user_type === 'bar_association' ? 'বার অ্যাসোসিয়েশন' :
+                           user.user_type === 'advertiser' ? 'বিজ্ঞাপনদাতা' : 'পক্ষ'}
                         </span>
                       </td>
                       <td className="p-4 text-slate-600 font-bold">৳{user.wallet_balance || 0}</td>
@@ -656,6 +737,17 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                                 অ্যাডমিন নিযুক্ত করুন
                               </button>
                             )}
+                            {userType === 'admin' && (
+                              <button
+                                onClick={() => handleUpdateStatus(user.id, user.is_approved === 0)}
+                                className={cn(
+                                  "text-[10px] px-2 py-1 rounded transition-colors",
+                                  user.is_approved === 1 ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-600 text-white hover:bg-green-700"
+                                )}
+                              >
+                                {user.is_approved === 1 ? "বাতিল" : "অনুমোদন"}
+                              </button>
+                            )}
                             <select 
                               onChange={(e) => updateRole(user.id, e.target.value)}
                               value={user.user_type}
@@ -666,7 +758,9 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               {(userType === 'super_admin' || userType === 'country_manager') && <option value="admin">অ্যাডমিন</option>}
                               <option value="lawyer">আইনজীবী (Lawyer)</option>
                               <option value="clerk">মুহুরী (Clerk)</option>
-                              <option value="client">মক্কেল (Client)</option>
+                              <option value="client">পক্ষ (Client)</option>
+                              <option value="advertiser">বিজ্ঞাপনদাতা (Advertiser)</option>
+                              <option value="bar_association">বার অ্যাসোসিয়েশন (Bar Assoc)</option>
                               {userType === 'super_admin' && <option value="super_admin">সুপার অ্যাডমিন</option>}
                             </select>
                           </div>
@@ -887,52 +981,160 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
             </div>
           )}
 
+          {activeTab === 'affiliate_referrals' && (
+            <div className="bg-white rounded-[30px] border border-slate-100 overflow-hidden shadow-sm">
+              <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <TrendingUp size={20} className="text-indigo-600" /> অ্যাফিলিয়েট লিড ও সাইন-আপসমূহ
+                </h3>
+                <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
+                  মোট: {affiliateReferrals.length}
+                </span>
+              </div>
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">রেফারার (Referrer)</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">নতুন মেম্বার</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">ধরন</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">এলাকা (জেলা/থানা)</th>
+                    <th className="p-4 text-xs font-bold text-slate-500 uppercase">তারিখ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {affiliateReferrals.map((ref) => (
+                    <tr key={ref.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                      <td className="p-4">
+                        <div className="font-bold text-slate-900">{ref.referrer_name || 'N/A'}</div>
+                        <div className="text-[10px] text-indigo-600 font-bold uppercase">{ref.referrer_id}</div>
+                      </td>
+                      <td className="p-4">
+                        <div className="font-bold text-slate-900">{ref.new_user_name}</div>
+                        <div className="text-xs text-slate-500 font-medium">{ref.new_user_mobile}</div>
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-2 py-1 text-[10px] font-bold rounded-full uppercase ${
+                          ref.user_type === 'lawyer' ? 'bg-blue-50 text-blue-600' :
+                          ref.user_type === 'clerk' ? 'bg-indigo-50 text-indigo-600' :
+                          'bg-emerald-50 text-emerald-600'
+                        }`}>
+                          {ref.user_type === 'lawyer' ? 'আইনজীবী' : ref.user_type === 'clerk' ? 'মুহুরী' : 'পক্ষ'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="text-xs text-slate-700 font-medium">{ref.district}</div>
+                        <div className="text-[10px] text-slate-400">{ref.thana || 'সকল থানা'}</div>
+                      </td>
+                      <td className="p-4 text-[10px] font-bold text-slate-400">
+                        {new Date(ref.created_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </td>
+                    </tr>
+                  ))}
+                  {affiliateReferrals.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-slate-500 font-medium">এখনও কোনো অ্যাফিলিয়েট সাইন-আপ নেই</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {activeTab === 'createUser' && (
-            <div className="p-6">
-              <h2 className="text-xl font-bold mb-4">নতুন ইউজার তৈরি করুন</h2>
+            <div className="p-6 max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm">
+              <h2 className="text-2xl font-bold mb-6 text-slate-800">নতুন ইউজার তৈরি করুন</h2>
               <form onSubmit={async (e) => {
                 e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const name = formData.get('name') as string;
-                const email = formData.get('email') as string;
-                const mobile = formData.get('mobile') as string;
-                const password = formData.get('password') as string;
-                const facebook_id = formData.get('facebook_id') as string;
-                const youtube_id = formData.get('youtube_id') as string;
-                const instagram_id = formData.get('instagram_id') as string;
-                const user_type = formData.get('user_type') as string;
-
                 setProcessingId(-2);
                 try {
                   const response = await adminFetch('/api/admin/create-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, mobile, password, facebook_id, youtube_id, instagram_id, user_type })
+                    body: JSON.stringify({ 
+                      name: newUserName, 
+                      email: newUserEmail, 
+                      mobile: newUserMobile, 
+                      password: newUserPassword, 
+                      user_type: newUserType,
+                      district: newUserDistrict,
+                      thana: newUserThana 
+                    })
                   });
                   if (!response.ok) throw new Error('Failed to create user');
                   alert('ইউজার সফলভাবে তৈরি হয়েছে');
-                  e.currentTarget.reset();
+                  setNewUserName('');
+                  setNewUserEmail('');
+                  setNewUserMobile('');
+                  setNewUserPassword('');
+                  setNewUserDistrict('');
+                  setNewUserThana('');
                 } catch (err: any) {
                   setError(err.message);
                 } finally {
                   setProcessingId(null);
                 }
               }} className="space-y-4">
-                <input name="name" placeholder="নাম" required className="w-full p-2 border rounded" />
-                <input name="email" type="email" placeholder="ইমেইল" required className="w-full p-2 border rounded" />
-                <input name="mobile" placeholder="মোবাইল" required className="w-full p-2 border rounded" />
-                <input name="password" type="password" placeholder="পাসওয়ার্ড" required className="w-full p-2 border rounded" />
-                <input name="facebook_id" placeholder="ফেসবুক আইডি" className="w-full p-2 border rounded" />
-                <input name="youtube_id" placeholder="ইউটিউব আইডি" className="w-full p-2 border rounded" />
-                <input name="instagram_id" placeholder="ইন্সট্রাগ্রাম আইডি" className="w-full p-2 border rounded" />
-                <select name="user_type" className="w-full p-2 border rounded">
-                  {userType === 'super_admin' && <option value="country_manager">কান্ট্রি ম্যানেজার</option>}
-                  {(userType === 'super_admin' || userType === 'country_manager') && <option value="admin">অ্যাডমিন</option>}
-                  <option value="lawyer">আইনজীবী (Lawyer)</option>
-                  <option value="clerk">মুহুরী (Clerk)</option>
-                  <option value="client">মক্কেল (Client)</option>
-                </select>
-                <button type="submit" disabled={processingId === -2} className="bg-indigo-600 text-white px-4 py-2 rounded">তৈরি করুন</button>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">নাম</label>
+                  <input value={newUserName} onChange={e => setNewUserName(e.target.value)} placeholder="নাম" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">মোবাইল</label>
+                  <input value={newUserMobile} onChange={e => setNewUserMobile(e.target.value)} placeholder="মোবাইল" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">ইমেইল</label>
+                  <input value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} type="email" placeholder="ইমেইল" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">পাসওয়ার্ড</label>
+                  <input value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} type="password" placeholder="পাসওয়ার্ড" required className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">জেলা</label>
+                    <select
+                      value={newUserDistrict}
+                      onChange={(e) => {
+                        setNewUserDistrict(e.target.value);
+                        setNewUserThana('');
+                      }}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">জেলা নির্বাচন করুন</option>
+                      {BANGLADESH_DISTRICTS.map(dist => (
+                        <option key={dist} value={dist}>{dist}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">থানা</label>
+                    <select
+                      value={newUserThana}
+                      onChange={(e) => setNewUserThana(e.target.value)}
+                      disabled={!newUserDistrict}
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <option value="">থানা নির্বাচন করুন</option>
+                      {newUserDistrict && getPoliceStations(newUserDistrict, 'Bangladesh').map(ps => (
+                        <option key={ps} value={ps}>{ps}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">ইউজার টাইপ</label>
+                  <select value={newUserType} onChange={e => setNewUserType(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                    {userType === 'super_admin' && <option value="country_manager">কান্ট্রি ম্যানেজার</option>}
+                    {(userType === 'super_admin' || userType === 'country_manager') && <option value="admin">অ্যাডমিন</option>}
+                    <option value="lawyer">আইনজীবী (Lawyer)</option>
+                    <option value="clerk">মুহুরী (Clerk)</option>
+                    <option value="client">মক্কেল (Client)</option>
+                  </select>
+                </div>
+                <button type="submit" disabled={processingId === -2} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50">
+                  {processingId === -2 ? 'তৈরি হচ্ছে...' : 'ইউজার তৈরি করুন'}
+                </button>
               </form>
             </div>
           )}

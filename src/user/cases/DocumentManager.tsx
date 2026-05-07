@@ -12,7 +12,7 @@ interface Document {
   url?: string;
 }
 
-export default function DocumentManager({ userId, onAddDocument }: { userId?: number, onAddDocument?: (caseId: string | number, document: { name: string; type: string; url: string }) => void }) {
+export default function DocumentManager({ userId, cases: userCases, onAddDocument, language = 'bn' }: { userId?: string | number, cases: any[], onAddDocument?: (caseId: string | number, document: { name: string; type: string; url: string }) => void, language?: string }) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -21,52 +21,43 @@ export default function DocumentManager({ userId, onAddDocument }: { userId?: nu
   const bucketName = 'documents';
 
   const [selectedCaseNumber, setSelectedCaseNumber] = useState('');
-  const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | number | null>(null);
   const [caseSearchInput, setCaseSearchInput] = useState('');
   const [showCaseDropdown, setShowCaseDropdown] = useState(false);
-  const [userCases, setUserCases] = useState<{caseNumber: string, id: number}[]>([]);
-
-  useEffect(() => {
-    const storedCases = localStorage.getItem('appCases');
-    if (storedCases) {
-      try {
-        const parsed = JSON.parse(storedCases);
-        setUserCases(parsed.map((c: any) => ({ caseNumber: c.caseNumber, id: c.id })));
-      } catch (e) {
-        console.error('Error parsing cases for DocumentManager', e);
-      }
-    }
-  }, []);
 
   const filteredCases = userCases.filter(c => 
     c.caseNumber.toLowerCase().includes(caseSearchInput.toLowerCase())
   );
 
   const fetchDocuments = async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setFetchError(null);
     try {
       const allFiles: Document[] = [];
+      const userPath = `users/${userId}/${bucketName}`;
       
       const listRecursive = async (path: string) => {
-        const data = await listFiles(bucketName, path);
+        const data = await listFiles('', path); // bucket not needed as its in path
         if (data) {
           for (const item of data) {
             if (item.id === null) {
               // It's a folder
-              await listRecursive(path ? `${path}/${item.name}` : item.name);
+              await listRecursive(item.path);
             } else {
               // It's a file
-              const fileName = path ? `${path}/${item.name}` : item.name;
+              const filePath = item.path;
               let url = '';
               try {
-                url = await getPublicUrl(bucketName, fileName);
+                url = await getPublicUrl('', filePath);
               } catch (e) {
-                console.error("Failed to get url for", fileName, e);
+                console.error("Failed to get url for", filePath, e);
               }
               allFiles.push({
                 ...item,
-                name: fileName,
                 url
               } as unknown as Document);
             }
@@ -74,14 +65,11 @@ export default function DocumentManager({ userId, onAddDocument }: { userId?: nu
         }
       };
 
-      await listRecursive('');
+      await listRecursive(userPath);
       setDocuments(allFiles.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
     } catch (error: any) {
       console.error('Error fetching documents:', error);
       let errorMessage = error.message || 'ডকুমেন্টস লোড করা যাচ্ছে না।';
-      if (errorMessage.includes('Failed to fetch')) {
-        errorMessage = 'সার্ভারের সাথে যোগাযোগ করা যাচ্ছে না। দয়া করে আপনার ইন্টারনেট কানেকশন এবং Supabase কনফিগারেশন চেক করুন।';
-      }
       setFetchError(errorMessage);
     } finally {
       setLoading(false);
@@ -90,7 +78,7 @@ export default function DocumentManager({ userId, onAddDocument }: { userId?: nu
 
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [userId]);
 
   const handleDelete = async (name: string) => {
     if (!window.confirm('আপনি কি নিশ্চিত যে এই ডকুমেন্টটি ডিলিট করতে চান?')) return;
@@ -209,6 +197,7 @@ export default function DocumentManager({ userId, onAddDocument }: { userId?: nu
           </div>
           <FileUploader 
             caseNumber={selectedCaseNumber} 
+            language={language as any}
             onUploadSuccess={(url, fileName) => {
               fetchDocuments();
               if (onAddDocument && selectedCaseId) {

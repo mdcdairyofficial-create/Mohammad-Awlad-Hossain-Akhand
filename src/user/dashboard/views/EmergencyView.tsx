@@ -43,15 +43,15 @@ export const EmergencyView = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-            {t('emergency_contacts')} <span className="text-rose-600 ml-2">জরুরি সহায়তা</span>
+            {t('emergency_contacts')} <span className="text-rose-600 ml-2">{t('emergency_help')}</span>
           </h2>
-          <p className="text-slate-500 font-medium mt-1">যেকোনো বিপদে বা আইনি সহায়তায় তাৎক্ষণিক যোগাযোগ করুন।</p>
+          <p className="text-slate-500 font-medium mt-1">{t('emergency_subtitle')}</p>
         </div>
         <button 
           onClick={onAddEmergencyContact}
           className="px-8 py-4 bg-rose-600 text-white rounded-2xl font-bold hover:bg-rose-700 transition-all shadow-xl shadow-rose-200 flex items-center gap-2"
         >
-          <Plus size={20} /> কন্টাক্ট যুক্ত করুন
+          <Plus size={20} /> {t('add_contact')}
         </button>
       </div>
 
@@ -87,13 +87,13 @@ export const EmergencyView = ({
         <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-8">
           <div className="flex items-center justify-between">
             <h3 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-              <Phone className="text-indigo-600" size={28} /> আপনার ব্যক্তিগত কন্টাক্ট
+              <Phone className="text-indigo-600" size={28} /> {t('your_personal_contacts')}
             </h3>
             <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
               <Search size={16} className="text-slate-400" />
               <input 
                 type="text" 
-                placeholder="খুঁজুন..."
+                placeholder={t('search_placeholder')}
                 className="bg-transparent border-none outline-none text-sm font-bold text-slate-600 w-32"
               />
             </div>
@@ -123,12 +123,12 @@ export const EmergencyView = ({
             ) : (
               <div className="col-span-2 py-20 text-center space-y-4 opacity-40">
                 <Phone size={64} className="text-slate-300 mx-auto" />
-                <p className="text-lg font-bold text-slate-500">কোন ব্যক্তিগত কন্টাক্ট যুক্ত করা হয়নি</p>
+                <p className="text-lg font-bold text-slate-500">{t('no_personal_contacts')}</p>
                 <button 
                   onClick={onAddEmergencyContact}
                   className="text-indigo-600 font-bold hover:underline"
                 >
-                  এখনই যুক্ত করুন
+                  {t('add_now')}
                 </button>
               </div>
             )}
@@ -143,7 +143,7 @@ export const EmergencyView = ({
               <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md">
                 <Shield size={24} className="text-indigo-400" />
               </div>
-              <h3 className="text-xl font-bold">আইনি সুরক্ষা টিপস</h3>
+              <h3 className="text-xl font-bold">{t('legal_security_tips')}</h3>
               <ul className="space-y-4">
                 {[
                   "যেকোনো আইনি দলিলে স্বাক্ষর করার আগে ভালো করে পড়ুন।",
@@ -157,7 +157,7 @@ export const EmergencyView = ({
                 ))}
               </ul>
               <button className="w-full py-3 bg-white/10 text-white border border-white/10 rounded-2xl font-bold hover:bg-white/20 transition-all text-sm">
-                আরও টিপস দেখুন
+                {t('see_more_tips')}
               </button>
             </div>
             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/20 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
@@ -166,7 +166,7 @@ export const EmergencyView = ({
           {/* Nearby Services Card */}
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
             <h3 className="text-xl font-bold text-slate-900 flex items-center gap-3">
-              <MapPin className="text-rose-600" size={24} /> নিকটস্থ সেবা
+              <MapPin className="text-rose-600" size={24} /> {t('nearby_services')}
             </h3>
             <div className="space-y-4">
               {[

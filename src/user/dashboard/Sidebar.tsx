@@ -9,6 +9,7 @@ import {
   ChevronRight,
   LucideIcon
 } from 'lucide-react';
+import { Logo } from '../../components/Logo';
 
 interface MenuItem {
   id: string;
@@ -69,16 +70,8 @@ export const Sidebar = ({
       `}>
         {/* Sidebar Header */}
         <div className="p-8 flex items-center justify-between">
-          <div className="flex items-center gap-3 group cursor-pointer">
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform">
-              <span className="text-white font-black text-2xl">L</span>
-            </div>
-            <div>
-              <h1 className={`text-xl font-black tracking-tight ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                LEGAL<span className="text-indigo-600">PRO</span>
-              </h1>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Smart Legal Assistant</p>
-            </div>
+          <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setActiveTab('dashboard')}>
+            <Logo showSubtitle className={theme === 'dark' ? 'opacity-100' : ''} />
           </div>
           <button onClick={onClose} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
             <X size={20} className="text-slate-400" />
@@ -89,7 +82,7 @@ export const Sidebar = ({
         <nav className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar space-y-8">
           {menuGroups.map((group, idx) => (
             <div key={idx} className="space-y-3">
-              <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">
+              <h3 className="px-4 text-[9px] font-black text-black dark:text-slate-400 uppercase tracking-[0.25em] mb-4">
                 {group.title}
               </h3>
               <div className="space-y-1">
@@ -101,16 +94,16 @@ export const Sidebar = ({
                       if (window.innerWidth < 1024) onClose();
                     }}
                     className={`
-                      w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all duration-300 group
+                      w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group
                       ${activeTab === item.id 
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 translate-x-1' 
-                        : `text-slate-500 hover:translate-x-1 ${theme === 'dark' ? 'hover:bg-slate-800 hover:text-slate-200' : 'hover:bg-slate-50 hover:text-indigo-600'}`
+                        ? 'bg-indigo-800 text-white shadow-xl shadow-indigo-200 translate-x-1' 
+                        : `text-slate-900 dark:text-slate-300 hover:translate-x-1 ${theme === 'dark' ? 'hover:bg-slate-800 hover:text-slate-200' : 'hover:bg-slate-100 hover:text-indigo-900'}`
                       }
                     `}
                   >
                     <div className="flex items-center gap-3">
-                      <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'group-hover:scale-110 transition-transform'} />
-                      <span className="text-sm font-bold">{item.label}</span>
+                      <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-slate-700 dark:text-slate-400 group-hover:scale-110 transition-transform'} />
+                      <span className="text-xs font-black uppercase tracking-tight">{item.label}</span>
                     </div>
                     {activeTab === item.id && (
                       <motion.div layoutId="activeTab" className="w-1.5 h-1.5 bg-white rounded-full shadow-sm" />
@@ -159,12 +152,12 @@ export const Sidebar = ({
           </div>
           
           <div className="flex items-center gap-3 px-2">
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+            <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-sm">
               {userName.charAt(0)}
             </div>
             <div className="flex-1 min-w-0">
-              <p className={`text-sm font-bold truncate ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{userName}</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">{userType}</p>
+              <p className={`text-xs font-black truncate ${theme === 'dark' ? 'text-white' : 'text-indigo-950'}`}>{userName}</p>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{userType}</p>
             </div>
           </div>
         </div>

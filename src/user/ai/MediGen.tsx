@@ -27,7 +27,7 @@ export default function MediGen() {
   const t = (key: string) => {
     const translations: Record<string, Record<Language, string>> = {
       title: { en: 'MediGen', bn: 'মেডিজেন' },
-      subtitle_personal: { en: 'Personal Prescription & Remedy', bn: 'ব্যক্তিগত প্রেসক্রিপশন ও প্রতিকার' },
+      subtitle_personal: { en: 'Chat & provide details repeatedly for better advice', bn: 'বারবার চ্যাট করে তথ্য প্রদান করে সঠিক পরামর্শ নিন' },
       patient_name: { en: 'Patient Name', bn: 'রোগীর নাম' },
       age: { en: 'Age', bn: 'বয়স' },
       gender: { en: 'Gender', bn: 'লিঙ্গ' },
@@ -177,8 +177,13 @@ export default function MediGen() {
                 onChange={(e) => setDisease(e.target.value)}
                 rows={3}
                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all resize-none"
-                placeholder="Describe the symptoms or condition..."
+                placeholder={lang === 'bn' ? "আপনার সমস্যা বিস্তারিত লিখুন..." : "Describe the symptoms or condition..."}
               />
+              <p className="mt-1 text-[10px] text-slate-500 italic">
+                {lang === 'bn' 
+                  ? "* সঠিক পরামর্শের জন্য বারবার তথ্য প্রদান করে বিস্তারিত আলোচনা করুন।" 
+                  : "* Provide details repeatedly and discuss thoroughly for accurate advice."}
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

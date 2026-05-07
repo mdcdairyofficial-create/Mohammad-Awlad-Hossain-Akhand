@@ -1,6 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShoppingCart, Utensils, GraduationCap, Server, CreditCard, Wrench, ExternalLink, AlertTriangle, Upload, CheckCircle } from 'lucide-react';
+import { 
+  ShoppingCart, 
+  Utensils, 
+  GraduationCap, 
+  Server, 
+  CreditCard, 
+  Wrench, 
+  ExternalLink, 
+  AlertTriangle, 
+  Upload, 
+  CheckCircle,
+  Users,
+  Share2,
+  Copy,
+  MessageCircle,
+  ChevronRight,
+  Target,
+  Trophy,
+  CheckCircle2
+} from 'lucide-react';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
+import { fetchWithAuth } from '../../lib/api';
 
 interface AffiliateLink {
   id: string;
@@ -18,9 +38,13 @@ interface AffiliateCategory {
 interface AffiliateZoneProps {
   userType?: string;
   userId?: number;
+  referralCode?: string;
+  t?: (key: string) => string;
+  language?: string;
+  onUpdateProfile?: (data: any) => void;
 }
 
-export default function AffiliateZone({ userType, userId }: AffiliateZoneProps) {
+export default function AffiliateZone({ userType, userId, referralCode, t = (k) => k, language, onUpdateProfile }: AffiliateZoneProps) {
   const [clickCounts, setClickCounts] = useState<Record<string, number>>({});
   const [uploadingLinkId, setUploadingLinkId] = useState<string | null>(null);
   const [uploadedProofs, setUploadedProofs] = useState<Record<string, boolean>>({});
@@ -37,7 +61,13 @@ export default function AffiliateZone({ userType, userId }: AffiliateZoneProps) 
       }
     }
     setClickCounts(counts);
-  }, []);
+
+    // Load proofs from localStorage on mount (simple persistence)
+    const savedProofs = localStorage.getItem(`aff_proofs_${userId}`);
+    if (savedProofs) {
+      setUploadedProofs(JSON.parse(savedProofs));
+    }
+  }, [userId]);
 
   const handleLinkClick = (id: string, url: string) => {
     // Update click count in localStorage
@@ -67,11 +97,10 @@ export default function AffiliateZone({ userType, userId }: AffiliateZoneProps) 
       await uploadFile('documents', path, file);
       const url = await getPublicUrl('documents', path);
 
-      const response = await fetch('/api/affiliate/proof', {
+      // Submit to backend
+      const response = await fetchWithAuth('/api/affiliate/proof', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: userId,
           link_id: selectedLinkId,
@@ -79,22 +108,19 @@ export default function AffiliateZone({ userType, userId }: AffiliateZoneProps) 
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to submit proof');
-      }
+      if (!response.ok) throw new Error('Failed to submit proof');
 
-      setUploadedProofs(prev => ({ ...prev, [selectedLinkId]: true }));
-      alert('প্রমাণ সফলভাবে জমা দেওয়া হয়েছে! অ্যাডমিন যাচাই করার পর পয়েন্ট যুক্ত হবে।');
+      const nextProofs = { ...uploadedProofs, [selectedLinkId]: true };
+      setUploadedProofs(nextProofs);
+      localStorage.setItem(`aff_proofs_${userId}`, JSON.stringify(nextProofs));
+      alert('প্রমাণ সফলভাবে জমা দেওয়া হয়েছে!');
     } catch (error) {
       console.error('Error uploading proof:', error);
       alert('প্রমাণ জমা দিতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
     } finally {
       setUploadingLinkId(null);
       setSelectedLinkId(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -171,121 +197,80 @@ export default function AffiliateZone({ userType, userId }: AffiliateZoneProps) 
     }
   ];
 
-  console.log('AffiliateZone rendered, userType:', userType);
   return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 text-white shadow-lg">
-        <h2 className="text-3xl font-bold mb-2 flex items-center gap-3">
-          <ShoppingCart size={32} />
-          Affiliate Zone (Updated)
-        </h2>
-        <p className="opacity-90 max-w-2xl">
-          আপনার প্রয়োজনীয় সার্ভিস এবং প্রোডাক্টগুলো এখান থেকে কিনুন। নিচের লিংকগুলো ব্যবহার করে কেনাকাটা করলে MDC Diary একটি ছোট কমিশন পেতে পারে, যা এই প্ল্যাটফর্মকে আরও উন্নত করতে সাহায্য করবে।
-        </p>
-      </div>
-
-      {true && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-slate-800 mb-1">আপনার অ্যাফিলিয়েট ব্যালেন্স</h3>
-            <p className="text-sm text-slate-500">সাইন আপ করুন আর ফ্রি সাবস্ক্রিপশন নিন।</p>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header & Simple Guide */}
+      <div className="grid grid-cols-1 gap-6">
+        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-900 rounded-[2.5rem] p-8 lg:p-10 text-white shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-10">
+            <Share2 size={120} />
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-center px-6 py-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-              <div className="text-2xl font-black text-emerald-600">৳০</div>
-              <div className="text-[10px] font-bold text-emerald-600/70 uppercase">বর্তমান ব্যালেন্স</div>
-            </div>
-            <button 
-              disabled
-              className="px-6 py-3 bg-slate-100 text-slate-400 rounded-xl font-bold transition-all cursor-not-allowed"
-            >
-              রিচার্জ করুন
-            </button>
+          <div className="relative z-10 text-center lg:text-left">
+            <h2 className="text-3xl lg:text-4xl font-black mb-4">{t('affiliate_zone')}</h2>
+            <p className="text-white/80 font-medium max-w-lg mb-8 leading-relaxed mx-auto lg:mx-0">
+              {t('special_offer_desc')}
+            </p>
           </div>
         </div>
-      )}
-
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileUpload} 
-        accept="image/*" 
-        className="hidden" 
-      />
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {categories.map((category) => (
-          <div key={category.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center gap-3">
-              <div className="p-2 bg-white rounded-lg shadow-sm">
+          <div key={category.id} className="bg-white rounded-[2rem] shadow-xl shadow-slate-100/50 border border-slate-100 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
+              <div className="p-3 bg-white rounded-2xl shadow-sm">
                 {category.icon}
               </div>
-              <h3 className="font-bold text-slate-800 text-lg">{category.title}</h3>
+              <h3 className="font-black text-slate-900 uppercase tracking-wider text-sm">{category.id}</h3>
             </div>
-            <div className="p-2">
+            <div className="p-4 space-y-2">
               {category.links.map((link) => (
-                <div key={link.id} className="flex flex-col gap-2 p-2 hover:bg-slate-50 rounded-xl transition-colors group">
-                  <button
-                    onClick={() => handleLinkClick(link.id, link.url)}
-                    className="w-full text-left px-2 py-1 flex flex-col gap-2"
-                  >
-                    <div className="flex justify-between items-center w-full">
-                      <span className="font-medium text-slate-700 group-hover:text-blue-600 transition-colors">
-                        {link.name}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        {clickCounts[link.id] > 0 && (
-                          <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
-                            {clickCounts[link.id]} clicks
-                          </span>
-                        )}
-                        <ExternalLink size={16} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
-                      </div>
-                    </div>
-                  </button>
+                <div key={link.id} className="group p-3 hover:bg-indigo-50/50 rounded-2xl transition-all">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => handleLinkClick(link.id, link.url)}
+                      className="flex-1 text-left"
+                    >
+                      <h4 className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors uppercase">{link.name}</h4>
+                      {clickCounts[link.id] > 0 && (
+                        <span className="text-[9px] font-black text-indigo-400 uppercase">{clickCounts[link.id]} {t('clicks')}</span>
+                      )}
+                    </button>
+                    <ExternalLink size={14} className="text-slate-400" />
+                  </div>
                   
-                  {link.id === 'martnix' && (
-                    <div className="px-2 pb-2">
-                      <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-medium px-2 py-1 rounded-md w-fit border border-emerald-100 mb-2">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
-                        {['lawyer', 'clerk'].includes(userType || '') 
-                          ? 'সাইন আপ করলে ১মাস ডায়মন্ড সাবস্ক্রিপশন ফ্রি' 
-                          : 'সাইন আপ করলেই ১০০ পয়েন্ট ফ্রি (১০টি AI প্রশ্ন)!'}
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    {link.id === 'martnix' && (
+                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 mb-3">
+                        <p className="text-[10px] font-bold text-emerald-700 leading-tight">
+                          {['lawyer', 'clerk'].includes(userType || '') 
+                            ? 'সাইন আপ করলে ১মাস ডায়ামন্ড সাবস্ক্রিপশন ফ্রি' 
+                            : 'সাইন আপ করলেই ১০০ পয়েন্ট ফ্রি (১০টি AI প্রশ্ন)!'}
+                        </p>
                       </div>
-                      
-                      <div className="flex items-center gap-2 mt-1">
-                        <button
-                          onClick={() => {
-                            setSelectedLinkId(link.id);
-                            fileInputRef.current?.click();
-                          }}
-                          disabled={uploadingLinkId === link.id || uploadedProofs[link.id]}
-                          className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                            uploadedProofs[link.id]
-                              ? 'bg-green-100 text-green-700 border border-green-200'
-                              : 'bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200'
-                          }`}
-                        >
-                          {uploadingLinkId === link.id ? (
-                            <span className="animate-pulse">আপলোড হচ্ছে...</span>
-                          ) : uploadedProofs[link.id] ? (
-                            <>
-                              <CheckCircle size={14} />
-                              প্রমাণ জমা হয়েছে
-                            </>
-                          ) : (
-                            <>
-                              <Upload size={14} />
-                              স্ক্রিনশট জমা দিন
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                    
+                    <button
+                      onClick={() => {
+                        setSelectedLinkId(link.id);
+                        fileInputRef.current?.click();
+                      }}
+                      disabled={uploadingLinkId === link.id || uploadedProofs[link.id]}
+                      className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                        uploadedProofs[link.id]
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100'
+                      }`}
+                    >
+                      {uploadingLinkId === link.id ? (
+                        <span className="animate-pulse">আপলোড হচ্ছে...</span>
+                      ) : uploadedProofs[link.id] ? (
+                        <><CheckCircle2 size={14} />প্রমাণ জমা হয়েছে</>
+                      ) : (
+                        <><Upload size={14} />স্ক্রিনশট জমা দিন</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -293,12 +278,14 @@ export default function AffiliateZone({ userType, userId }: AffiliateZoneProps) 
         ))}
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-800">
-        <AlertTriangle size={20} className="shrink-0 mt-0.5" />
-        <div className="text-sm font-medium">
-          <strong>সতর্কতা:</strong> কিছু লিংক অ্যাফিলিয়েট লিংক হতে পারে। এই লিংক ব্যবহার করলে MDC Diary কমিশন পেতে পারে। এটি আপনার কেনাকাটার খরচে কোনো প্রভাব ফেলবে না।
+      <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6 flex items-start gap-4 text-amber-800">
+        <AlertTriangle size={24} className="shrink-0 text-amber-600" />
+        <div className="text-xs font-bold leading-relaxed">
+          <strong className="block mb-1 text-sm">{t('warning')}:</strong>
+          অ্যাফিলিয়েট লিংক ব্যবহারের ফলে সংগৃহীত কমিশন প্ল্যাটফর্মের সার্ভার ও AI খরচ মেটাতে ব্যবহৃত হয়। আপনার কেনাকাটার মূল্যে এর কোনো প্রভাব পড়বে না।
         </div>
       </div>
+      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
     </div>
   );
 }

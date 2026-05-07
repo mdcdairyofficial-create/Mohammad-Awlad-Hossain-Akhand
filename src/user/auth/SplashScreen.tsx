@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Gavel } from 'lucide-react';
+import { Logo } from '../../components/Logo';
 
 export default function SplashScreen() {
   return (
@@ -10,32 +10,23 @@ export default function SplashScreen() {
       className="fixed inset-0 flex flex-col items-center justify-center bg-indigo-900 text-white z-50"
     >
       <motion.div
-        initial={{ scale: 0.5, rotate: -20 }}
-        animate={{ scale: 1, rotate: 0 }}
+        initial={{ scale: 0.5, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
         transition={{ 
           type: "spring",
           stiffness: 260,
           damping: 20 
         }}
-        className="mb-6 bg-white/10 p-6 rounded-full backdrop-blur-sm"
+        className="mb-8"
       >
-        <Gavel size={64} className="text-indigo-200" />
+        <Logo size="xl" className="scale-150" />
       </motion.div>
-      
-      <motion.h1
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="text-4xl font-bold tracking-tight mb-2"
-      >
-        MDC Diary
-      </motion.h1>
       
       <motion.p
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.5 }}
-        className="text-indigo-200 text-lg font-medium"
+        className="text-indigo-200 text-lg font-medium mt-12"
       >
         আদালত ভিত্তিক মামলার তথ্য ডায়েরি
       </motion.p>

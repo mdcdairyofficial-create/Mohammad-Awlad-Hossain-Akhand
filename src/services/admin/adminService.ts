@@ -1,13 +1,25 @@
-import { db } from '../../firebase';
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
-
-export const getAllUsers = async () => {
-  const usersCollection = collection(db, 'users');
-  const userSnapshot = await getDocs(usersCollection);
-  return userSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+export const getAllUsers = async (adminId: string) => {
+  const response = await fetch('/api/admin/users', {
+    headers: {
+      'x-admin-id': adminId
+    }
+  });
+  if (!response.ok) {
+    throw new Error('Failed to fetch users');
+  }
+  return response.json();
 };
 
-export const updateUserRole = async (userId: string, newRole: string) => {
-  const userRef = doc(db, 'users', userId);
-  await updateDoc(userRef, { user_type: newRole });
+export const updateUserRole = async (userId: string, newRole: string, adminId: string) => {
+  const response = await fetch(`/api/admin/users/${userId}/role`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-id': adminId
+    },
+    body: JSON.stringify({ role: newRole })
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update role');
+  }
 };

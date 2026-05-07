@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, File, X, CheckCircle, AlertCircle, Loader2, Download } from 'lucide-react';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
+import { auth } from '../../firebase';
 
 interface FileUploaderProps {
   bucket?: string;
@@ -10,6 +11,7 @@ interface FileUploaderProps {
   caseNumber?: string;
   className?: string;
   style?: React.CSSProperties;
+  language?: 'en' | 'bn' | 'hi' | 'ur';
 }
 
 export default function FileUploader({ 
@@ -19,15 +21,14 @@ export default function FileUploader({
   maxSizeMB = 10,
   caseNumber,
   className = '',
-  style
+  style,
+  language = 'bn'
 }: FileUploaderProps) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isConfigured = !!import.meta.env.VITE_SUPABASE_URL && !!import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -53,8 +54,8 @@ export default function FileUploader({
 
   const handleUpload = async () => {
     if (!file) return;
-    if (!isConfigured) {
-      setError('স্টোরেজ কনফিগারেশন অনুপস্থিত। দয়া করে এডমিনকে জানান।');
+    if (!auth.currentUser) {
+      setError(language === 'bn' ? 'দয়া করে লগইন করুন।' : 'Please login to upload files.');
       return;
     }
 
@@ -62,6 +63,7 @@ export default function FileUploader({
     setError(null);
 
     try {
+      const userId = auth.currentUser.uid;
       const dateStr = new Date().toISOString().split('T')[0];
       const timestamp = Date.now();
       // Sanitize file name: remove special characters and spaces
@@ -69,14 +71,13 @@ export default function FileUploader({
       const fileName = `${timestamp}-${sanitizedOriginalName}`;
       
       // Sanitize case number for path
-      const sanitizedCaseNumber = caseNumber ? caseNumber.replace(/[\/\s]/g, '_') : null;
+      const sanitizedCaseNumber = caseNumber ? caseNumber.replace(/[\/\s]/g, '_') : 'general';
       
-      const path = sanitizedCaseNumber 
-        ? `${sanitizedCaseNumber}/${dateStr}/${fileName}` 
-        : `general/${dateStr}/${fileName}`;
+      // Path: users/{userId}/documents/{caseNumber}/{date}/{file}
+      const path = `users/${userId}/${bucket}/${sanitizedCaseNumber}/${dateStr}/${fileName}`;
       
-      await uploadFile(bucket, path, file);
-      const url = await getPublicUrl(bucket, path);
+      await uploadFile('', path, file); // Bucket name is handled in path
+      const url = await getPublicUrl('', path);
       
       setSuccess(true);
       if (onUploadSuccess) {
@@ -103,15 +104,6 @@ export default function FileUploader({
 
   return (
     <div className={`w-full p-4 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50 hover:border-indigo-300 transition-colors ${className}`} style={style}>
-      {!isConfigured && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-          <AlertCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
-          <div>
-            <p className="text-xs font-bold text-amber-800">স্টোরেজ কনফিগারেশন অনুপস্থিত</p>
-            <p className="text-[10px] text-amber-700 mt-1">দয়া করে এনভায়রনমেন্ট ভেরিয়েবল (VITE_SUPABASE_URL এবং VITE_SUPABASE_ANON_KEY) সেট করুন।</p>
-          </div>
-        </div>
-      )}
       <input 
         type="file" 
         ref={fileInputRef}

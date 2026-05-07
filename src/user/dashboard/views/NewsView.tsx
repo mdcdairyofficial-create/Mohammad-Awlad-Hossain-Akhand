@@ -56,16 +56,16 @@ export const NewsView = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-            {t('legal_news')} <span className="text-indigo-600 ml-2">আজকের আপডেট</span>
+            {t('legal_news')} <span className="text-indigo-600 ml-2">{t('today_update')}</span>
           </h2>
-          <p className="text-slate-500 font-medium mt-1">আইন ও আদালত অঙ্গনের সর্বশেষ সংবাদ ও বিশ্লেষণ।</p>
+          <p className="text-slate-500 font-medium mt-1">{t('news_subtitle')}</p>
         </div>
         <div className="flex items-center gap-3 bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
             <Search size={16} className="text-slate-400" />
             <input 
               type="text" 
-              placeholder="সংবাদ খুঁজুন..."
+              placeholder={t('search_news')}
               className="bg-transparent border-none outline-none text-sm font-bold text-slate-600 w-40"
             />
           </div>
@@ -100,7 +100,7 @@ export const NewsView = ({
                 <div className="md:w-3/5 p-8 space-y-4">
                   <div className="flex items-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     <span className="flex items-center gap-1"><Clock size={12} /> {news.time}</span>
-                    <span className="flex items-center gap-1"><TrendingUp size={12} /> ট্রেন্ডিং</span>
+                    <span className="flex items-center gap-1"><TrendingUp size={12} /> {t('trending')}</span>
                   </div>
                   <h3 className="text-2xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors leading-tight">
                     {news.title}
@@ -110,7 +110,7 @@ export const NewsView = ({
                   </p>
                   <div className="pt-4 flex items-center justify-between border-t border-slate-50">
                     <button className="text-indigo-600 font-bold text-sm flex items-center gap-2 group/btn">
-                      বিস্তারিত পড়ুন <ChevronRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
+                      {t('read_details')} <ChevronRight size={18} className="group-hover/btn:translate-x-1 transition-transform" />
                     </button>
                     <div className="flex items-center gap-2">
                       <button className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
@@ -132,7 +132,7 @@ export const NewsView = ({
           {/* Trending Topics */}
           <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
             <h3 className="text-xl font-bold text-slate-900 flex items-center gap-3">
-              <TrendingUp className="text-indigo-600" size={24} /> জনপ্রিয় বিষয়
+              <TrendingUp className="text-indigo-600" size={24} /> {t('popular_topics')}
             </h3>
             <div className="flex flex-wrap gap-2">
               {["#সুপ্রিমকোর্ট", "#নতুনআইন", "#ডিজিটালনিরাপত্তা", "#মানবাধিকার", "#আইনজীবী", "#বিচারবিভাগ"].map((tag) => (
@@ -149,12 +149,12 @@ export const NewsView = ({
               <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
                 <Newspaper size={24} />
               </div>
-              <h3 className="text-xl font-bold">আইনি জ্ঞান ভাণ্ডার</h3>
+              <h3 className="text-xl font-bold">{t('legal_knowledge_base')}</h3>
               <p className="text-indigo-100 text-sm font-medium leading-relaxed">
-                আমাদের লাইব্রেরি সেকশনে পাবেন হাজারো আইনি বই, ধারা ও নজির। আপনার জ্ঞানকে আরও সমৃদ্ধ করুন।
+                {t('library_desc')}
               </p>
               <button className="w-full py-3 bg-white text-indigo-600 rounded-2xl font-bold hover:scale-105 transition-transform shadow-lg">
-                লাইব্রেরি দেখুন
+                {t('view_library')}
               </button>
             </div>
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />

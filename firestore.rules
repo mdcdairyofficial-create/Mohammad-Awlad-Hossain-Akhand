@@ -1,82 +1,112 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ===============================================================
-    // Helper Functions
-    // ===============================================================
-    function isAuthenticated() {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives
+    function isSignedIn() {
       return request.auth != null;
     }
-    
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.user_id;
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function isAdmin() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.user_type in ['admin', 'super_admin'] ||
-         (request.auth.token.email == "mdcdairy.official@gmail.com" && request.auth.token.email_verified == true));
+    function incoming() {
+      return request.resource.data;
     }
 
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
+    function existing() {
+      return resource.data;
     }
 
-    // ===============================================================
-    // Rules
-    // ===============================================================
+    // Validation helper for Campaign
+    function isValidCampaign(data) {
+      return data.ownerId == request.auth.uid
+        && data.type is string && data.type.size() <= 50
+        && data.totalPrice is number && data.totalPrice >= 0
+        && data.status in ['pending', 'active', 'paused', 'completed']
+        && (data.adTitle == null || (data.adTitle is string && data.adTitle.size() <= 200))
+        && (data.adDescription == null || (data.adDescription is string && data.adDescription.size() <= 2000))
+        && data.keys().hasAll(['ownerId', 'type', 'totalPrice', 'status', 'createdAt'])
+        && data.keys().size() <= 30;
+    }
 
+    // Validation helper for user
+    function isValidUser(data) {
+      return (data.points == null || data.points is number)
+        && (data.aiQuestionsCount == null || data.aiQuestionsCount is number)
+        && (data.profile_picture == null || (data.profile_picture is string && data.profile_picture.size() <= 2097152)) // 2MB limit
+        && (data.fullName == null || (data.fullName is string && data.fullName.size() <= 200))
+        && (data.email == null || (data.email is string && data.email.size() <= 200))
+        && (data.mobile == null || (data.mobile is string && data.mobile.size() <= 20))
+        && data.keys().size() <= 60;
+    }
+
+    // 1. Users Collection
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || resource.data.user_type in ['lawyer', 'clerk'];
-      allow create: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow update: if (isOwner(userId) && request.resource.data.user_type == resource.data.user_type) || isAdmin();
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (resource.data.isPublic == true || request.auth.uid == userId);
+      allow create: if isSignedIn() && isOwner(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isOwner(userId)
+        && isValidUser(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['points', 'aiQuestionsCount', 'profile_picture', 'fullName', 'email', 'mobile', 'updatedAt', 'isPublic']);
     }
 
+    // 2. Campaigns Collection
+    match /campaigns/{campaignId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid || 
+        resource.data.status == 'active'
+      );
+      
+      allow create: if isSignedIn() 
+        && isValidId(campaignId)
+        && isValidCampaign(incoming())
+        && incoming().createdAt == request.time;
+
+      allow update: if isSignedIn()
+        && existing().ownerId == request.auth.uid
+        && isValidCampaign(incoming())
+        && incoming().ownerId == existing().ownerId
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['adTitle', 'adDescription', 'fbLink', 'ytLink', 'otherLink', 'status', 'updatedAt'])
+        );
+
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // 3. User Data Collections
     match /cases/{caseId} {
-      allow read: if isDocOwner() || resource.data.visibility == 'public' || isAdmin();
-      allow create: if isAuthenticated();
-      allow update: if isDocOwner() || isAdmin();
-      allow delete: if isDocOwner() || isAdmin();
-    }
-
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create: if isAdmin();
-      allow update: if isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow delete: if isAdmin();
-    }
-
-    match /global_notifications/{notificationId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow read: if isSignedIn() && (resource.data.user_id == request.auth.uid || resource.data.visibility == 'public');
+      allow create: if isSignedIn() && incoming().user_id == request.auth.uid;
+      allow update: if isSignedIn() && existing().user_id == request.auth.uid && incoming().user_id == existing().user_id;
+      allow delete: if isSignedIn() && existing().user_id == request.auth.uid;
     }
 
     match /tasks/{taskId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow read: if isSignedIn() && (resource.data.assignedTo == request.auth.uid || resource.data.createdBy == request.auth.uid);
+      allow create: if isSignedIn() && incoming().createdBy == request.auth.uid;
+      allow update: if isSignedIn() && (existing().assignedTo == request.auth.uid || existing().createdBy == request.auth.uid);
+      allow delete: if isSignedIn() && existing().createdBy == request.auth.uid;
     }
 
-    match /support_chats/{chatId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      
-      match /messages/{messageId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated();
-      }
-    }
-
-    match /archive_cases/{caseId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+    match /notifications/{id} {
+      allow read: if isSignedIn() && resource.data.user_id == request.auth.uid;
+      allow update: if isSignedIn() && existing().user_id == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn() && existing().user_id == request.auth.uid;
     }
   }
 }

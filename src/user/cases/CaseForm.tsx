@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, Trash2, ChevronRight, ChevronLeft, Save } from 'lucide-react';
+import { X, Plus, Trash2, ChevronRight, ChevronLeft, Save, Search, Zap, FileText, UserPlus } from 'lucide-react';
 import { Case } from '../../types';
 import { translations } from '../../translations';
 import { BANGLADESH_DISTRICTS, getPoliceStations, getCourtsForDistrict } from '../../constants';
@@ -17,6 +17,9 @@ interface CaseFormProps {
   userType?: string;
   userName?: string;
   userMobile?: string;
+  existingCases?: Case[];
+  onJoin?: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string) => void;
+  initialMode?: 'detailed' | 'quick' | 'join';
 }
 
 interface PartyRow {
@@ -36,9 +39,13 @@ export default function CaseForm({
   canEditRespondent,
   userType,
   userName,
-  userMobile
+  userMobile,
+  existingCases = [],
+  onJoin,
+  initialMode = 'detailed'
 }: CaseFormProps) {
-  const t = translations[language];
+  const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
+  const [mode, setMode] = useState<'detailed' | 'quick' | 'join'>(initialMode);
   const [step, setStep] = useState(1);
   const [caseCategory, setCaseCategory] = useState('');
   const [formData, setFormData] = useState<Partial<Case>>({
@@ -51,6 +58,7 @@ export default function CaseForm({
     nextDate: '',
     status: 'Pending',
     caseType: '',
+    priority: 'medium',
     petitioner: '',
     respondent: '',
     petitionerMobile: '',
@@ -76,6 +84,11 @@ export default function CaseForm({
   const [defendants, setDefendants] = useState<PartyRow[]>([{ name: '', phone: '', serial: 1 }]);
   const [lawyers, setLawyers] = useState<PartyRow[]>([{ name: '', phone: '' }]);
   const [clerks, setClerks] = useState<PartyRow[]>([{ name: '', phone: '' }]);
+
+  // Join Case Specific Logic
+  const [joinFilingYear, setJoinFilingYear] = useState(new Date().getFullYear().toString());
+  const [side, setSide] = useState<'petitioner' | 'respondent'>('petitioner');
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const criminalTypes = ['জি.আর', 'সি.আর', 'মানব পাচার পিটিশন', 'পিটিশন', 'ICT'];
   const civilTypes = ['দেওয়ানী', 'পারিবারিক'];
@@ -192,9 +205,65 @@ export default function CaseForm({
     });
   };
 
+  const caseNumberPreview = useMemo(() => {
+    const rawNumber = formData.rawCaseNumber || '';
+    const type = formData.caseType || '';
+    const thana = formData.policeStation || '';
+    let year = '';
+    
+    if (mode === 'join') {
+      year = joinFilingYear;
+    } else {
+      year = formData.filingDate ? new Date(formData.filingDate).getFullYear().toString() : '';
+    }
+    
+    if (!rawNumber) return '';
+    
+    const parts = [];
+    if (type) parts.push(`${type}-`);
+    parts.push(rawNumber);
+    if (year) parts.push(`/${year}`);
+    if (thana) parts.push(`(${thana})`);
+    return parts.join('');
+  }, [mode, formData.rawCaseNumber, formData.caseType, formData.policeStation, joinFilingYear, formData.filingDate]);
+
+  const filteredCases = useMemo(() => {
+    if (mode !== 'join' || !caseNumberPreview) return [];
+    return existingCases.filter(c => 
+      c.caseNumber.toLowerCase().includes(caseNumberPreview.toLowerCase()) || 
+      (c.rawCaseNumber && c.rawCaseNumber.toLowerCase().includes(caseNumberPreview.toLowerCase()))
+    ).slice(0, 5);
+  }, [mode, caseNumberPreview, existingCases]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (mode === 'join' && onJoin) {
+      if (step === 1 && side === 'respondent') {
+        setStep(2);
+        return;
+      }
+      const rawNumber = formData.rawCaseNumber || '';
+      const year = joinFilingYear;
+      const type = formData.caseType || '';
+      const thana = formData.policeStation || '';
+      const caseNumber = `${type}-${rawNumber}/${year}(${thana})`;
+      
+      onJoin(
+        caseNumber.trim(), 
+        side, 
+        side === 'respondent' ? defendants.map(d => ({ name: d.name, serial: String(d.serial), phone: d.phone })).filter(r => r.name.trim() !== '') : undefined, 
+        side === 'respondent' ? formData.totalRespondents : undefined,
+        formData.order,
+        formData.additionalOrder,
+        { name: lawyers[0]?.name || '', phone: lawyers[0]?.phone || '' },
+        { name: clerks[0]?.name || '', phone: clerks[0]?.phone || '' },
+        formData.nextDate,
+        formData.caseSection
+      );
+      return;
+    }
+
     const rawNumber = formData.rawCaseNumber || formData.caseNumber || '';
     const year = formData.filingDate ? new Date(formData.filingDate).getFullYear() : '';
     const type = formData.caseType || '';
@@ -331,25 +400,378 @@ export default function CaseForm({
           <motion.div 
             className="h-full bg-indigo-600"
             initial={{ width: '33.33%' }}
-            animate={{ width: `${(step / 3) * 100}%` }}
+            animate={{ width: mode === 'detailed' ? `${(step / 3) * 100}%` : '100%' }}
           />
         </div>
 
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-slate-800">
-              {language === 'bn' ? '📁 নতুন মামলা এন্ট্রি' : '📁 New Case Entry'}
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+              {language === 'bn' ? '📁 মামলা এন্ট্রি' : '📁 Case Entry'}
             </h2>
-            <p className="text-sm text-slate-500">Step {step} of 3</p>
+            <div className="flex items-center gap-2 mt-1">
+              {mode === 'detailed' && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Step {step} of 3</p>}
+              {mode === 'quick' && <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Quick Entry Mode</p>}
+              {mode === 'join' && <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Search & Join Mode</p>}
+            </div>
           </div>
-          <button onClick={onCancel} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          
+          {/* Mode Switcher */}
+          <div className="flex bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+            <button 
+              onClick={() => { setMode('detailed'); setStep(1); }}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${mode === 'detailed' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <FileText size={14} /> {language === 'bn' ? 'বিস্তারিত' : 'Detailed'}
+            </button>
+            <button 
+              onClick={() => { setMode('quick'); setStep(1); }}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${mode === 'quick' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Zap size={14} /> {language === 'bn' ? 'সহজ' : 'Quick'}
+            </button>
+            <button 
+              onClick={() => { setMode('join'); setStep(1); }}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${mode === 'join' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <UserPlus size={14} /> {language === 'bn' ? 'আসামী যুক্ত' : 'Join'}
+            </button>
+          </div>
+
+          <button onClick={onCancel} className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full transition-colors">
             <X className="w-6 h-6 text-slate-500" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <AnimatePresence mode="wait">
-            {step === 1 && (
+            {mode === 'quick' && (
+              <motion.div
+                key="quick-mode"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="space-y-6"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মামলার বিভাগ' : 'Case Category'}</label>
+                    <div className="flex gap-2">
+                      {['Criminal', 'Civil', 'Other'].map((cat) => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            setCaseCategory(cat);
+                            setFormData(prev => ({ ...prev, caseType: '' }));
+                          }}
+                          className={`flex-1 py-3 px-4 rounded-2xl text-sm font-bold transition-all border ${
+                            caseCategory === cat 
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' 
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                          }`}
+                        >
+                          {cat === 'Criminal' ? (language === 'bn' ? 'ফৌজদারী' : 'Criminal') : 
+                           cat === 'Civil' ? (language === 'bn' ? 'দেওয়ানী' : 'Civil') : 
+                           (language === 'bn' ? 'অন্যান্য' : 'Other')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {caseCategory && (
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('case_type')}</label>
+                      <div className="flex flex-wrap gap-2">
+                        {(caseCategory === 'Criminal' ? criminalTypes : caseCategory === 'Civil' ? civilTypes : ['Writ', 'Other']).map(type => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, caseType: type }))}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                              formData.caseType === type 
+                                ? 'bg-indigo-100 text-indigo-700 border-indigo-200' 
+                                : 'bg-white text-slate-50 border-slate-200 hover:border-indigo-200'
+                            }`}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('case_number')} *</label>
+                    <input
+                      type="text"
+                      name="rawCaseNumber"
+                      value={formData.rawCaseNumber || ''}
+                      onChange={handleChange}
+                      required
+                      placeholder={language === 'bn' ? 'যেমন: ১২৩/২৪ (থানা)' : 'e.g. 123/24 (PS)'}
+                      className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-lg"
+                    />
+                    {caseNumberPreview && (
+                      <div className="mt-4 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                        <p className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-1">{t('case_number_preview')}</p>
+                        <p className="text-sm font-bold text-indigo-700 flex items-center gap-2">
+                          <FileText size={14} /> {caseNumberPreview}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পক্ষদ্বয়' : 'Parties'}</label>
+                    <div className="space-y-2">
+                      <input
+                        placeholder={language === 'bn' ? 'বাদীর নাম' : 'Petitioner Name'}
+                        value={plaintiffs[0]?.name}
+                        onChange={(e) => handlePartyChange(0, 'name', e.target.value, setPlaintiffs)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                      />
+                      <input
+                        placeholder={language === 'bn' ? 'আসামীর নাম' : 'Respondent Name'}
+                        value={defendants[0]?.name}
+                        onChange={(e) => handlePartyChange(0, 'name', e.target.value, setDefendants)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('next_date')} *</label>
+                    <input
+                      type="date"
+                      name="nextDate"
+                      value={formData.nextDate}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('priority_label')}</label>
+                    <select
+                      name="priority"
+                      value={formData.priority || 'medium'}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    >
+                      <option value="low">{t('low')}</option>
+                      <option value="medium">{t('medium')}</option>
+                      <option value="high">{t('high')}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button
+                    type="submit"
+                    className="flex-grow py-4 bg-green-600 text-white rounded-2xl font-black transition-all hover:bg-green-700 shadow-xl shadow-green-100 flex items-center justify-center gap-2"
+                  >
+                    <Save size={20} /> {language === 'bn' ? 'সংরক্ষণ করুন' : 'Save Quick Case'}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {mode === 'join' && (
+              <motion.div
+                key="join-mode"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                className="space-y-6"
+              >
+                {step === 1 ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মামলার বিভাগ' : 'Case Category'}</label>
+                        <select
+                          value={caseCategory}
+                          onChange={(e) => {
+                            setCaseCategory(e.target.value);
+                            setFormData(prev => ({ ...prev, caseType: '' }));
+                          }}
+                          required
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
+                          <option value="Criminal">Criminal</option>
+                          <option value="Civil">Civil</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মামলার ধরন' : 'Case Type'}</label>
+                        <select
+                          name="caseType"
+                          value={formData.caseType}
+                          onChange={handleChange}
+                          required
+                          disabled={!caseCategory}
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
+                          {caseCategory === 'Criminal' && criminalTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                          {caseCategory === 'Civil' && civilTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মামলা নং' : 'Case No'}</label>
+                        <input
+                          type="text"
+                          name="rawCaseNumber"
+                          value={formData.rawCaseNumber || ''}
+                          onChange={handleChange}
+                          required
+                          placeholder="123"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'সাল' : 'Year'}</label>
+                        <input
+                          type="text"
+                          value={joinFilingYear}
+                          onChange={(e) => setJoinFilingYear(e.target.value)}
+                          required
+                          placeholder="2026"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'থানার নাম' : 'Police Station'}</label>
+                        <select
+                          name="policeStation"
+                          value={formData.policeStation}
+                          onChange={handleChange}
+                          required
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
+                          {(formData.district || userDistrict) && getPoliceStations(formData.district || userDistrict, userCountry).map(ps => (
+                            <option key={ps} value={ps}>{ps}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {caseNumberPreview && (
+                      <div className="relative">
+                        <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 mb-4">
+                          <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">{t('case_number_preview')}</p>
+                          <p className="text-sm font-bold text-emerald-700 flex items-center gap-2">
+                            <Search size={14} /> {caseNumberPreview}
+                          </p>
+                        </div>
+                        
+                        {filteredCases.length > 0 && (
+                          <div className="bg-white rounded-2xl border border-slate-100 shadow-xl overflow-hidden mb-4">
+                            <div className="bg-slate-50 px-4 py-2 border-b border-slate-100">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'বিদ্যমান মামলা পাওয়া গেছে' : 'Existing Cases Found'}</p>
+                            </div>
+                            {filteredCases.map(c => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  // Auto-fill some fields or just visual confirmation
+                                  setFormData(prev => ({ ...prev, rawCaseNumber: c.rawCaseNumber || c.caseNumber }));
+                                }}
+                                className="w-full text-left px-4 py-3 hover:bg-indigo-50 border-b border-slate-50 last:border-0 transition-colors flex justify-between items-center group"
+                              >
+                                <div>
+                                  <div className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">{c.caseNumber}</div>
+                                  <div className="text-[10px] text-slate-500 font-medium">{c.courtName}</div>
+                                </div>
+                                <Search size={14} className="text-slate-300 group-hover:text-indigo-400" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পক্ষ হিসেবে যুক্ত হোন' : 'Join As'}</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSide('petitioner')}
+                          className={`py-3 px-4 rounded-xl border font-bold transition-all ${
+                            side === 'petitioner' 
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' 
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
+                          }`}
+                        >
+                          {t('petitioner')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSide('respondent')}
+                          className={`py-3 px-4 rounded-xl border font-bold transition-all ${
+                            side === 'respondent' 
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' 
+                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
+                          }`}
+                        >
+                          {t('respondent')}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type={side === 'respondent' ? 'button' : 'submit'}
+                      onClick={side === 'respondent' ? () => setStep(2) : undefined}
+                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black transition-all hover:bg-indigo-700 shadow-xl shadow-indigo-100 flex items-center justify-center gap-2"
+                    >
+                      {side === 'respondent' ? (language === 'bn' ? 'পরবর্তী' : 'Next') : (language === 'bn' ? 'মামলায় যুক্ত হোন' : 'Join Case')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-4">
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মোট আসামী সংখ্যা' : 'Total Respondents'}</label>
+                        <input
+                          type="number"
+                          name="totalRespondents"
+                          value={formData.totalRespondents || ''}
+                          onChange={handleChange}
+                          placeholder="e.g. 5"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white"
+                        />
+                      </div>
+                      {renderPartySection(language === 'bn' ? 'আসামী যুক্ত করুন' : 'Add Respondents', defendants, setDefendants, language === 'bn' ? 'আসামীর নাম' : 'Respondent Name', true, false)}
+                    </div>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setStep(1)}
+                        className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black transition-all hover:bg-slate-200"
+                      >
+                        {language === 'bn' ? 'পিছনে' : 'Back'}
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-[2] py-4 bg-green-600 text-white rounded-2xl font-black transition-all hover:bg-green-700 shadow-xl shadow-green-100"
+                      >
+                        {language === 'bn' ? 'যুক্ত হোন' : 'Join Case'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {mode === 'detailed' && step === 1 && (
               <motion.div
                 key="step1"
                 initial={{ opacity: 0, x: 20 }}
@@ -363,49 +785,66 @@ export default function CaseForm({
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">১. {t.district}</label>
-                    <input
-                      type="text"
-                      name="district"
-                      value={userDistrict || ''}
-                      readOnly
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-500 focus:outline-none transition-all cursor-not-allowed"
-                    />
+                    <label className="block text-sm font-medium text-slate-700 mb-1">১. {t('district')}</label>
+                    <div className="relative">
+                      <select
+                        name="district"
+                        value={formData.district || userDistrict || ''}
+                        onChange={(e) => {
+                          const dist = e.target.value;
+                          setFormData(prev => ({ ...prev, district: dist, policeStation: '' }));
+                        }}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">{t('select_district')}</option>
+                        {BANGLADESH_DISTRICTS.map(dist => (
+                          <option key={dist} value={dist}>{dist}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                        <ChevronRight className="rotate-90" size={18} />
+                      </div>
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">২. {t.thana}</label>
-                    <select
-                      name="policeStation"
-                      value={formData.policeStation}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                      disabled={!userDistrict}
-                    >
-                      <option value="">{t.select_thana}</option>
-                      {userDistrict && getPoliceStations(userDistrict, userCountry).map(ps => (
-                        <option key={ps} value={ps}>{ps}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">২. {t('thana')}</label>
+                    <div className="relative">
+                      <select
+                        name="policeStation"
+                        value={formData.policeStation}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none cursor-pointer"
+                        disabled={!(formData.district || userDistrict)}
+                      >
+                        <option value="">{t('select_thana')}</option>
+                        {(formData.district || userDistrict) && getPoliceStations(formData.district || userDistrict, userCountry).map(ps => (
+                          <option key={ps} value={ps}>{ps}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                        <ChevronRight className="rotate-90" size={18} />
+                      </div>
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৩. {t.court}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৩. {t('court')}</label>
                     <select
                       name="courtName"
                       value={formData.courtName}
                       onChange={handleChange}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                     >
-                      <option value="">{t.select_court}</option>
+                      <option value="">{t('select_court')}</option>
                       {userDistrict && getCourtsForDistrict(userDistrict, userCountry).map(court => (
                         <option key={court} value={court}>{court}</option>
                       ))}
-                      <option value="High Court">{t.high_court}</option>
-                      <option value="Supreme Court">{t.supreme_court}</option>
+                      <option value="High Court">{t('high_court')}</option>
+                      <option value="Supreme Court">{t('supreme_court')}</option>
                       <option value="Other">Other</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৪. {t.filing_date}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৪. {t('filing_date')}</label>
                     <input
                       type="date"
                       name="filingDate"
@@ -415,7 +854,20 @@ export default function CaseForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৫. মামলার ধরন (বিভাগ)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৫. {t('priority_label')}</label>
+                    <select
+                      name="priority"
+                      value={formData.priority || 'medium'}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    >
+                      <option value="low">{t('low')}</option>
+                      <option value="medium">{t('medium')}</option>
+                      <option value="high">{t('high')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৬. মামলার ধরন (বিভাগ)</label>
                     <select
                       value={caseCategory}
                       onChange={(e) => {
@@ -431,7 +883,7 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৬. {t.case_type}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৬. {t('case_type')}</label>
                     <select
                       name="caseType"
                       value={formData.caseType}
@@ -455,7 +907,7 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৭. {t.case_number}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৭. {t('case_number')}</label>
                     <input
                       type="text"
                       name="rawCaseNumber"
@@ -463,22 +915,25 @@ export default function CaseForm({
                       onChange={handleChange}
                       required
                       placeholder="মামলা নম্বর (যেমন: ১২৩)"
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold"
                     />
-                    {formData.rawCaseNumber && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        ফরম্যাট: {`${formData.caseType || 'ধরন'}-${formData.rawCaseNumber}/${formData.filingDate ? new Date(formData.filingDate).getFullYear() : 'সাল'}(${formData.policeStation || 'থানা'})`}
-                      </p>
+                    {caseNumberPreview && (
+                      <div className="mt-3 p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">{t('case_number_preview')}</p>
+                        <p className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                          <FileText size={12} /> {caseNumberPreview}
+                        </p>
+                      </div>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৮. {t.section}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৮. {t('section')}</label>
                     <input
                       type="text"
                       name="caseSection"
                       value={formData.caseSection || ''}
                       onChange={handleChange}
-                      placeholder={t.section_placeholder}
+                      placeholder={t('section_placeholder')}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                     />
                   </div>
@@ -563,7 +1018,7 @@ export default function CaseForm({
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">{t.next_date}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">{t('next_date')}</label>
                     <input
                       type="date"
                       name="nextDate"
@@ -589,14 +1044,16 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">{language === 'bn' ? 'মামলার আদেশ' : 'Case Order'}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      {language === 'bn' ? 'পদক্ষেপ / আদেশ' : 'Case Step / Order'}
+                    </label>
                     <select
                       name="order"
                       value={formData.order}
                       onChange={handleChange}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                     >
-                      <option value="">{language === 'bn' ? 'আদেশ নির্বাচন করুন' : 'Select Order'}</option>
+                      <option value="">{language === 'bn' ? 'পদক্ষেপ নির্বাচন করুন' : 'Select Step'}</option>
                       {caseCategory === 'Criminal' && (
                         <>
                           <option value="তদন্ত">তদন্ত</option>

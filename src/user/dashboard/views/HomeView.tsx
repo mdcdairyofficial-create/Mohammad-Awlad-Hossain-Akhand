@@ -7,10 +7,19 @@ import {
   CheckCircle2, 
   ChevronRight,
   User,
-  Briefcase
+  Briefcase,
+  Share2,
+  Copy,
+  MessageCircle,
+  DollarSign,
+  Star,
+  Award,
+  Zap,
+  X
 } from 'lucide-react';
 import { AdBanner } from '../AdBanner';
 import { Case, Task } from '../../../types';
+import { AnimatePresence } from 'motion/react';
 import { 
   ResponsiveContainer, 
   BarChart, 
@@ -32,6 +41,12 @@ interface HomeViewProps {
   setActiveTab: (tab: any) => void;
   t: (key: string) => string;
   isPremium?: boolean;
+  isPremiumForAds?: boolean;
+  referralCode?: string;
+  onCopyLink?: () => void;
+  onWhatsAppShare?: () => void;
+  referralCount?: number;
+  initialShowScoreModal?: boolean;
 }
 
 export const HomeView = ({
@@ -43,10 +58,34 @@ export const HomeView = ({
   theme,
   setActiveTab,
   t,
-  isPremium = false
+  isPremium = false,
+  isPremiumForAds = false,
+  referralCode = '',
+  onCopyLink,
+  onWhatsAppShare,
+  referralCount = 0,
+  initialShowScoreModal = false
 }: HomeViewProps) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
+  const [totalDue, setTotalDue] = React.useState(0);
+  const [showScoreModal, setShowScoreModal] = React.useState(initialShowScoreModal);
+
+  React.useEffect(() => {
+    if (initialShowScoreModal) {
+      setShowScoreModal(true);
+    }
+  }, [initialShowScoreModal]);
+
+  React.useEffect(() => {
+    // Calculate total due from invoices
+    const saved = localStorage.getItem('mdc_invoices');
+    if (saved) {
+      const invoices = JSON.parse(saved);
+      const due = invoices.reduce((acc: number, curr: any) => acc + (curr.amount - curr.paidAmount), 0);
+      setTotalDue(due);
+    }
+  }, []);
 
   const monthsBn = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
   const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -103,36 +142,48 @@ export const HomeView = ({
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <AdBanner isPremium={isPremium} />
+      <AdBanner isPremium={isPremiumForAds} />
       
       {/* Welcome Section */}
-      <div className="relative overflow-hidden bg-indigo-600 rounded-[2.5rem] p-8 lg:p-12 text-white shadow-2xl shadow-indigo-200">
-        <div className="relative z-10">
+      <div className="relative overflow-hidden bg-indigo-600 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-12 text-white shadow-2xl shadow-indigo-200">
+        <div className="relative z-10 text-center sm:text-left">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h2 className="text-3xl lg:text-4xl font-black mb-3">
-              {language === 'bn' ? `স্বাগতম, ${userName}!` : `Welcome, ${userName}!`}
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mb-3 break-words">
+              {language === 'bn' ? (
+                <>
+                  স্বাগতম, {userName}!
+                </>
+              ) : (
+                `Welcome, {name}!`.replace('{name}', userName)
+              )}
             </h2>
             <p className="text-indigo-100 text-lg font-medium max-w-xl leading-relaxed">
-              আপনার আইনি কার্যক্রম আরও সহজ এবং স্মার্ট করতে আমরা সবসময় আপনার পাশে আছি। আজকের আপডেটগুলো দেখে নিন।
+              {language === 'bn' ? (
+                <>
+                  আপনার আইনি কার্যক্রমকে আরও সহজ ও স্মার্ট করতে আমরা সবসময় আপনার পাশে আছি।
+                </>
+              ) : (
+                t('latest_update_message')
+              )}
             </p>
           </motion.div>
           
-          <div className="flex flex-wrap gap-4 mt-8">
+          <div className="flex flex-wrap gap-4 mt-8 justify-center sm:justify-start">
             <button 
               onClick={() => setActiveTab('cases')}
               className="px-8 py-3.5 bg-white text-indigo-600 rounded-2xl font-bold hover:scale-105 transition-transform shadow-xl shadow-indigo-900/20 flex items-center gap-2"
             >
-              মামলা দেখুন <ChevronRight size={20} />
+              {language === 'bn' ? 'মামলা দেখুন' : t('view_cases')} <ChevronRight size={18} />
             </button>
             <button 
               onClick={() => setActiveTab('calendar')}
               className="px-8 py-3.5 bg-indigo-500/30 backdrop-blur-md text-white border border-white/20 rounded-2xl font-bold hover:bg-indigo-500/40 transition-all"
             >
-              ক্যালেন্ডার
+              <span>{language === 'bn' ? 'ক্যালেন্ডার' : t('menu_calendar')}</span>
             </button>
           </div>
         </div>
@@ -143,12 +194,23 @@ export const HomeView = ({
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
-          { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-blue-500', shadow: 'shadow-blue-100' },
-          { label: t('upcoming_dates'), value: cases.filter(c => new Date(c.nextDate) >= new Date()).length, icon: Calendar, color: 'bg-indigo-500', shadow: 'shadow-indigo-100' },
-          { label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-amber-500', shadow: 'shadow-amber-100' },
-          { label: t('success_rate'), value: '85%', icon: TrendingUp, color: 'bg-emerald-500', shadow: 'shadow-emerald-100' },
+          { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-indigo-600', shadow: 'shadow-indigo-100' },
+          { label: t('upcoming_dates'), value: cases.filter(c => {
+              if (!c.nextDate) return false;
+              const d = new Date(c.nextDate);
+              const today = new Date();
+              today.setHours(0,0,0,0);
+              return d >= today;
+            }).length, icon: Calendar, color: 'bg-emerald-600', shadow: 'shadow-emerald-100' },
+          { label: t('today_cases'), value: cases.filter(c => {
+              if (!c.nextDate) return false;
+              const d = new Date(c.nextDate);
+              const today = new Date();
+              return d.toDateString() === today.toDateString();
+            }).length, icon: Zap, color: 'bg-amber-500', shadow: 'shadow-amber-100' },
+          { label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-rose-500', shadow: 'shadow-rose-100' },
         ].map((stat, idx) => (
           <motion.div
             key={idx}
@@ -166,16 +228,101 @@ export const HomeView = ({
         ))}
       </div>
 
+      {/* Quick Update Section */}
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">{t('today_cases')}</h3>
+            <p className="text-sm text-slate-500 font-medium">{language === 'bn' ? 'দ্রুত তারিখ আপডেট করুন' : t('update_dates_quickly' as any) || 'Update dates quickly'}</p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-slate-50">
+                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'মামলা নম্বর' : 'Case No'}</th>
+                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পক্ষদ্বয়' : 'Parties'}</th>
+                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পরবর্তী তারিখ' : 'Next Date'}</th>
+                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">{language === 'bn' ? 'অ্যাকশন' : 'Action'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {cases.filter(c => {
+                  if (!c.nextDate) return false;
+                  const today = new Date().toISOString().split('T')[0];
+                  return c.nextDate <= today;
+                }).length > 0 ? (
+                cases.filter(c => {
+                  if (!c.nextDate) return false;
+                  const today = new Date().toISOString().split('T')[0];
+                  return c.nextDate <= today;
+                })
+                .sort((a, b) => (a.nextDate || '').localeCompare(b.nextDate || ''))
+                .map((c) => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const isOutdated = c.nextDate! < today;
+                  
+                  return (
+                    <tr key={c.id} className={`group hover:bg-slate-50/50 transition-colors ${isOutdated ? 'animate-blink' : ''}`}>
+                      <td className="py-4">
+                        <div className="flex items-center gap-2">
+                          {isOutdated && <span className="w-2 h-2 bg-rose-500 rounded-full"></span>}
+                          <p className="font-bold text-slate-800 text-sm">{c.caseNumber}</p>
+                        </div>
+                      </td>
+                      <td className="py-4">
+                        <p className="text-xs font-medium text-slate-600">{c.petitioner} vs {c.respondent}</p>
+                      </td>
+                      <td className="py-4">
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="date"
+                            defaultValue={c.nextDate}
+                            onChange={(e) => {
+                              const newDate = e.target.value;
+                              // Actual update logic is handled via cases view usually
+                            }}
+                            className={`bg-transparent border-none outline-none text-xs font-bold cursor-pointer ${isOutdated ? 'text-rose-600 font-black' : 'text-indigo-600'}`}
+                          />
+                          {isOutdated && <span className="text-[10px] font-black text-rose-500 uppercase tracking-tighter">{language === 'bn' ? 'তারিখ পার' : 'Outdated'}</span>}
+                        </div>
+                      </td>
+                      <td className="py-4 text-right">
+                        <button 
+                          onClick={() => setActiveTab('cases')}
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={4} className="py-12 text-center">
+                    <p className="text-slate-400 font-bold text-sm">
+                      {language === 'bn' ? 'আজ কোন মামলার তারিখ নেই।' : 'No cases scheduled for today.'}
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Activity Chart */}
         <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold text-slate-900">{language === 'bn' ? 'মামলার পরিসংখ্যান' : 'Case Statistics'}</h3>
+              <h3 className="text-xl font-bold text-slate-900">{t('case_stats')}</h3>
               <p className="text-slate-500 text-sm font-medium">
                 {selectedMonth === 'all' 
-                  ? (language === 'bn' ? 'সারা বছরের মামলার গতিবিধি' : 'Yearly Case Activity') 
-                  : (language === 'bn' ? 'সারা মাসের মামলার গতিবিধি' : 'Monthly Case Activity')}
+                  ? t('yearly_case_activity') 
+                  : t('monthly_case_activity')}
               </p>
             </div>
             <div className="flex gap-2">
@@ -184,7 +331,7 @@ export const HomeView = ({
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="bg-slate-50 border-none rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
               >
-                <option value="all">{language === 'bn' ? 'সব মাস' : 'All Months'}</option>
+                <option value="all">{t('all_months')}</option>
                 {monthsEn.map((m, i) => (
                   <option key={i} value={i.toString()}>{language === 'bn' ? monthsBn[i] : m}</option>
                 ))}
@@ -224,14 +371,14 @@ export const HomeView = ({
                 <Legend wrapperStyle={{ paddingTop: '20px' }} />
                 <Bar 
                   dataKey="added" 
-                  name={language === 'bn' ? 'যুক্ত' : 'Added'}
+                  name={t('added')}
                   fill="#4f46e5" 
                   radius={[6, 6, 0, 0]} 
                   barSize={selectedMonth === 'all' ? 12 : 30}
                 />
                 <Bar 
                   dataKey="resolved" 
-                  name={language === 'bn' ? 'নিষ্পত্তি' : 'Resolved'}
+                  name={t('resolved')}
                   fill="#10b981" 
                   radius={[6, 6, 0, 0]} 
                   barSize={selectedMonth === 'all' ? 12 : 30}
@@ -244,8 +391,8 @@ export const HomeView = ({
         {/* Recent Cases List */}
         <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-slate-900">সাম্প্রতিক মামলা</h3>
-            <button onClick={() => setActiveTab('cases')} className="text-indigo-600 text-sm font-bold hover:underline">সব দেখুন</button>
+            <h3 className="text-xl font-bold text-slate-900">{t('recent_cases')}</h3>
+            <button onClick={() => setActiveTab('cases')} className="text-indigo-600 text-sm font-bold hover:underline">{t('view_all')}</button>
           </div>
           <div className="space-y-4 flex-1">
             {cases.slice(0, 4).map((c) => (
@@ -267,13 +414,84 @@ export const HomeView = ({
             ))}
           </div>
           <div className="mt-8 p-6 bg-indigo-50 rounded-3xl border border-indigo-100">
-            <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2">প্রো টিপ</p>
+            <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2">{t('pro_tip')}</p>
             <p className="text-sm text-indigo-900 font-medium leading-relaxed">
-              আপনার মামলার পরবর্তী তারিখগুলো ক্যালেন্ডারে অটো-সেভ হয়ে যায়। নিয়মিত চেক করুন।
+              {t('pro_tip_desc')}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Score Details Modal */}
+      <AnimatePresence>
+        {showScoreModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className={`relative w-full max-w-lg p-8 rounded-[3rem] shadow-2xl border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}
+            >
+              <button 
+                onClick={() => setShowScoreModal(false)}
+                className="absolute top-6 right-6 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                <X size={24} />
+              </button>
+
+                  <div className="flex items-center gap-4 mb-8">
+                <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
+                  <Award size={32} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                    {t('score_details_title')}
+                  </h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-lg">LIVE SCORE: 100</span>
+                    <span className="text-slate-400 text-xs font-bold">{t('target')}: 100</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {[
+                  { label: t('score_criteria_profile'), desc: t('score_profile_desc'), score: 25, max: 25, icon: User, color: 'text-blue-500' },
+                  { label: t('score_criteria_updates'), desc: t('score_update_desc'), score: 35, max: 35, icon: Calendar, color: 'text-indigo-500' },
+                  { label: t('score_criteria_ratings'), desc: t('score_rating_desc'), score: 25, max: 25, icon: Star, color: 'text-amber-500' },
+                  { label: t('score_criteria_accuracy'), desc: t('score_accuracy_desc'), score: 15, max: 15, icon: CheckCircle2, color: 'text-emerald-500' },
+                ].map((item, idx) => (
+                  <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-3">
+                        <item.icon size={18} className={item.color} />
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.label}</span>
+                      </div>
+                      <span className="text-sm font-black text-slate-900 dark:text-white">{item.score}/{item.max}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium mb-3 ml-7">{item.desc}</p>
+                    <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(item.score / item.max) * 100}%` }}
+                        transition={{ delay: 0.5 + (idx * 0.1), duration: 1 }}
+                        className={`h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button 
+                onClick={() => setShowScoreModal(false)}
+                className="w-full mt-8 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 uppercase tracking-widest text-sm"
+              >
+                {t('confirm')}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

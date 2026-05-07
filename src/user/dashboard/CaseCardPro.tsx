@@ -19,10 +19,10 @@ import { AdBanner } from './AdBanner';
 
 interface CaseCardProProps {
   caseData: Case;
-  onUpdate: (id: number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean) => void;
+  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public') => void;
   onCaseNumberClick?: (caseNumber: string) => void;
-  onAddDocument: (id: number, document: { name: string; type: string; url: string }) => void;
-  onDelete?: (id: number) => void;
+  onAddDocument: (id: string | number, document: { name: string; type: string; url: string }) => void;
+  onDelete?: (id: string | number) => void;
   isPetitioner?: boolean;
   isRespondent?: boolean;
   userType: string;
@@ -45,6 +45,7 @@ export const CaseCardPro = ({
   const [order, setOrder] = useState(caseData.order || '');
   const [clerkCanCall, setClerkCanCall] = useState(caseData.clerkCanCall || false);
   const [lawyerCanCall, setLawyerCanCall] = useState(caseData.lawyerCanCall || false);
+  const [visibility, setVisibility] = useState<'private' | 'public'>(caseData.visibility as any || 'private');
   const [showCalendar, setShowCalendar] = useState(false);
   const [calDate, setCalDate] = useState(new Date());
   const [showAd, setShowAd] = useState(false);
@@ -77,7 +78,7 @@ export const CaseCardPro = ({
     const todayStr = getDateStr(new Date());
 
     return (
-      <div className="absolute z-50 bg-white border border-slate-200 shadow-2xl p-3 rounded-2xl top-0 right-full mr-3 min-w-[220px] text-slate-900 animate-in fade-in zoom-in duration-200">
+      <div className="bg-white border border-slate-200 shadow-2xl p-3 rounded-2xl min-w-[220px] text-slate-900 animate-in fade-in zoom-in duration-200">
         <div className="flex justify-between items-center mb-3 bg-slate-50 p-1.5 rounded-xl">
           <button onClick={(e) => { e.stopPropagation(); setCalDate(new Date(year, month - 1)); }} className="p-1.5 hover:bg-white hover:shadow-sm rounded-lg transition-all">{'<'}</button>
           <span className="font-bold text-sm text-slate-700">{monthNames[month]} {year}</span>
@@ -139,7 +140,7 @@ export const CaseCardPro = ({
 
   const handleAction = (msg: string, update: boolean = false) => {
     if (update) {
-      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall);
+      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility);
     }
     setConfirmMsg(msg);
     setShowAd(true);
@@ -150,7 +151,7 @@ export const CaseCardPro = ({
       handleAction('ধন্যবাদ, আপনার আগেই তথ্য আপলোড করা হয়েছে। আপনি অন্যত্র চেষ্টা করুন।', false);
       return;
     }
-    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall);
+    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility);
     handleAction('সকল পক্ষের ক্যালেন্ডারে তথ্য আপডেট করা হয়েছে।', true);
   };
 
@@ -241,7 +242,9 @@ export const CaseCardPro = ({
             )}
             <div className="h-8 w-px bg-slate-100 mx-2 hidden md:block"></div>
             <div className="text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">পরবর্তী তারিখ</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                আগামী তারিখ <span className="opacity-70">(Next Date)</span>
+              </p>
               <p className="text-sm font-bold text-indigo-600">{caseData.nextDate}</p>
             </div>
           </div>
@@ -251,21 +254,21 @@ export const CaseCardPro = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
-                  <User size={20} className="text-indigo-600" />
+                <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center shadow-sm">
+                  <User size={20} className="text-sky-600" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">বাদী/দরখাস্তকারী</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase">বাদী/আবেদনকারী (Petitioner)</p>
                   <p className="font-bold text-slate-800">{caseData.petitioner}</p>
                 </div>
               </div>
               <span className="text-xs font-black text-slate-300">VS</span>
               <div className="flex items-center gap-3 text-right">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase">বিবাদী/রেসপনডেন্ট</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase">বিবাদী/আসামী (Respondent)</p>
                   <p className="font-bold text-slate-800">{caseData.respondent}</p>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm">
+                <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center shadow-sm">
                   <User size={20} className="text-rose-600" />
                 </div>
               </div>
@@ -273,11 +276,11 @@ export const CaseCardPro = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">বর্তমান অবস্থা</p>
-                <p className="text-sm font-bold text-slate-700">{caseData.status}</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">পদক্ষেপ (Step/Action)</p>
+                <p className="text-sm font-bold text-slate-700">{caseData.order || caseData.status}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">আইনজীবী</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">আইনজীবী (Lawyer)</p>
                 <p className="text-sm font-bold text-slate-700">{caseData.petitionerLawyer || caseData.respondentLawyer || 'নির্ধারিত নেই'}</p>
               </div>
             </div>
@@ -287,39 +290,57 @@ export const CaseCardPro = ({
             <div className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <div className="flex-1 relative">
-                  <input 
-                    type="text"
-                    value={nextDate}
-                    onChange={(e) => setNextDate(e.target.value)}
-                    placeholder="পরবর্তী তারিখ (YYYY-MM-DD)"
-                    className="w-full pl-4 pr-10 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                  />
-                  <button 
-                    onClick={() => setShowCalendar(!showCalendar)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-indigo-600 transition-colors"
-                  >
-                    <Calendar size={20} />
-                  </button>
-                  {showCalendar && renderCalendarTable()}
+                  <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আগামী তারিখ (Next Date)</p>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      value={nextDate}
+                      readOnly
+                      onClick={() => setShowCalendar(true)}
+                      placeholder="YYYY-MM-DD"
+                      className="w-full pl-4 pr-10 py-3 bg-white border border-indigo-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer shadow-sm"
+                    />
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setShowCalendar(!showCalendar); }}
+                      className="absolute right-3 top-3.5 text-indigo-500 hover:text-indigo-700 transition-colors bg-indigo-50 p-1 rounded-lg"
+                    >
+                      <Calendar size={18} />
+                    </button>
+                    {showCalendar && (
+                      <div className="absolute z-[60] mt-2 top-full right-0">
+                        {renderCalendarTable()}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
-                <select 
-                  value={side}
-                  onChange={(e) => setSide(e.target.value as any)}
-                  className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                >
-                  <option value="petitioner">বাদী পক্ষ</option>
-                  <option value="respondent">বিবাদী পক্ষ</option>
-                  <option value="accused">আসামি পক্ষ</option>
-                </select>
+                <div className="flex-1">
+                  <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আপনার পক্ষ (Your Party)</p>
+                  <select 
+                    value={side}
+                    onChange={(e) => setSide(e.target.value as any)}
+                    className={`w-full px-4 py-3 border rounded-2xl text-sm font-bold outline-none focus:ring-2 transition-all ${
+                      side === 'petitioner' 
+                        ? 'bg-sky-50 text-sky-700 border-sky-100 focus:ring-sky-500' 
+                        : 'bg-red-50 text-red-700 border-red-100 focus:ring-red-500'
+                    }`}
+                  >
+                    <option value="petitioner" className="text-sky-700">বাদী পক্ষ (Petitioner - Sky)</option>
+                    <option value="respondent" className="text-red-700">বিবাদী পক্ষ (Respondent - Red)</option>
+                    <option value="accused" className="text-red-700">আসামি পক্ষ (Accused - Red)</option>
+                  </select>
+                </div>
               </div>
 
-              <textarea 
-                value={order}
-                onChange={(e) => setOrder(e.target.value)}
-                placeholder="আজকের আদেশ বা নোট লিখুন..."
-                className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24"
-              />
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">পদক্ষেপ / আদেশ (Step / Order)</p>
+                <textarea 
+                  value={order}
+                  onChange={(e) => setOrder(e.target.value)}
+                  placeholder="হাজিরা, সময়, স্বাক্ষী, জেরা অথবা আজকের আদেশ লিখুন..."
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24"
+                />
+              </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <button 
@@ -376,6 +397,18 @@ export const CaseCardPro = ({
                   className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <span className="text-[10px] font-bold text-slate-600 group-hover:text-indigo-600 transition-colors">আইনজীবী</span>
+              </label>
+
+              <div className="h-4 w-px bg-slate-200 mx-1"></div>
+
+              <label className="flex items-center gap-1.5 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  checked={visibility === 'public'} 
+                  onChange={(e) => setVisibility(e.target.checked ? 'public' : 'private')}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-[10px] font-bold text-slate-600 group-hover:text-emerald-600 transition-colors">পাবলিক ভিউ</span>
               </label>
             </div>
           </div>
