@@ -10,7 +10,6 @@ import {
   LogOut,
   LucideIcon
 } from 'lucide-react';
-import { Logo } from '../../components/Logo';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -53,7 +52,7 @@ export const Header = ({
           <Menu size={24} />
         </button>
         <div className="flex lg:hidden">
-          <Logo size="sm" />
+          <img src="/brand-banner.png" alt="MDC LEGAL Banner" className="h-10 w-auto object-contain" />
         </div>
         <div className="hidden lg:flex items-center gap-3 bg-slate-50 dark:bg-slate-800 px-4 py-2.5 rounded-2xl border border-slate-100 dark:border-slate-700 group focus-within:ring-2 focus-within:ring-indigo-500 transition-all w-80">
           <Search size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
