@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, User, MapPin, Phone, ArrowRight, Gavel, Briefcase, Users, ChevronDown, Globe } from 'lucide-react';
+import { Mail, Lock, User, MapPin, Phone, ArrowRight, Gavel, Briefcase, Users, ChevronDown, Globe, Eye, EyeOff } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS, COUNTRY_CODES, getPoliceStations } from '../../constants';
-import { auth, googleProvider, db } from '../../firebase';
+import { auth, googleProvider, db, handleFirestoreError, OperationType } from '../../firebase';
 import { 
   signInWithPopup, 
   createUserWithEmailAndPassword, 
@@ -43,6 +43,9 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const refCode = urlParams.get('ref') || '';
@@ -93,10 +96,14 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       if (!response.ok) throw new Error(data.error);
 
       // Store in Firestore for complete backup
-      await setDoc(doc(db, 'users', user.uid), {
-        ...data.user,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      try {
+        await setDoc(doc(db, 'users', user.uid), {
+          ...data.user,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
+      }
 
       setLoading(false);
       onAuthSuccess(data.user);
@@ -186,10 +193,30 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         if (!response.ok) throw new Error(data.error);
 
         // 3. Firestore Backup (Complete save in Firebase as requested)
-        await setDoc(doc(db, 'users', fbUser.uid), {
-          ...data.user,
+        const userToSaveFirestore = {
+          firebase_uid: data.user.firebase_uid,
+          name: data.user.fullName,
+          email: data.user.email,
+          mobile: data.user.mobile,
+          user_type: data.user.userType,
+          district: data.user.district,
+          thana: data.user.thana,
+          country: data.user.country,
+          referral_code: data.user.referralCode || '',
+          referred_by: data.user.referredBy || '',
+          is_approved: false,
+          wallet_balance: 0,
+          points: 0,
+          ai_questions_count: 0,
           createdAt: new Date().toISOString()
-        });
+        };
+        console.log("[DEBUG] Firestore writing to:", `users/${fbUser.uid}`);
+        console.log("[DEBUG] Firestore User to save:", JSON.stringify(userToSaveFirestore));
+        try {
+          await setDoc(doc(db, 'users', fbUser.uid), userToSaveFirestore);
+        } catch (e) {
+          handleFirestoreError(e, OperationType.WRITE, `users/${fbUser.uid}`);
+        }
 
         setLoading(false);
         onAuthSuccess(data.user);
@@ -435,14 +462,21 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="পাসওয়ার্ড"
-                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             )}
 
@@ -450,14 +484,21 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   name="confirmPassword"
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   placeholder="পাসওয়ার্ড নিশ্চিত করুন"
-                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             )}
 

@@ -151,7 +151,13 @@ export const Sidebar = ({
             </button>
           </div>
           
-          <div className="flex items-center gap-3 px-2">
+          <button 
+            onClick={() => {
+              setActiveTab('profile');
+              if (window.innerWidth < 1024) onClose();
+            }}
+            className="flex items-center gap-3 px-2 w-full text-left"
+          >
             <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-black text-sm">
               {userName.charAt(0)}
             </div>
@@ -159,7 +165,7 @@ export const Sidebar = ({
               <p className={`text-xs font-black truncate ${theme === 'dark' ? 'text-white' : 'text-indigo-950'}`}>{userName}</p>
               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{userType}</p>
             </div>
-          </div>
+          </button>
         </div>
       </aside>
     </>

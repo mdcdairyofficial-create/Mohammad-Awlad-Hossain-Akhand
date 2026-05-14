@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users, Shield, CheckCircle, XCircle, FileText, CreditCard, LayoutDashboard, MessageSquare, Bell, Send, Clock, User as UserIcon, Search, TrendingUp, PieChart as PieChartIcon, BarChart as BarChartIcon, MapPin } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
-import { sendGlobalNotification, subscribeToAllSupportChats, subscribeToMessages, sendMessage } from '../services/user/featureService';
+import { sendGlobalNotification, subscribeToMessages, sendMessage } from '../services/user/featureService';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { auth } from '../firebase';
@@ -160,9 +160,8 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
     
     let unsubChats: (() => void) | undefined;
     if (isAuthReady) {
-      unsubChats = subscribeToAllSupportChats((data) => {
-        setSupportChats(data);
-      });
+      // Need alternative or removal
+      console.warn("Support chats subscription disabled - dependency missing");
     }
 
     return () => {

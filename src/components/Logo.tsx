@@ -20,8 +20,8 @@ export const Logo = ({ className = "", showSubtitle = false, size = 'md' }: Logo
         {/* Main Logo Container */}
         <div className={`${sizeClasses[size]} bg-white rounded-xl lg:rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-600/10 overflow-hidden border border-slate-100 group-hover:scale-105 transition-transform duration-500 relative z-10`}>
           <img 
-            src="https://ais-blob-abpf5up7tfpf5iiqmxk4bl-213411422099.asia-southeast1.run.app/c1452445-5654-477c-a496-e248b945ff60" 
-            alt="MDC DAIRY" 
+            src="https://ais-blob-abpf5up7tfpf5iiqmxk4bl-213411422099.asia-southeast1.run.app/42d20120-cfbc-4b95-bdb1-995b057baf36" 
+            alt="MDC LEGAL" 
             className="w-full h-full object-contain"
           />
         </div>

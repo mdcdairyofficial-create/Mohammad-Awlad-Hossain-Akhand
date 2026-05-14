@@ -79,7 +79,6 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
     return () => {
       unsubUsers();
       unsubCampaigns();
-      unsubChats();
     };
   }, []);
 

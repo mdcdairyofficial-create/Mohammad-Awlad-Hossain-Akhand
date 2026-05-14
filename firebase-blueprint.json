@@ -71,6 +71,29 @@
         "transaction_id": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       }
+    },
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "User chat session with admin",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "title": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A single message in a chat session",
+      "type": "object",
+      "properties": {
+        "chat_session_id": { "type": "string" },
+        "sender_id": { "type": "string" },
+        "sender_name": { "type": "string" },
+        "message": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -85,6 +108,14 @@
     "/recharge_orders/{orderId}": {
       "schema": "RechargeOrder",
       "description": "Recharge and subscription requests"
+    },
+    "/chat_sessions/{sessionId}": {
+      "schema": "ChatSession",
+      "description": "Chat sessions"
+    },
+    "/chat_sessions/{sessionId}/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Chat messages"
     }
   }
 }

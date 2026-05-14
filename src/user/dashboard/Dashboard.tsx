@@ -130,6 +130,7 @@ import { ProfileView } from './views/ProfileView';
 import { ReligiousTextsView } from './views/ReligiousTextsView';
 import { InvoicesView } from './views/InvoicesView';
 import { LegalDraftsView } from './views/LegalDraftsView';
+import { SubscriptionView } from './views/SubscriptionView';
 
 import { ProfessionalIDCard } from './components/ProfessionalIDCard';
 import { AdFlexiplan } from './components/AdFlexiplan';
@@ -227,6 +228,8 @@ interface DashboardProps {
   aiQuestionsCount?: number;
   lastAiResetDate?: string;
   points?: number;
+  displayDataMb?: string;
+  estimatedBillTaka?: number;
   chamberAddress?: string;
   officeHours?: string;
   barAssociation?: string;
@@ -255,6 +258,8 @@ export default function Dashboard({
   aiQuestionsCount,
   lastAiResetDate,
   points,
+  displayDataMb = '0.00',
+  estimatedBillTaka = 0,
   chamberAddress: initialChamberAddress,
   officeHours: initialOfficeHours,
   barAssociation: initialBarAssociation,
@@ -271,7 +276,8 @@ export default function Dashboard({
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentViewMode, setCurrentViewMode] = useState<string>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType);
   const isSubscribed = subscriptionPackage && subscriptionPackage !== 'free';
-  const isPremiumFeatures = ['premium', 'special'].includes(subscriptionPackage || '');
+  const isPremiumFeatures = ['premium', 'special', 'silver', 'gold', 'platinum', 'diamond'].includes(subscriptionPackage || '');
+  const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points'>('dashboard');
@@ -753,7 +759,7 @@ export default function Dashboard({
         body: JSON.stringify({
           userId,
           amount,
-          purpose: `Subscription|${selectedPlan?.name}|${selectedPlan?.duration}|${subscriptionTarget}`,
+          purpose: `${purpose}|${subscriptionTarget}`,
           orderId: `SUB_${Date.now()}_${userId}`
         })
       });
@@ -851,6 +857,8 @@ export default function Dashboard({
   const [aiButtonSide, setAiButtonSide] = useState<'left' | 'right'>('right');
   const [aiQuery, setAiQuery] = useState('');
   const [aiMessages, setAiMessages] = useState<{role: 'user'|'model', text: string}[]>([]);
+  const [aiCaseMessages, setAiCaseMessages] = useState<{role: 'user'|'model', text: string}[]>([]);
+  const [aiMode, setAiMode] = useState<'general' | 'case'>('general');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -945,7 +953,7 @@ export default function Dashboard({
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [aiMessages, isAiLoading, isLegalAIOpen]);
+  }, [aiMessages, aiCaseMessages, aiMode, isAiLoading, isLegalAIOpen]);
 
   // Emergency State
   const [selectedDist, setSelectedDist] = useState<string>('');
@@ -1152,6 +1160,7 @@ export default function Dashboard({
       items: [
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
         { id: 'recharge', label: t('recharge'), icon: Smartphone },
+        { id: 'subscription', label: t('subscription'), icon: CreditCard },
       ]
     },
     {
@@ -1779,10 +1788,27 @@ export default function Dashboard({
     if (!aiQuery.trim()) return;
 
     const userMessage = aiQuery;
-    const newMessages = [...aiMessages, { role: 'user' as const, text: userMessage }];
-    setAiMessages(newMessages);
+    
+    // Determine active messages array to update
+    const activeMessages = aiMode === 'case' ? aiCaseMessages : aiMessages;
+    const newMessages = [...activeMessages, { role: 'user' as const, text: userMessage }];
+    
+    if (aiMode === 'case') {
+      setAiCaseMessages(newMessages);
+    } else {
+      setAiMessages(newMessages);
+    }
+    
     setAiQuery('');
     setIsAiLoading(true);
+
+    const activeCase = selectedCaseForCard || selectedCaseForHistory || editingCase || (isTaskFormOpen && taskCaseNumber ? cases.find(c => c.caseNumber === taskCaseNumber) : null);
+
+    if (aiMode === 'case' && !activeCase) {
+      setAiCaseMessages([...newMessages, { role: 'model', text: 'অনুগ্রহ করে স্ক্রিনে একটি মামলা ওপেন করুন (যেমন: মামলার বিস্তারিত দেখুন বা এডিট করুন)। তাহলে আমি ওই মামলার তথ্য এনালাইসিস করতে পারব।' }]);
+      setIsAiLoading(false);
+      return;
+    }
 
     // AI Limit Check
     let deductPoints = false;
@@ -1804,7 +1830,8 @@ export default function Dashboard({
         if ((userPoints || 0) >= 10) {
           deductPoints = true;
         } else {
-          setAiMessages([...newMessages, { role: 'model', text: t('ai_limit_reached').replace('{limit}', limit.toString()).replace('{points}', (userPoints || 0).toString()) }]);
+          const updateArray = aiMode === 'case' ? setAiCaseMessages : setAiMessages;
+          updateArray([...newMessages, { role: 'model', text: t('ai_limit_reached').replace('{limit}', limit.toString()).replace('{points}', (userPoints || 0).toString()) }]);
           setIsAiLoading(false);
           return;
         }
@@ -1819,11 +1846,22 @@ export default function Dashboard({
         parts: [{ text: m.text }]
       }));
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: contents,
-        config: {
-          systemInstruction: `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং এই "MDC Diary" অ্যাপের গাইড। আপনি বাংলাদেশের আইন, ধারা, সাজা, সাক্ষ্য গ্রহণের টেকনিক, জেরা করার টেকনিক, যুক্তিতর্ক, এবং দরখাস্ত লেখার নিয়ম সম্পর্কে উকিল ও মুহুরিদের সাহায্য করবেন। 
+      let systemInstruction = '';
+      if (aiMode === 'case' && activeCase) {
+        systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট। 
+বর্তমানে ব্যবহারকারী একটি নির্দিষ্ট মামলার তথ্যের উপর ফোকাস করছেন। 
+মামলার বিস্তারিত তথ্য নিচে দেওয়া হলো:
+- মামলা নং: ${activeCase.caseNumber || 'N/A'}
+- বাদী: ${activeCase.petitioner || 'N/A'}
+- বিবাদী: ${activeCase.respondent || 'N/A'}
+- মামলার তারিখ: ${activeCase.date || 'N/A'}
+- পরবর্তী তারিখ: ${activeCase.nextDate || 'N/A'}
+- আদালত: ${activeCase.court || 'N/A'}
+- মামলার বিবরণ: ${activeCase.details || 'N/A'}
+
+আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
+      } else {
+        systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং এই "MDC Diary" অ্যাপের গাইড। আপনি বাংলাদেশের আইন, ধারা, সাজা, সাক্ষ্য গ্রহণের টেকনিক, জেরা করার টেকনিক, যুক্তিতর্ক, এবং দরখাস্ত লেখার নিয়ম সম্পর্কে উকিল ও মুহুরিদের সাহায্য করবেন। 
 
 বর্তমান ব্যবহারকারীর ধরণ: ${currentViewMode === 'lawyer' ? 'উকিল' : currentViewMode === 'clerk' ? 'মুহুরি' : currentViewMode === 'advertiser' ? 'বিজ্ঞাপনদাতা' : currentViewMode === 'client' ? 'ক্লায়েন্ট' : 'অ্যাডমিন'}। আপনি ব্যবহারকারীর ধরণ অনুযায়ী আরও প্রাসঙ্গিক পরামর্শ দিন।
 
@@ -1842,11 +1880,22 @@ export default function Dashboard({
 ১২. ২০ বছরের মেমোরি: আপনার মামলার আজীবন ইতিহাস।
 ১৩. টাস্ক ম্যানেজমেন্ট: আপনার এবং টিমের কাজের তালিকা।
 
-ব্যবহারকারী অ্যাপের কোনো বাটন বা প্রসেস সম্পর্কে জানতে চাইলে সহজভাবে বুঝিয়ে বলুন। বাংলায় উত্তর দিন।`,
+ব্যবহারকারী অ্যাপের কোনো বাটন বা প্রসেস সম্পর্কে জানতে চাইলে সহজভাবে বুঝিয়ে বলুন। বাংলায় উত্তর দিন।`;
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
         }
       });
 
-      setAiMessages([...newMessages, { role: 'model', text: response.text || '' }]);
+      if (aiMode === 'case') {
+        setAiCaseMessages([...newMessages, { role: 'model', text: response.text || '' }]);
+      } else {
+        setAiMessages([...newMessages, { role: 'model', text: response.text || '' }]);
+      }
       
       // Increment AI usage in background
       fetchWithAuth('/api/users/increment-ai-usage', {
@@ -1864,7 +1913,8 @@ export default function Dashboard({
 
     } catch (error) {
       console.error(error);
-      setAiMessages([...newMessages, { role: 'model', text: t('ai_connection_error') }]);
+      const updateArray = aiMode === 'case' ? setAiCaseMessages : setAiMessages;
+      updateArray([...newMessages, { role: 'model', text: t('ai_connection_error') }]);
     } finally {
       setIsAiLoading(false);
     }
@@ -2199,7 +2249,7 @@ export default function Dashboard({
                     setActiveTab={setActiveTab}
                     t={t}
                     isPremium={isPremiumFeatures}
-                    isPremiumForAds={subscriptionPackage === 'premium'}
+                    isPremiumForAds={isAdFree}
                     referralCode={referralCode}
                     referralCount={referralHistory.filter(r => r.case_count >= 10).length}
                     onCopyLink={() => {
@@ -2213,6 +2263,8 @@ export default function Dashboard({
                       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                     }}
                     initialShowScoreModal={activeTab === 'performance'}
+                    displayDataMb={displayDataMb}
+                    estimatedBillTaka={estimatedBillTaka}
                   />
                 )
               )}
@@ -2253,7 +2305,7 @@ export default function Dashboard({
                   t={t}
                   language={language}
                   isPremium={isPremiumFeatures}
-                  isPremiumForAds={subscriptionPackage === 'premium'}
+                  isPremiumForAds={isAdFree}
                   userType={userType}
                 />
               )}
@@ -2357,7 +2409,7 @@ export default function Dashboard({
 
               {activeTab === 'tasks' && (
                 <div className="space-y-6">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center">
@@ -2682,21 +2734,21 @@ export default function Dashboard({
 
               {activeTab === 'lawyers' && (
                 <div className="space-y-6 max-w-4xl mx-auto pb-20">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <LawyerDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
                 </div>
               )}
 
               {activeTab === 'media' && (
                 <div className="space-y-6 max-w-4xl mx-auto pb-20">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <Media />
                 </div>
               )}
 
               {activeTab === 'emergency' && (
                 <div className="space-y-6 max-w-4xl mx-auto pb-20">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <div className="bg-red-600 p-8 rounded-3xl text-white text-center shadow-lg shadow-red-200">
                     <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
                       <PhoneCall size={40} className="animate-pulse" />
@@ -2802,13 +2854,13 @@ export default function Dashboard({
                     </div>
                   </div>
 
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                 </div>
               )}
 
               {activeTab === 'profile' && (
                 <div className="space-y-6">
-                  <AdBanner theme={theme} isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner theme={theme} isPremium={isAdFree} />
                   <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                     <div className="flex flex-col md:flex-row items-center gap-8 mb-8">
                       <div className="relative">
@@ -3233,7 +3285,7 @@ export default function Dashboard({
 
               {activeTab === 'settings' && (
                 <div className="max-w-2xl mx-auto space-y-8">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                     <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
                       <Languages className="text-indigo-600" />
@@ -3353,9 +3405,30 @@ export default function Dashboard({
                             ></div>
                           </div>
                           <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
-                            {referralHistory.filter(r => r.case_count >= 10).length}/5 {t('special_offer_status').split(':')[0]}
+                            {referralHistory.filter(r => r.case_count >= 10).length}/5
                           </span>
                         </div>
+                        {referralHistory.filter(r => r.case_count >= 10).length >= 5 && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const res = await fetchWithAuth('/api/user/claim-special-pack', { method: 'POST' });
+                                const data = await res.json();
+                                if (data.success) {
+                                  alert(language === 'bn' ? 'অভিনন্দন! আপনার ১ মাসের স্পেশাল প্যাক চালু হয়েছে।' : 'Congratulations! Your 1 month Special Pack is activated.');
+                                  window.location.reload();
+                                } else {
+                                  alert(data.error || (language === 'bn' ? 'আপনি ইতিমধ্যে এটি ক্লেইম করেছেন বা কোনো সমস্যা হয়েছে।' : 'Already claimed or an error occurred.'));
+                                }
+                              } catch (e) {
+                                alert('Error claiming special pack');
+                              }
+                            }}
+                            className="mt-2 text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-1.5 rounded-full hover:brightness-110 shadow-md"
+                          >
+                            {language === 'bn' ? '১ মাসের স্পেশাল প্যাক দাবি করুন' : 'Claim 1 Month Special Pack'}
+                          </button>
+                        )}
                       </div>
                       
                       <div className="flex flex-col gap-3 w-full lg:w-[400px]">
@@ -3454,14 +3527,14 @@ export default function Dashboard({
 
               {activeTab === 'recharge' && (
                 <div className="space-y-8 bg-[#e7e6e6] p-4 md:p-8 rounded-3xl">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <Recharge userId={userId} />
                 </div>
               )}
 
               {(activeTab === 'cases' || activeTab === 'case_history_20y') && (
                 <div className="space-y-8 bg-[#e7e6e6] p-4 md:p-8 rounded-3xl">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   
                   {activeTab === 'case_history_20y' ? (
                     <motion.div 
@@ -3873,7 +3946,7 @@ export default function Dashboard({
               {activeTab === 'medigen' && (
                 <div className="h-full flex flex-col">
                   <div className="mb-4">
-                    <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                    <AdBanner isPremium={isAdFree} />
                   </div>
                   <div className="flex-1">
                     <MediGen />
@@ -3884,7 +3957,7 @@ export default function Dashboard({
               {activeTab === 'affiliate_zone' && (
                 <div className="h-full flex flex-col">
                   <div className="mb-4">
-                    <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                    <AdBanner isPremium={isAdFree} />
                   </div>
                   <div className="flex-1">
                     <AffiliateZone 
@@ -3925,15 +3998,28 @@ export default function Dashboard({
                 </div>
               )}
 
+              {activeTab === 'subscription' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <SubscriptionView 
+                      t={t} 
+                      userId={userId?.toString()} 
+                      userType={currentViewMode} 
+                      currentPackage={subscriptionPackage}
+                      expiryDate={subscriptionEndDate}
+                      onSubscribe={(pkg) => initiateOnlinePayment(pkg.price, `Subscription|${pkg.name}|${pkg.duration}`)}
+                    />
+                </div>
+              )}
+
               {activeTab === 'legal_drafts' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <LegalDraftsView language={language} />
                 </div>
               )}
 
-              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && (
+              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <AdBanner isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner isPremium={isAdFree} />
                   <div className="bg-indigo-100 p-6 rounded-full mb-6 mt-8">
                     <Bot size={48} className="text-indigo-600" />
                   </div>
@@ -4131,16 +4217,35 @@ export default function Dashboard({
               </button>
             </div>
             
+            <div className="flex bg-slate-100 p-1 rounded-xl mx-4 mt-4">
+              <button
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${aiMode === 'general' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={() => setAiMode('general')}
+              >
+                জেনারেল বট
+              </button>
+              <button
+                className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${aiMode === 'case' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                onClick={() => setAiMode('case')}
+              >
+                মামলা বট
+              </button>
+            </div>
+
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-50/50">
-              {aiMessages.length === 0 ? (
+              {(aiMode === 'case' ? aiCaseMessages : aiMessages).length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
                   <Bot size={48} className="text-indigo-300" />
                   <p className="text-sm text-slate-500 font-medium max-w-[250px]">
-                    {t('ai_desc')}
+                    {aiMode === 'case' ? (
+                      selectedCaseForCard || selectedCaseForHistory || editingCase || (isTaskFormOpen && taskCaseNumber ? cases.find(c => c.caseNumber === taskCaseNumber) : null) 
+                        ? 'মামলার তথ্য এনালাইসিস করতে প্রশ্ন করুন।' 
+                        : 'অনুগ্রহ করে স্ক্রিনে একটি মামলা ওপেন করুন (যেমন: মামলার বিস্তারিত দেখুন বা এডিট করুন)। তাহলে আমি ওই মামলার তথ্য এনালাইসিস করতে পারব।'
+                    ) : t('ai_desc')}
                   </p>
                 </div>
               ) : (
-                aiMessages.map((msg, idx) => (
+                (aiMode === 'case' ? aiCaseMessages : aiMessages).map((msg, idx) => (
                   <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] rounded-2xl p-3 text-sm ${
                       msg.role === 'user' 
@@ -4349,7 +4454,7 @@ export default function Dashboard({
                 </div>
                 
                 <div className="py-8">
-                  <AdBanner containerClassName="bg-slate-50 border-slate-100 p-8" innerClassName="h-48 bg-slate-200" isPremium={subscriptionPackage === 'premium'} />
+                  <AdBanner containerClassName="bg-slate-50 border-slate-100 p-8" innerClassName="h-48 bg-slate-200" isPremium={isAdFree} />
                 </div>
 
                 <button
@@ -4627,7 +4732,7 @@ export default function Dashboard({
                   sponsorName={currentViewMode === 'clerk' ? sponsorName : undefined}
                   sponsorMobile={currentViewMode === 'clerk' ? sponsorMobile : undefined}
                   profilePicture={profilePic}
-                  isPremium={subscriptionPackage === 'premium'}
+                  isPremium={isAdFree}
                   language={language}
                   theme={theme}
                 />

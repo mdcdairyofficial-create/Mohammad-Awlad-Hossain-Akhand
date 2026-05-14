@@ -47,6 +47,8 @@ interface HomeViewProps {
   onWhatsAppShare?: () => void;
   referralCount?: number;
   initialShowScoreModal?: boolean;
+  displayDataMb?: string;
+  estimatedBillTaka?: number;
 }
 
 export const HomeView = ({
@@ -64,7 +66,9 @@ export const HomeView = ({
   onCopyLink,
   onWhatsAppShare,
   referralCount = 0,
-  initialShowScoreModal = false
+  initialShowScoreModal = false,
+  displayDataMb = '0.00',
+  estimatedBillTaka = 0
 }: HomeViewProps) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
@@ -197,6 +201,8 @@ export const HomeView = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-indigo-600', shadow: 'shadow-indigo-100' },
+          { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-emerald-600', shadow: 'shadow-emerald-100' },
+          { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-amber-600', shadow: 'shadow-amber-100' },
           { label: t('upcoming_dates'), value: cases.filter(c => {
               if (!c.nextDate) return false;
               const d = new Date(c.nextDate);

@@ -212,9 +212,51 @@ export const deleteTask = async (taskId: string) => {
 };
 
 // Support Chat
-export const subscribeToMessages = (chatId: string, callback: (messages: SupportMessage[]) => void) => {
+export const subscribeToChatSessions = (userId: string, callback: (sessions: any[]) => void) => {
   const q = query(
-    collection(db, `support_chats/${chatId}/messages`),
+    collection(db, 'chat_sessions'),
+    where('user_id', '==', userId),
+    orderBy('updated_at', 'desc')
+  );
+  return onSnapshot(q, (snapshot) => {
+    const sessions = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    callback(sessions);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, 'chat_sessions');
+  });
+};
+
+export const subscribeToAllSupportChats = (callback: (sessions: any[]) => void) => {
+  const q = query(
+    collection(db, 'chat_sessions'),
+    orderBy('updated_at', 'desc')
+  );
+  return onSnapshot(q, (snapshot) => {
+    const sessions = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    callback(sessions);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, 'chat_sessions');
+  });
+};
+
+export const createChatSession = async (userId: string, title: string) => {
+  return await addDoc(collection(db, 'chat_sessions'), {
+    user_id: userId,
+    title: title,
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp()
+  });
+};
+
+export const subscribeToMessages = (chatSessionId: string, callback: (messages: SupportMessage[]) => void) => {
+  const q = query(
+    collection(db, `chat_sessions/${chatSessionId}/messages`),
     orderBy('created_at', 'asc')
   );
   return onSnapshot(q, (snapshot) => {
@@ -224,53 +266,18 @@ export const subscribeToMessages = (chatId: string, callback: (messages: Support
     } as unknown as SupportMessage));
     callback(messages);
   }, (error) => {
-    handleFirestoreError(error, OperationType.GET, `support_chats/${chatId}/messages`);
+    handleFirestoreError(error, OperationType.GET, `chat_sessions/${chatSessionId}/messages`);
   });
 };
 
-export const sendMessage = async (chatId: string, message: Omit<SupportMessage, 'id' | 'created_at'>) => {
-  const messageRef = await addDoc(collection(db, `support_chats/${chatId}/messages`), {
+export const sendMessage = async (chatSessionId: string, message: Omit<SupportMessage, 'id' | 'created_at'>) => {
+  await addDoc(collection(db, `chat_sessions/${chatSessionId}/messages`), {
     ...message,
     created_at: serverTimestamp()
   });
 
-  // Update the chat document with last message info
-  const chatRef = doc(db, 'support_chats', chatId);
-  try {
-    await updateDoc(chatRef, {
-      last_message: message.message,
-      last_message_at: serverTimestamp(),
-      user_name: message.sender_name, // Ensure user name is updated
-      user_id: chatId // Assuming chatId is userId for now
-    });
-  } catch (err) {
-    // If document doesn't exist, create it
-    await setDoc(chatRef, {
-      last_message: message.message,
-      last_message_at: serverTimestamp(),
-      user_name: message.sender_name,
-      user_id: chatId
-    });
-  }
-
-  return messageRef;
-};
-
-export const subscribeToAllSupportChats = (callback: (chats: any[]) => void) => {
-  const q = query(
-    collection(db, 'support_chats'),
-    orderBy('last_message_at', 'desc'),
-    limit(50)
-  );
-
-  return onSnapshot(q, (snapshot) => {
-    const chats = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    callback(chats);
-  }, (error) => {
-    handleFirestoreError(error, OperationType.GET, 'support_chats');
+  await updateDoc(doc(db, 'chat_sessions', chatSessionId), {
+    updated_at: serverTimestamp()
   });
 };
 

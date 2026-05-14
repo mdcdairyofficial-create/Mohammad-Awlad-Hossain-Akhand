@@ -1,4 +1,4 @@
-# Security Specification for MDC Dairy Ad Dashboard
+# Security Specification for MDC LEGAL Ad Dashboard
 
 ## 1. Data Invariants
 - A campaign must always have an `ownerId` matching the authenticated user's UID.

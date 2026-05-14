@@ -54,6 +54,8 @@ export interface Case {
   lawyerCanCall?: boolean;
   created_at?: any;
   priority?: 'low' | 'medium' | 'high';
+  date?: string;
+  details?: string;
 }
 
 export interface Notification {

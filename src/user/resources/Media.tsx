@@ -172,7 +172,7 @@ export default function Media() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">MDC DAIRY ফেসবুক কাভার ফটো</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">MDC LEGAL ফেসবুক কাভার ফটো</label>
               <label className="relative flex items-center justify-center w-full min-h-[140px] bg-slate-50 dark:bg-slate-800 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500 cursor-pointer transition-all overflow-hidden group/cover">
                 {fbPreview ? (
                   <div className="absolute inset-0 w-full h-full">

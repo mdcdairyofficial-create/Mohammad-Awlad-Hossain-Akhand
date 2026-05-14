@@ -4,62 +4,300 @@ import SSLCommerzPayment from "sslcommerz-lts";
 import fs from "fs";
 import path from "path";
 import admin from "firebase-admin";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+
+import { initializeApp as initializeClientApp } from "firebase/app";
+import { 
+  getFirestore as getClientFirestore, 
+  collection, 
+  query as firestoreQuery, 
+  where, 
+  getDocs, 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  setDoc, 
+  addDoc, 
+  deleteDoc,
+  serverTimestamp,
+  increment,
+  writeBatch,
+  runTransaction as firestoreRunTransaction,
+  limit as firestoreLimit
+} from "firebase/firestore";
 
 // Initialize Firebase Admin
-let firestore: admin.firestore.Firestore;
-try {
-  const firebaseConfigPath = "./firebase-applet-config.json";
-  let firebaseConfig = { projectId: "gen-lang-client-0215506885", firestoreDatabaseId: "" };
-  
-  if (fs.existsSync(firebaseConfigPath)) {
-    const rawConfig = fs.readFileSync(firebaseConfigPath, "utf8");
-    firebaseConfig = JSON.parse(rawConfig);
-    console.log(`[Firebase] Loaded config from file. ProjectId: ${firebaseConfig.projectId}, DbId: ${firebaseConfig.firestoreDatabaseId}`);
-  } else {
-    console.warn(`[Firebase] Config file NOT found at ${firebaseConfigPath}, using defaults.`);
-  }
+let _firestoreInstance: any;
+let _clientDb: any;
 
-  const effectiveProjectId = process.env.FIREBASE_PROJECT_ID || process.env.GCP_PROJECT || firebaseConfig.projectId;
-  const dbId = process.env.FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
-  
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      projectId: effectiveProjectId
-    });
-  }
+// FieldValue shim for Client SDK
+const FieldValue = {
+  increment: (n: number) => increment(n),
+  serverTimestamp: () => serverTimestamp()
+};
 
-  if (dbId && dbId !== "" && dbId !== "(default)") {
-    firestore = getFirestore(dbId);
-  } else {
-    firestore = getFirestore();
+function initializeFirebase() {
+  try {
+    console.log("[Firebase] Starting initialization...");
+    const firebaseConfigPath = "./firebase-applet-config.json";
+    let firebaseConfig: any = {};
+    
+    if (fs.existsSync(firebaseConfigPath)) {
+      const raw = fs.readFileSync(firebaseConfigPath, "utf8");
+      firebaseConfig = JSON.parse(raw);
+      console.log(`[Firebase] Config loaded. Project: ${firebaseConfig.projectId}`);
+    } else {
+      console.warn("[Firebase] Config file NOT found!");
+    }
+
+    const projectId = firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID;
+    
+    // Initialize Admin for Auth (still needed for some things)
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        projectId: projectId || "(default)"
+      });
+    }
+
+    // Initialize Client SDK as primary Firestore driver due to IAM issues with Admin SDK
+    if (firebaseConfig.apiKey) {
+      console.log("[Firebase] Initializing Client SDK for Firestore Workaround");
+      const clientApp = initializeClientApp(firebaseConfig);
+      _clientDb = getClientFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+    }
+  } catch (err) {
+    console.error("[Firebase] Critical Initialization error:", err);
   }
-} catch (err) {
-  console.error("Firebase Admin initialization error:", err);
-  if (!admin.apps.length) {
-    admin.initializeApp({ projectId: "gen-lang-client-0215506885" });
-  }
-  firestore = admin.firestore();
 }
 
-const db = firestore; // Alias for convenience
+initializeFirebase();
+
+// Helper to ensure Firestore is initialized. Returns Client DB.
+const getDb = () => {
+  if (!_clientDb) {
+    initializeFirebase();
+    if (!_clientDb) throw new Error("Firestore could not be initialized. Please check Firebase configuration.");
+  }
+  return _clientDb;
+};
+
+// COMPAT LAYER: Shim to make Client SDK feel like Admin SDK for existing code
+const db: any = {
+  collection: (path: string) => {
+    const wrapColl = (c: any[]) => ({
+      where: (f: string, o: string, v: any) => wrapColl([...c, where(f, o as any, v)]),
+      limit: (l: number) => wrapColl([...c, firestoreLimit(l)]),
+      doc: (docId: string) => {
+          const docRef = doc(getDb(), path, docId);
+          return {
+            id: docRef.id,
+            get: async () => {
+              const snap = await getDoc(docRef);
+              return {
+                exists: snap.exists(),
+                data: () => snap.data(),
+                id: snap.id,
+                ref: {
+                  update: async (upd: any) => await updateDoc(docRef, upd),
+                  set: async (s: any, opt?: any) => await setDoc(docRef, s, opt)
+                }
+              };
+            },
+            set: async (data: any, options?: any) => await setDoc(docRef, data, options),
+            update: async (data: any) => await updateDoc(docRef, data),
+            delete: async () => await deleteDoc(docRef)
+          };
+      },
+      get: async () => {
+         const q = firestoreQuery(collection(getDb(), path), ...c);
+         const snap = await getDocs(q);
+         return {
+           empty: snap.empty,
+           size: snap.size,
+           docs: snap.docs.map(d => ({
+             id: d.id,
+             data: () => d.data(),
+             ref: {
+               update: async (upd: any) => await updateDoc(d.ref, upd),
+               set: async (s: any, opt?: any) => await setDoc(d.ref, s, opt),
+               get: async () => {
+                  const s = await getDoc(d.ref);
+                  return { id: s.id, data: () => s.data(), exists: s.exists() };
+               }
+             }
+           }))
+         };
+      },
+      add: async (data: any) => {
+        const docRef = await addDoc(collection(getDb(), path), data);
+        return {
+          id: docRef.id,
+          get: async () => {
+            const s = await getDoc(docRef);
+            return { id: s.id, data: () => s.data(), exists: s.exists() };
+          }
+        };
+      },
+      count: () => ({
+        get: async () => {
+          const q = firestoreQuery(collection(getDb(), path), ...c);
+          const snap = await getDocs(q);
+          return { data: () => ({ count: snap.size }) };
+        }
+      })
+    });
+    return wrapColl([]);
+  },
+  doc: (path: string) => {
+    const docRef = doc(getDb(), path);
+    return {
+      id: docRef.id,
+      get: async () => {
+        const snap = await getDoc(docRef);
+        return {
+          exists: snap.exists(),
+          data: () => snap.data(),
+          id: snap.id,
+          ref: {
+            update: async (upd: any) => await updateDoc(docRef, upd),
+            set: async (s: any, opt?: any) => await setDoc(docRef, s, opt)
+          }
+        };
+      },
+      set: async (data: any, options?: any) => {
+        if (options?.merge) {
+          return await setDoc(docRef, data, { merge: true });
+        }
+        return await setDoc(docRef, data);
+      },
+      update: async (data: any) => await updateDoc(docRef, data),
+      delete: async () => await deleteDoc(docRef)
+    };
+  },
+  batch: () => {
+    const b = writeBatch(getDb());
+    return {
+      set: (ref: any, data: any, opt?: any) => {
+        const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+        b.set(realRef, data, opt);
+      },
+      update: (ref: any, data: any) => {
+        const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+        b.update(realRef, data);
+      },
+      delete: (ref: any) => {
+        const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+        b.delete(realRef);
+      },
+      commit: async () => await b.commit()
+    };
+  },
+  runTransaction: async (updateFunction: (transaction: any) => Promise<any>) => {
+    return await firestoreRunTransaction(getDb(), async (t) => {
+      const transactionShim = {
+        get: async (ref: any) => {
+             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             const s = await t.get(realRef);
+             return { id: s.id, data: () => s.data(), exists: s.exists() };
+        },
+        update: (ref: any, data: any) => {
+             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             t.update(realRef, data);
+        },
+        set: (ref: any, data: any, opt?: any) => {
+             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             t.set(realRef, data, opt);
+        },
+        delete: (ref: any) => {
+             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             t.delete(realRef);
+        }
+      };
+      return await updateFunction(transactionShim);
+    });
+  }
+};
+
+
+const OperationType = {
+  CREATE: 'create',
+  UPDATE: 'update',
+  DELETE: 'delete',
+  LIST: 'list',
+  GET: 'get',
+  WRITE: 'write',
+} as const;
+type OperationType = typeof OperationType[keyof typeof OperationType];
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+  }
+}
+
+function handleFirestoreError(error: any, operationType: OperationType, path: string | null, req?: any) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error?.message || String(error),
+    operationType,
+    path,
+    authInfo: {
+      userId: req?.user?.uid || null,
+      email: req?.user?.email || null,
+      emailVerified: req?.user?.email_verified || null,
+    }
+  };
+  
+  if (errInfo.error.includes("PERMISSION_DENIED")) {
+    console.error("!!! CRITICAL PERMISSION ERROR !!!");
+    console.error("This usually means the Service Account lacks Cloud Datastore User role.");
+    console.error("Context:", JSON.stringify(errInfo, null, 2));
+  } else {
+    console.error("[Firestore Error]", JSON.stringify(errInfo));
+  }
+  
+  throw new Error(JSON.stringify(errInfo));
+}
 
 // Authentication Middleware
 const authenticate = async (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
+  console.log("[DEBUG] Auth header:", authHeader ? "Present" : "Missing");
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized: No token provided" });
   }
 
   const idToken = authHeader.split("Bearer ")[1];
   try {
+    console.log("[DEBUG] Verifying token...");
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
     
     // Fetch profile from Firestore
-    const userDoc = await db.collection("users").doc(decodedToken.uid).get();
-    if (userDoc.exists) {
-      req.profile = { id: userDoc.id, ...userDoc.data() };
+    try {
+      const userDoc = await db.doc("users/" + decodedToken.uid).get();
+      if (userDoc.exists) {
+        req.profile = { id: userDoc.id, ...userDoc.data() };
+        
+        // --- 500MB Usage Limit Logic ---
+        const displayMb = parseFloat(req.profile.display_data_mb || "0");
+        const isSubscribed = req.profile.subscription_status === 'active' || (req.profile.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
+        
+        // Prevent all non-GET requests if limit exceeded and not subscribed
+        if (displayMb >= 500 && !isSubscribed && req.method !== 'GET') {
+          // Allow exceptions for subscription and recharge related endpoints
+          const isPaymentRoute = req.originalUrl.includes('/api/subscription') || req.originalUrl.includes('/api/recharge');
+          if (!isPaymentRoute) {
+            return res.status(403).json({ error: "Data limit (500MB) exceeded. Please purchase a premium subscription to continue saving data." });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching user profile in middleware:", err);
+      // Don't throw here, just proceed without profile and let route decide
     }
     
     next();
@@ -77,6 +315,10 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+  // Health check for Cloud Run
+  app.get("/health", (req, res) => res.status(200).send("OK"));
+  app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+
   app.get("/api/users/:id", authenticate, async (req: any, res) => {
     try {
       const userId = req.params.id; // Now a string (doc ID)
@@ -85,7 +327,7 @@ async function startServer() {
       // Ensure user is only accessing their own profile OR is an admin
       const isAdmin = ['admin', 'super_admin', 'country_manager'].includes(req.profile?.user_type || '');
       
-      const userDoc = await db.collection("users").doc(userId).get();
+      const userDoc = await db.doc("users/" + userId).get();
       if (!userDoc.exists) {
         return res.status(404).json({ error: "User not found" });
       }
@@ -248,7 +490,7 @@ app.post('/api/subscription/request', async (req, res) => {
       if (socialLinks?.linkedin !== undefined) updateData.linkedin_url = socialLinks.linkedin;
 
       if (Object.keys(updateData).length > 0) {
-        await db.collection("users").doc(userId).update(updateData);
+        await db.doc("users/" + userId).update(updateData);
       }
       res.json({ success: true, message: "Profile updated successfully" });
     } catch (err: any) {
@@ -270,7 +512,7 @@ app.post('/api/subscription/request', async (req, res) => {
         return res.status(400).json({ error: "New password is required" });
       }
 
-      await db.collection("users").doc(userId).update({ password: newPassword });
+      await db.doc("users/" + userId).update({ password: newPassword });
 
       res.json({ success: true, message: "Password updated successfully" });
     } catch (err: any) {
@@ -301,12 +543,12 @@ app.post('/api/subscription/request', async (req, res) => {
         const now = new Date();
         
         if (lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
-          await db.collection("users").doc(userId).update({
+          await db.doc("users/" + userId).update({
             ai_questions_count: 1,
             last_ai_reset_date: FieldValue.serverTimestamp()
           });
         } else {
-          await db.collection("users").doc(userId).update({
+          await db.doc("users/" + userId).update({
             ai_questions_count: FieldValue.increment(1)
           });
         }
@@ -351,7 +593,7 @@ app.post('/api/subscription/request', async (req, res) => {
         return res.status(400).json({ error: "এই জেলায় ইতিমধ্যে একজন অ্যাডমিন নিযুক্ত আছেন।" });
       }
 
-      await db.collection("users").doc(targetUserId).update({
+      await db.doc("users/" + targetUserId).update({
         user_type: 'admin',
         appointed_by: adminProfile.id,
         subscription_end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
@@ -398,7 +640,7 @@ app.post('/api/subscription/request', async (req, res) => {
       
       const proofs = await Promise.all(snapshot.docs.map(async (doc) => {
         const data = doc.data();
-        const userDoc = await db.collection("users").doc(data.user_id).get();
+        const userDoc = await db.doc("users/" + data.user_id).get();
         const userData = userDoc.data() as any;
         return {
           id: doc.id,
@@ -419,7 +661,7 @@ app.post('/api/subscription/request', async (req, res) => {
   app.post("/api/admin/affiliate-proofs/:id/approve", async (req, res) => {
     try {
       const { id } = req.params;
-      const proofDoc = await db.collection("affiliate_proofs").doc(id).get();
+      const proofDoc = await db.doc("affiliate_proofs/" + id).get();
       const proof = proofDoc.data() as any;
       
       if (!proofDoc.exists || proof.status !== 'pending') {
@@ -430,9 +672,14 @@ app.post('/api/subscription/request', async (req, res) => {
         const userRef = db.collection("users").doc(proof.user_id);
         const proofRef = db.collection("affiliate_proofs").doc(id);
 
+        const newEndDate = new Date();
+        newEndDate.setMonth(newEndDate.getMonth() + 1);
+
         transaction.update(proofRef, { status: 'approved' });
         transaction.update(userRef, {
-          points: FieldValue.increment(100)
+          points: FieldValue.increment(100),
+          subscription_package: 'special',
+          subscription_end_date: newEndDate.toISOString()
         });
       });
 
@@ -446,7 +693,7 @@ app.post('/api/subscription/request', async (req, res) => {
   app.post("/api/admin/affiliate-proofs/:id/reject", async (req, res) => {
     try {
       const { id } = req.params;
-      await db.collection("affiliate_proofs").doc(id).update({ status: 'rejected' });
+      await db.doc("affiliate_proofs/" + id).update({ status: 'rejected' });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Failed to reject proof" });
@@ -485,7 +732,7 @@ app.post('/api/subscription/request', async (req, res) => {
       
       const cases = await Promise.all(snapshot.docs.map(async (doc) => {
         const data = doc.data();
-        const userDoc = await db.collection("users").doc(data.user_id).get();
+        const userDoc = await db.doc("users/" + data.user_id).get();
         return {
           id: doc.id,
           ...data,
@@ -517,7 +764,7 @@ app.get('/api/admin/subscription-requests', async (req, res) => {
 app.post('/api/admin/subscription-requests/:id/approve', async (req, res) => {
   const { id } = req.params;
   try {
-    const requestDoc = await db.collection("subscription_requests").doc(id).get();
+    const requestDoc = await db.doc("subscription_requests/" + id).get();
     if (!requestDoc.exists) return res.status(404).json({ error: 'Request not found' });
     const request = requestDoc.data() as any;
 
@@ -540,12 +787,12 @@ app.post('/api/admin/subscription-requests/:id/approve', async (req, res) => {
       }
     }
 
-    await db.collection("users").doc(targetUserId).update({
+    await db.doc("users/" + targetUserId).update({
       subscription_package: packageType,
       subscription_end_date: endDate.toISOString()
     });
 
-    await db.collection("subscription_requests").doc(id).update({ status: 'approved' });
+    await db.doc("subscription_requests/" + id).update({ status: 'approved' });
 
     res.json({ success: true });
   } catch (err) {
@@ -557,7 +804,7 @@ app.post('/api/admin/subscription-requests/:id/approve', async (req, res) => {
 app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
   const { id } = req.params;
   try {
-    await db.collection("subscription_requests").doc(id).update({ status: 'rejected' });
+    await db.doc("subscription_requests/" + id).update({ status: 'rejected' });
     res.json({ success: true });
   } catch (err) {
     console.error('Error rejecting subscription:', err);
@@ -573,7 +820,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       
       const requests = await Promise.all(snapshot.docs.map(async (doc) => {
         const data = doc.data();
-        const userDoc = await db.collection("users").doc(data.user_id).get();
+        const userDoc = await db.doc("users/" + data.user_id).get();
         return {
           id: doc.id,
           ...data,
@@ -876,8 +1123,14 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       if (!firebaseUid) return res.status(400).json({ error: "UID missing" });
 
       const usersRef = db.collection("users");
-      const query = await usersRef.where("firebase_uid", "==", firebaseUid).limit(1).get();
-      let userDoc = query.empty ? null : query.docs[0];
+      let query;
+      try {
+        query = await usersRef.where("firebase_uid", "==", firebaseUid).limit(1).get();
+      } catch (err) {
+        return handleFirestoreError(err, OperationType.LIST, "users", req);
+      }
+      
+      let userDoc: any = query.empty ? null : query.docs[0];
       
       // SUPER ADMIN BOOTSTRAP: mdcdairy.official@gmail.com
       const isSuperAdminEmail = email === 'mdcdairy.official@gmail.com';
@@ -918,23 +1171,27 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
           const newUser = {
             firebase_uid: firebaseUid,
-            name: fullName || 'ব্যবহারকারী',
+            fullName: fullName || 'ব্যবহারকারী',
             email: email || null,
             mobile: mobile || null,
-            user_type: finalUserType,
+            userType: finalUserType,
             district: district || 'ঢাকা',
             country: country || 'Bangladesh',
-            referral_code: referralCode,
-            profile_picture: profilePicture || null,
+            referralCode: referralCode,
+            profilePicture: profilePicture || null,
             is_approved: 1,
-            subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
+            subscriptionEndDate: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
             created_at: FieldValue.serverTimestamp(),
             points: 0,
             wallet_balance: 0
           };
           
-          const docRef = await usersRef.add(newUser);
-          userDoc = await docRef.get();
+          try {
+            const docRef = await usersRef.add(newUser);
+            userDoc = await docRef.get();
+          } catch (err) {
+            return handleFirestoreError(err, OperationType.CREATE, "users", req);
+          }
         }
       } else {
         // User exists by firebase_uid, check if promotion needed
@@ -948,8 +1205,12 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         }
         
         if (Object.keys(updates).length > 0) {
-          await userDoc.ref.update(updates);
-          userDoc = await userDoc.ref.get();
+          try {
+            await userDoc.ref.update(updates);
+            userDoc = await userDoc.ref.get();
+          } catch (err) {
+            return handleFirestoreError(err, OperationType.UPDATE, `users/${userDoc.id}`, req);
+          }
         }
       }
 
@@ -960,9 +1221,9 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           id: userDoc.id,
           ...userData,
           firebaseUid: userData.firebase_uid,
-          fullName: userData.name,
-          userType: userData.user_type,
-          subscriptionEndDate: userData.subscription_end_date
+          fullName: userData.fullName || userData.name,
+          userType: userData.userType || userData.user_type,
+          subscriptionEndDate: userData.subscriptionEndDate || userData.subscription_end_date
         } 
       });
     } catch (error: any) {
@@ -1001,11 +1262,29 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const referralCode = namePart + mobilePart + Math.floor(Math.random() * 1000);
 
       let finalUserType = userType;
-      let subscriptionDays = referredBy === '1012' ? 30 : 1;
+      let subscriptionDays = 1;
+      let subscriptionPackage = 'free';
       
-      if (referredBy === 'SUPERADMIN2026' || email === 'mdcdairy.official@gmail.com') {
+      if (referredBy) {
+        if (referredBy === '1012') {
+          subscriptionDays = 30;
+        } else if (referredBy === 'SUPERADMIN2026') {
+          subscriptionDays = 36500;
+        } else {
+          // Normal referral
+          subscriptionDays = 1;
+          subscriptionPackage = 'free';
+        }
+      }
+      
+      if (email === 'mdcdairy.official@gmail.com') {
         finalUserType = 'super_admin';
         subscriptionDays = 36500;
+        subscriptionPackage = 'diamond';
+      }
+
+      if (referredBy === 'SUPERADMIN2026') {
+        finalUserType = 'super_admin';
       }
 
       const newUser = {
@@ -1013,25 +1292,36 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         name: fullName,
         mobile: mobile,
         email: email || null,
-        password: password, // For legacy support
+        password: password, 
         user_type: finalUserType,
         district: district,
         thana: thana || null,
         country: country,
         referral_code: referralCode,
         referred_by: referredBy || null,
-        is_approved: 1,
+        is_approved: true,
+        subscription_package: subscriptionPackage,
         subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
-        created_at: FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString(),
         points: 0,
+        ai_questions_count: 0,
         wallet_balance: 0
       };
+      console.log("[DEBUG] Registration newUser:", JSON.stringify(newUser));
 
       const docRef = await usersRef.add(newUser);
       const userDoc = await docRef.get();
       const userData = userDoc.data() as any;
 
-      res.json({ success: true, user: { id: userDoc.id, ...userData, fullName: userData.name, userType: userData.user_type } });
+      res.json({ 
+        success: true, 
+        user: { 
+          id: userDoc.id, 
+          ...userData, 
+          fullName: userData.fullName || userData.name, 
+          userType: userData.userType || userData.user_type 
+        } 
+      });
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
@@ -1076,16 +1366,20 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { mobile, rawMobile, password } = req.body;
+      console.log(`[DEBUG] Login attempt: mobile=${mobile}, rawMobile=${rawMobile}`);
       const usersRef = db.collection("users");
       
       let query = await usersRef.where("mobile", "==", mobile).where("password", "==", password).limit(1).get();
+      console.log(`[DEBUG] Login query1 result empty? ${query.empty}`);
       
       if (query.empty && rawMobile) {
         query = await usersRef.where("mobile", "==", rawMobile).where("password", "==", password).limit(1).get();
+        console.log(`[DEBUG] Login query2 result empty? ${query.empty}`);
       }
 
       if (query.empty && rawMobile && rawMobile.includes('@')) {
         query = await usersRef.where("email", "==", rawMobile).where("password", "==", password).limit(1).get();
+        console.log(`[DEBUG] Login query3 result empty? ${query.empty}`);
       }
       
       if (query.empty) {
@@ -1099,15 +1393,15 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         success: true, 
         user: { 
           id: userDoc.id, 
-          fullName: user.name, 
+          fullName: user.fullName || user.name, 
           mobile: user.mobile, 
-          userType: user.user_type, 
+          userType: user.userType || user.user_type, 
           district: user.district, 
           country: user.country,
-          referralCode: user.referral_code,
-          subscriptionEndDate: user.subscription_end_date,
-          subscriptionPackage: user.subscription_package,
-          profilePicture: user.profile_picture,
+          referralCode: user.referralCode || user.referral_code,
+          subscriptionEndDate: user.subscriptionEndDate || user.subscription_end_date,
+          subscriptionPackage: user.subscriptionPackage || user.subscription_package,
+          profilePicture: user.profilePicture || user.profile_picture,
           points: user.points || 0
         } 
       });
@@ -1122,7 +1416,14 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       if (!referralCode) return res.status(400).json({ error: "Referral code required" });
 
       const snapshot = await db.collection("users").where("referred_by", "==", referralCode).get();
-      const referredUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const referredUsers = snapshot.docs.map(doc => {
+        const udata = doc.data() as any;
+        return {
+          id: doc.id,
+          ...udata,
+          case_count: udata.case_count || 0
+        };
+      });
 
       res.json(referredUsers);
     } catch (error: any) {
@@ -1163,6 +1464,42 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
   });
 
   // Cases Routes
+  // Data Usage Helpers
+  function calculateObjectSize(obj: any): number {
+    const str = JSON.stringify(obj);
+    return Buffer.byteLength(str, 'utf8');
+  }
+
+  async function updateUserDataUsage(userId: string) {
+    try {
+      const casesSnapshot = await db.collection("cases").where("user_id", "==", userId).get();
+      const memoriesSnapshot = await db.collection("memories").where("user_id", "==", userId).get();
+      
+      let totalBytes = 0;
+      casesSnapshot.docs.forEach(doc => totalBytes += calculateObjectSize(doc.data()));
+      memoriesSnapshot.docs.forEach(doc => totalBytes += calculateObjectSize(doc.data()));
+      
+      const userDoc = await db.collection("users").doc(userId).get();
+      if (userDoc.exists) {
+        totalBytes += calculateObjectSize(userDoc.data());
+      }
+
+      // 10x multiplier as requested
+      const virtualBytes = totalBytes * 10;
+      const virtualMB = virtualBytes / (1024 * 1024);
+      const cost = Math.ceil(virtualMB * 3); // 3 Taka per MB
+
+      await db.collection("users").doc(userId).update({
+        actual_data_bytes: totalBytes,
+        display_data_mb: virtualMB.toFixed(2),
+        estimated_bill_taka: cost,
+        last_usage_update: FieldValue.serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Error updating usage:", error);
+    }
+  }
+
   app.get("/api/cases", authenticate, async (req: any, res) => {
     try {
       const user = req.profile;
@@ -1197,7 +1534,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
-  app.post("/api/cases", authenticate, (req: any, res) => {
+  app.post("/api/cases", authenticate, async (req: any, res) => {
     try {
       const c = req.body;
       const userId = req.profile?.id;
@@ -1220,12 +1557,17 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           ...c,
           updated_at: FieldValue.serverTimestamp()
         }, { merge: true });
+        updateUserDataUsage(userId).catch(console.error);
         res.json({ success: true, id: c.id });
       } else {
         const docRef = await db.collection("cases").add({
           ...c,
           created_at: FieldValue.serverTimestamp()
         });
+        await db.collection("users").doc(userId).update({
+          case_count: FieldValue.increment(1)
+        });
+        updateUserDataUsage(userId).catch(console.error);
         res.json({ success: true, id: docRef.id });
       }
     } catch (error: any) {
@@ -1264,6 +1606,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         created_at: FieldValue.serverTimestamp()
       });
       
+      updateUserDataUsage(userId).catch(console.error);
       res.json({ success: true, id: docRef.id });
     } catch (error: any) {
       res.status(500).json({ error: "তথ্য সংরক্ষণে ব্যর্থ হয়েছে।" });
@@ -1428,6 +1771,63 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  // --- ADVERTISEMENT API ---
+  app.get("/api/ads", async (req, res) => {
+    try {
+      const slot = req.query.slot as string || "general";
+      const now = new Date().toISOString();
+      const adsSnapshot = await db.collection("advertisements")
+        .where("status", "==", "active")
+        .where("slot", "==", slot)
+        .where("end_date", ">", now)
+        .get();
+        
+      let ads = adsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      
+      // Sort ads by queue rank
+      ads.sort((a: any, b: any) => (a.queue_position || 999) - (b.queue_position || 999));
+      
+      res.json({ success: true, ads });
+    } catch (error: any) {
+      console.error("Ads fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch ads" });
+    }
+  });
+
+  app.post("/api/ads/book", async (req: any, res) => {
+    try {
+      const { user_id, title, type, slot, image_url, budget } = req.body;
+      if (!user_id || !title || !slot) return res.status(400).json({ error: "Missing required fields" });
+
+      const slotAds = await db.collection("advertisements")
+        .where("slot", "==", slot)
+        .where("status", "==", "active")
+        .get();
+
+      // Implement queue logic (advertiser sees their position)
+      const currentQueueLength = slotAds.docs.length;
+      const nextQueuePosition = currentQueueLength + 1;
+
+      const adData = {
+        advertiser_id: user_id,
+        title,
+        type: type || "Banner",
+        slot,
+        image_url: image_url || "",
+        budget: budget || 0,
+        status: "active",
+        queue_position: nextQueuePosition,
+        start_date: new Date().toISOString(),
+        end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days active
+      };
+
+      const docRef = await db.collection("advertisements").add(adData);
+      res.json({ success: true, adId: docRef.id, queue_position: nextQueuePosition, message: `Your ad is queued at position ${nextQueuePosition}. A maximum of 2 ads are shown at once.` });
+    } catch (error: any) {
+      res.status(500).json({ error: "Failed to book ad slot" });
+    }
+  });
+
   app.post("/api/ads/watch", async (req, res) => {
     try {
       const { user_id } = req.body;
@@ -1457,6 +1857,44 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  app.post("/api/user/claim-special-pack", authenticate, async (req: any, res) => {
+    try {
+      const userDoc = await db.collection("users").doc(req.user.uid).get();
+      const userData = userDoc.data() as any;
+      if (!userData) return res.status(404).json({ error: 'User not found' });
+      if (!userData.referral_code) return res.status(400).json({ error: 'No referral code' });
+      if (userData.special_pack_claimed) return res.status(400).json({ error: 'Already claimed' });
+
+      // check if 5 unique referrals have case count >= 10
+      const snapshot = await db.collection("users").where("referred_by", "==", userData.referral_code).get();
+      let eligible = 0;
+      for (let doc of snapshot.docs) {
+        const udata = doc.data() as any;
+        const casesSnap = await db.collection("cases").where("user_id", "==", doc.id).get();
+        const currentCaseCount = casesSnap.size || udata.case_count || 0;
+        if (currentCaseCount >= 10) {
+          eligible++;
+        }
+      }
+
+      if (eligible >= 5) {
+        const newEndDate = new Date();
+        newEndDate.setMonth(newEndDate.getMonth() + 1);
+
+        await db.collection("users").doc(req.user.uid).update({
+          special_pack_claimed: true,
+          subscription_package: 'special',
+          subscription_end_date: newEndDate.toISOString()
+        });
+        res.json({ success: true });
+      } else {
+        res.status(400).json({ error: 'Not enough eligible referrals' });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post("/api/users/:id/profile-picture", async (req, res) => {
     try {
       const { profilePicture } = req.body;
@@ -1476,7 +1914,6 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     });
     app.use(vite.middlewares);
   } else {
-    const path = await import('path');
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {

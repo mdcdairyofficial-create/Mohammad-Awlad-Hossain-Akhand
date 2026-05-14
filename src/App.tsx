@@ -5,6 +5,8 @@
 
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebase";
 import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
 import Dashboard from "./user/dashboard/Dashboard";
@@ -29,6 +31,8 @@ interface UserProfile {
   aiQuestionsCount?: number;
   lastAiResetDate?: string;
   points?: number;
+  displayDataMb?: string;
+  estimatedBillTaka?: number;
   chamberAddress?: string;
   officeHours?: string;
   barAssociation?: string;
@@ -42,10 +46,18 @@ import { fetchWithAuth } from "./lib/api";
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(() => {
     const savedUser = localStorage.getItem("appUser");
     return savedUser ? JSON.parse(savedUser) : null;
   });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, () => {
+      setAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -56,7 +68,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && authReady) {
       const fetchProfile = async (retryCount = 0) => {
         if (!navigator.onLine) return;
 
@@ -72,61 +84,23 @@ export default function App() {
           if (data) {
             let updated = false;
             const newProfile = { ...user };
-
-            if (data.firebaseUid && data.firebaseUid !== user.firebaseUid) {
-              newProfile.firebaseUid = data.firebaseUid;
-              updated = true;
-            }
             
-            if (data.userType && data.userType !== user.userType) {
-              newProfile.userType = data.userType;
-              updated = true;
-            }
-
-            if (data.subscriptionEndDate !== user.subscriptionEndDate) {
-              newProfile.subscriptionEndDate = data.subscriptionEndDate;
-              updated = true;
-            }
-
-            if (data.subscriptionPackage !== user.subscriptionPackage) {
-              newProfile.subscriptionPackage = data.subscriptionPackage;
-              updated = true;
-            }
-
-            if (data.profilePicture !== user.profilePicture) {
-              newProfile.profilePicture = data.profilePicture;
-              updated = true;
-            }
-
-            if (data.fullName && data.fullName !== user.fullName) {
-              newProfile.fullName = data.fullName;
-              updated = true;
-            }
-
-            if (data.mobile && data.mobile !== user.mobile) {
-              newProfile.mobile = data.mobile;
-              updated = true;
-            }
-
-            if (data.district && data.district !== user.district) {
-              newProfile.district = data.district;
-              updated = true;
-            }
-
-            if (data.policeStation && data.policeStation !== user.policeStation) {
-              newProfile.policeStation = data.policeStation;
-              updated = true;
-            }
-
-            if (data.aiQuestionsCount !== user.aiQuestionsCount) {
-              newProfile.aiQuestionsCount = data.aiQuestionsCount;
-              updated = true;
-            }
-
-            if (data.lastAiResetDate !== user.lastAiResetDate) {
-              newProfile.lastAiResetDate = data.lastAiResetDate;
-              updated = true;
-            }
+            // ... (rest of the profile update logic remains the same)
+            
+            // (Re-stating logic for conciseness)
+            if (data.firebaseUid && data.firebaseUid !== user.firebaseUid) { newProfile.firebaseUid = data.firebaseUid; updated = true; }
+            if (data.userType && data.userType !== user.userType) { newProfile.userType = data.userType; updated = true; }
+            if (data.subscriptionEndDate !== user.subscriptionEndDate) { newProfile.subscriptionEndDate = data.subscriptionEndDate; updated = true; }
+            if (data.subscriptionPackage !== user.subscriptionPackage) { newProfile.subscriptionPackage = data.subscriptionPackage; updated = true; }
+            if (data.profilePicture !== user.profilePicture) { newProfile.profilePicture = data.profilePicture; updated = true; }
+            if (data.fullName && data.fullName !== user.fullName) { newProfile.fullName = data.fullName; updated = true; }
+            if (data.mobile && data.mobile !== user.mobile) { newProfile.mobile = data.mobile; updated = true; }
+            if (data.district && data.district !== user.district) { newProfile.district = data.district; updated = true; }
+            if (data.policeStation && data.policeStation !== user.policeStation) { newProfile.policeStation = data.policeStation; updated = true; }
+            if (data.aiQuestionsCount !== user.aiQuestionsCount) { newProfile.aiQuestionsCount = data.aiQuestionsCount; updated = true; }
+            if (data.lastAiResetDate !== user.lastAiResetDate) { newProfile.lastAiResetDate = data.lastAiResetDate; updated = true; }
+            if (data.display_data_mb && data.display_data_mb !== user.displayDataMb) { newProfile.displayDataMb = data.display_data_mb; updated = true; }
+            if (data.estimated_bill_taka && data.estimated_bill_taka !== user.estimatedBillTaka) { newProfile.estimatedBillTaka = data.estimated_bill_taka; updated = true; }
 
             if (updated) {
               setUser(newProfile);
@@ -145,7 +119,8 @@ export default function App() {
 
       fetchProfile();
     }
-  }, [user?.id]);
+  }, [user?.id, authReady]);
+
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -204,6 +179,8 @@ export default function App() {
               aiQuestionsCount={user.aiQuestionsCount}
               lastAiResetDate={user.lastAiResetDate}
               points={user.points}
+              displayDataMb={user.displayDataMb}
+              estimatedBillTaka={user.estimatedBillTaka}
               chamberAddress={user.chamberAddress}
               officeHours={user.officeHours}
               barAssociation={user.barAssociation}
