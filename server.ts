@@ -1,6 +1,6 @@
+import { GoogleGenAI } from "@google/genai";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import SSLCommerzPayment from "sslcommerz-lts";
 import fs from "fs";
 import path from "path";
 import admin from "firebase-admin";
@@ -11,6 +11,7 @@ import {
   collection, 
   query as firestoreQuery, 
   where, 
+  orderBy,
   getDocs, 
   doc, 
   getDoc, 
@@ -85,6 +86,7 @@ const db: any = {
   collection: (path: string) => {
     const wrapColl = (c: any[]) => ({
       where: (f: string, o: string, v: any) => wrapColl([...c, where(f, o as any, v)]),
+      orderBy: (f: string, d: any) => wrapColl([...c, orderBy(f, d as any)]),
       limit: (l: number) => wrapColl([...c, firestoreLimit(l)]),
       doc: (docId: string) => {
           const docRef = doc(getDb(), path, docId);
@@ -151,6 +153,7 @@ const db: any = {
     const docRef = doc(getDb(), path);
     return {
       id: docRef.id,
+      ref: docRef, // Add this
       get: async () => {
         const snap = await getDoc(docRef);
         return {
@@ -177,15 +180,15 @@ const db: any = {
     const b = writeBatch(getDb());
     return {
       set: (ref: any, data: any, opt?: any) => {
-        const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+        const realRef = ref.ref ? ref.ref : ref;
         b.set(realRef, data, opt);
       },
       update: (ref: any, data: any) => {
-        const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+        const realRef = ref.ref ? ref.ref : ref;
         b.update(realRef, data);
       },
       delete: (ref: any) => {
-        const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+        const realRef = ref.ref ? ref.ref : ref;
         b.delete(realRef);
       },
       commit: async () => await b.commit()
@@ -195,20 +198,20 @@ const db: any = {
     return await firestoreRunTransaction(getDb(), async (t) => {
       const transactionShim = {
         get: async (ref: any) => {
-             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             const realRef = ref.ref ? ref.ref : ref;
              const s = await t.get(realRef);
              return { id: s.id, data: () => s.data(), exists: s.exists() };
         },
         update: (ref: any, data: any) => {
-             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             const realRef = ref.ref ? ref.ref : ref;
              t.update(realRef, data);
         },
         set: (ref: any, data: any, opt?: any) => {
-             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             const realRef = ref.ref ? ref.ref : ref;
              t.set(realRef, data, opt);
         },
         delete: (ref: any) => {
-             const realRef = ref.path ? doc(getDb(), ref.path) : ref;
+             const realRef = ref.ref ? ref.ref : ref;
              t.delete(realRef);
         }
       };
@@ -276,28 +279,43 @@ const authenticate = async (req: any, res: any, next: any) => {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
     
-    // Fetch profile from Firestore
-    try {
-      const userDoc = await db.doc("users/" + decodedToken.uid).get();
-      if (userDoc.exists) {
-        req.profile = { id: userDoc.id, ...userDoc.data() };
-        
-        // --- 500MB Usage Limit Logic ---
-        const displayMb = parseFloat(req.profile.display_data_mb || "0");
-        const isSubscribed = req.profile.subscription_status === 'active' || (req.profile.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
-        
-        // Prevent all non-GET requests if limit exceeded and not subscribed
-        if (displayMb >= 500 && !isSubscribed && req.method !== 'GET') {
-          // Allow exceptions for subscription and recharge related endpoints
-          const isPaymentRoute = req.originalUrl.includes('/api/subscription') || req.originalUrl.includes('/api/recharge');
-          if (!isPaymentRoute) {
-            return res.status(403).json({ error: "Data limit (500MB) exceeded. Please purchase a premium subscription to continue saving data." });
+    // Fetch profile from Firestore with retry
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        console.log(`[DEBUG] Querying users where firebase_uid == ${decodedToken.uid} (attempt ${4 - retries})`);
+        const snapshot = await db.collection("users").where("firebase_uid", "==", decodedToken.uid).limit(1).get();
+        if (!snapshot.empty) {
+          const userDoc = snapshot.docs[0];
+          req.profile = { id: userDoc.id, ...userDoc.data() };
+          
+          // --- 500MB Usage Limit Logic ---
+          const displayMb = parseFloat(req.profile.display_data_mb || "0");
+          const isSubscribed = req.profile.subscription_status === 'active' || (req.profile.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
+          
+          // Prevent all non-GET requests if limit exceeded and not subscribed
+          if (displayMb >= 500 && !isSubscribed && req.method !== 'GET') {
+            // Allow exceptions for subscription and recharge related endpoints
+            const isPaymentRoute = req.originalUrl.includes('/api/subscription') || req.originalUrl.includes('/api/recharge');
+            if (!isPaymentRoute) {
+              return res.status(403).json({ error: "Data limit (500MB) exceeded. Please purchase a premium subscription to continue saving data." });
+            }
           }
+          break; // Success
+        } else {
+          console.log(`[DEBUG] User profile does not exist for firebase_uid ${decodedToken.uid}.`);
+        }
+        break; // Doesn't exist, don't retry
+      } catch (err) {
+        console.error(`Error fetching user profile (attempt ${4 - retries}):`, err);
+        retries--;
+        if (retries === 0) {
+            // Log final error
+            console.error("Failed to fetch user profile after retries.");
+        } else {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
         }
       }
-    } catch (err) {
-      console.error("Error fetching user profile in middleware:", err);
-      // Don't throw here, just proceed without profile and let route decide
     }
     
     next();
@@ -368,6 +386,49 @@ async function startServer() {
     }
   });
 
+
+  // MediGen AI Endpoint with Points System
+  app.post("/api/medigen", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const costPerRequest = 10;
+
+      // Firestore transaction to check and deduct points
+      let userPoints;
+      await db.runTransaction(async (transaction: any) => {
+        const userRef = db.doc(`users/${userId}`);
+        const userDoc = await transaction.get(userRef);
+        const userData = userDoc.data();
+
+        if (!userData || (userData.points || 0) < costPerRequest) {
+          throw new Error("INSUFFICIENT_POINTS");
+        }
+
+        userPoints = (userData.points || 0) - costPerRequest;
+        transaction.update(userRef, {
+          points: userPoints
+        });
+      });
+
+      // Call Gemini API on server
+      const genAI: any = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const { prompt } = req.body;
+      
+      const result = await model.generateContent(prompt);
+      const responseText = result.response.text();
+
+      res.json({ success: true, text: responseText, points: userPoints });
+    } catch (error: any) {
+      if (error.message === "INSUFFICIENT_POINTS") {
+        return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই।" });
+      }
+      console.error("[MediGen Error]", error);
+      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+    }
+  });
 
   // Recharge Routes
   app.post("/api/recharge/request", authenticate, async (req: any, res) => {
@@ -946,177 +1007,6 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
-  app.post("/api/admin/reset-all", async (req, res) => {
-    try {
-      console.log("Resetting all data in Firestore...");
-      const collections = ["recharge_orders", "affiliate_proofs", "subscription_requests", "cases", "users"];
-      
-      for (const coll of collections) {
-        const snapshot = await db.collection(coll).get();
-        const batch = db.batch();
-        snapshot.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
-      }
-      
-      res.json({ success: true, message: "সকল ডাটা সফলভাবে মুছে ফেলা হয়েছে।" });
-    } catch (error: any) {
-      console.error("Error resetting data:", error);
-      res.status(500).json({ error: "ডাটা মুছতে ব্যর্থ: " + error.message });
-    }
-  });
-
-  // SSLCommerz Payment Routes
-  app.post("/api/payment/initiate", async (req, res) => {
-    try {
-      const { userId, amount, orderId, purpose } = req.body;
-      
-      const store_id = process.env.SSLCOMMERZ_STORE_ID || 'testbox';
-      const store_passwd = process.env.SSLCOMMERZ_STORE_PASSWORD || 'qwerty';
-      const is_live = process.env.SSLCOMMERZ_IS_LIVE === 'true';
-
-      const tran_id = orderId || `TRAN_${Date.now()}_${userId}`;
-
-      const data = {
-        total_amount: amount,
-        currency: 'BDT',
-        tran_id: tran_id,
-        success_url: `${req.protocol}://${req.get('host')}/api/payment/success`,
-        fail_url: `${req.protocol}://${req.get('host')}/api/payment/fail`,
-        cancel_url: `${req.protocol}://${req.get('host')}/api/payment/cancel`,
-        ipn_url: `${req.protocol}://${req.get('host')}/api/payment/ipn`,
-        shipping_method: 'Courier',
-        product_name: purpose || 'Subscription',
-        product_category: 'Service',
-        product_profile: 'general',
-        cus_name: 'Customer',
-        cus_email: 'customer@example.com',
-        cus_add1: 'Dhaka',
-        cus_city: 'Dhaka',
-        cus_postcode: '1000',
-        cus_country: 'Bangladesh',
-        cus_phone: '01711111111',
-      };
-
-      // Save payment record in Firestore
-      await db.collection("payments").doc(tran_id).set({
-        user_id: userId,
-        tran_id: tran_id,
-        amount: Number(amount),
-        purpose: purpose,
-        status: 'pending',
-        created_at: FieldValue.serverTimestamp()
-      });
-
-      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live);
-      
-      sslcz.init(data).then((apiResponse: any) => {
-        let GatewayPageURL = apiResponse.GatewayPageURL;
-        if (GatewayPageURL) {
-          res.json({ success: true, gatewayUrl: GatewayPageURL });
-        } else {
-          res.status(400).json({ error: "পেমেন্ট গেটওয়ে এরর: " + (apiResponse.failedreason || 'Gateway initialization failed') });
-        }
-      }).catch((err: any) => {
-        res.status(500).json({ error: "পেমেন্ট ইনিশিয়েশন ব্যর্থ: " + err.message });
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: "পেমেন্ট ইনিশিয়েশন ব্যর্থ: " + error.message });
-    }
-  });
-
-  app.post("/api/payment/success", async (req, res) => {
-    try {
-      const { tran_id, amount, status } = req.body;
-
-      if (status === 'VALID') {
-        const paymentDoc = await db.collection("payments").doc(tran_id).get();
-        const payment = paymentDoc.data() as any;
-        
-        if (paymentDoc.exists && payment.status === 'pending') {
-          await db.collection("payments").doc(tran_id).update({ status: 'success' });
-
-          if (payment.purpose && payment.purpose.toLowerCase().includes('subscription')) {
-            const durationStr = payment.purpose.split('_')[1] || '1 month';
-            const months = durationStr.includes('12') ? 12 : durationStr.includes('6') ? 6 : 1;
-            const endDate = new Date();
-            endDate.setMonth(endDate.getMonth() + months);
-
-            await db.collection("users").doc(payment.user_id).update({
-              subscription_end_date: endDate.toISOString(),
-              subscription_package: 'premium'
-            });
-          } else if (payment.purpose === 'Recharge') {
-            await db.collection("users").doc(payment.user_id).update({
-              wallet_balance: FieldValue.increment(payment.amount)
-            });
-          }
-        }
-      }
-      res.redirect("/?payment=success");
-    } catch (error) {
-      console.error(error);
-      res.redirect("/?payment=fail");
-    }
-  });
-
-  app.post("/api/payment/fail", async (req, res) => {
-    try {
-      const { tran_id } = req.body;
-      if (tran_id) {
-        await db.collection("payments").doc(tran_id).update({ status: 'failed' });
-      }
-      res.redirect("/?payment=fail");
-    } catch (error) {
-      res.redirect("/?payment=fail");
-    }
-  });
-
-  app.post("/api/payment/cancel", async (req, res) => {
-    try {
-      const { tran_id } = req.body;
-      if (tran_id) {
-        await db.collection("payments").doc(tran_id).update({ status: 'cancelled' });
-      }
-      res.redirect("/?payment=cancel");
-    } catch (error) {
-      res.redirect("/?payment=cancel");
-    }
-  });
-
-  app.post("/api/payment/ipn", async (req, res) => {
-    try {
-      const { tran_id, status, amount } = req.body;
-      if (status === 'VALID' && tran_id) {
-        const paymentDoc = await db.collection("payments").doc(tran_id).get();
-        const payment = paymentDoc.data() as any;
-        
-        if (paymentDoc.exists && payment.status === 'pending') {
-          await db.collection("payments").doc(tran_id).update({ status: 'success' });
-          
-          if (payment.purpose && payment.purpose.toLowerCase().includes('subscription')) {
-            const durationStr = payment.purpose.split('_')[1] || '1 month';
-            const months = durationStr.includes('12') ? 12 : durationStr.includes('6') ? 6 : 1;
-            const endDate = new Date();
-            endDate.setMonth(endDate.getMonth() + months);
-
-            await db.collection("users").doc(payment.user_id).update({
-              subscription_end_date: endDate.toISOString(),
-              subscription_package: 'premium'
-            });
-          } else if (payment.purpose === 'Recharge') {
-            await db.collection("users").doc(payment.user_id).update({
-              wallet_balance: FieldValue.increment(payment.amount)
-            });
-          }
-        }
-      }
-      res.status(200).send("IPN Received");
-    } catch (error) {
-      console.error("IPN Error:", error);
-      res.status(500).send("IPN Error");
-    }
-  });
-
   app.post("/api/auth/firebase-sync", async (req, res) => {
     try {
       const { firebaseUid, email, mobile, fullName, profilePicture, userType, district, country } = req.body;
@@ -1310,6 +1200,19 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       console.log("[DEBUG] Registration newUser:", JSON.stringify(newUser));
 
       const docRef = await usersRef.add(newUser);
+
+      // Special Logic for Referral points
+      if (referredBy) {
+        const referrerSnap = await usersRef.where("referral_code", "==", referredBy).limit(1).get();
+        if (!referrerSnap.empty) {
+          const referrerDoc = referrerSnap.docs[0];
+          // Give 100 points to referrer for successful join
+          await referrerDoc.ref.update({
+            points: FieldValue.increment(100)
+          });
+        }
+      }
+
       const userDoc = await docRef.get();
       const userData = userDoc.data() as any;
 
@@ -1564,9 +1467,13 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           ...c,
           created_at: FieldValue.serverTimestamp()
         });
+        
+        // Award 10 points for entry
         await db.collection("users").doc(userId).update({
-          case_count: FieldValue.increment(1)
+          case_count: FieldValue.increment(1),
+          points: FieldValue.increment(10)
         });
+        
         updateUserDataUsage(userId).catch(console.error);
         res.json({ success: true, id: docRef.id });
       }
@@ -1685,6 +1592,139 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       console.error(error);
       res.status(500).json({ error: "Failed to confirm recharge" });
     }
+  });
+
+  // Online Payment Routes (SSLCommerz Simulation/Integration)
+  app.post("/api/payment/initiate", authenticate, async (req: any, res) => {
+    try {
+      const { amount, purpose, orderId } = req.body;
+      const userId = req.profile?.id;
+
+      if (!amount || !purpose) {
+        return res.status(400).json({ error: "Invalid payment request" });
+      }
+
+      console.log(`[PAYMENT] Initiating: User=${userId}, Amount=${amount}, Purpose=${purpose}`);
+
+      // In a production environment with SSLCommerz, you would call their API here.
+      // Since this is a specialized environment, we simulate the redirect to a success page.
+      // We'll use a local success route that will then handle the post-payment logic.
+      
+      const paymentData = {
+        userId,
+        amount,
+        purpose,
+        orderId: orderId || `PAY_${Date.now()}_${userId}`,
+        status: 'pending',
+        created_at: FieldValue.serverTimestamp()
+      };
+
+      const docRef = await db.collection("online_payments").add(paymentData);
+
+      const protocol = req.headers['x-forwarded-proto'] || 'http';
+      const host = req.headers.host;
+      const baseUrl = `${protocol}://${host}`;
+
+      const gatewayUrl = `${baseUrl}/api/payment/simulate-gateway?paymentId=${docRef.id}&amount=${amount}&orderId=${paymentData.orderId}`;
+
+      res.json({ success: true, gatewayUrl });
+    } catch (error: any) {
+      console.error("Payment initiation error:", error);
+      res.status(500).json({ error: "Failed to initiate payment" });
+    }
+  });
+
+  app.get("/api/payment/simulate-gateway", async (req, res) => {
+    const { paymentId, amount, orderId } = req.query;
+    // This simulates the user entering their card info and clicking "Pay"
+    // In reality, SSLCommerz would redirect here after payment.
+    res.send(`
+      <html>
+        <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc;">
+          <div style="background: white; padding: 2rem; border-radius: 1rem; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+            <h1>SSLCommerz Simulation</h1>
+            <p>Order ID: ${orderId}</p>
+            <p>Amount: ৳${amount}</p>
+            <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+              <a href="/api/payment/success?paymentId=${paymentId}" style="background: #10b981; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold;">Simulate Success</a>
+              <a href="/api/payment/fail?paymentId=${paymentId}" style="background: #ef4444; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold;">Simulate Failure</a>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
+  app.get("/api/payment/success", async (req, res) => {
+    try {
+      const { paymentId } = req.query;
+      if (!paymentId) return res.send("Invalid request");
+
+      const paymentRef = db.collection("online_payments").doc(paymentId as string);
+      const paymentDoc = await paymentRef.get();
+      if (!paymentDoc.exists) return res.send("Payment record not found");
+
+      const payment = paymentDoc.data() as any;
+      if (payment.status === 'completed') return res.redirect('/dashboard?payment=already_processed');
+
+      const userId = payment.userId;
+      const purpose = payment.purpose;
+
+      const batch = db.batch();
+      batch.update(paymentRef, { status: 'completed', updated_at: FieldValue.serverTimestamp() });
+
+      // Handle Logic based on Purpose
+      if (purpose.startsWith('Recharge')) {
+        // Add to wallet balance
+        const userRef = db.collection("users").doc(userId);
+        batch.update(userRef, { wallet_balance: FieldValue.increment(Number(payment.amount)) });
+        
+        // Add to recharge history
+        const historyRef = db.collection("recharge_history").doc();
+        batch.set(historyRef, {
+          user_id: userId,
+          amount: Number(payment.amount),
+          package: 'Online Recharge',
+          status: 'success',
+          created_at: FieldValue.serverTimestamp()
+        });
+      } else if (purpose.startsWith('subscription')) {
+        const planType = purpose.split('_')[1] || 'monthly';
+        const newEndDate = new Date();
+        newEndDate.setMonth(newEndDate.getMonth() + (planType === 'yearly' ? 12 : 1));
+
+        const userRef = db.collection("users").doc(userId);
+        batch.update(userRef, {
+          subscription_package: 'pro',
+          subscription_end_date: newEndDate.toISOString()
+        });
+      }
+
+      await batch.commit();
+
+      // Redirect back to app with success param
+      res.send(`
+        <script>
+          window.location.href = "/?payment=success";
+        </script>
+      `);
+    } catch (error: any) {
+      console.error("Payment success handling error:", error);
+      res.status(500).send("Error processing payment success");
+    }
+  });
+
+  app.get("/api/payment/fail", async (req, res) => {
+    const { paymentId } = req.query;
+    if (paymentId) {
+      await db.collection("online_payments").doc(paymentId as string).update({ status: 'failed', updated_at: FieldValue.serverTimestamp() });
+    }
+    res.send(`
+      <script>
+        alert("Payment Failed or Cancelled");
+        window.location.href = "/";
+      </script>
+    `);
   });
 
 
@@ -1859,36 +1899,26 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
   app.post("/api/user/claim-special-pack", authenticate, async (req: any, res) => {
     try {
-      const userDoc = await db.collection("users").doc(req.user.uid).get();
+      const userRef = db.collection("users").doc(req.user.uid);
+      const userDoc = await userRef.get();
       const userData = userDoc.data() as any;
       if (!userData) return res.status(404).json({ error: 'User not found' });
-      if (!userData.referral_code) return res.status(400).json({ error: 'No referral code' });
-      if (userData.special_pack_claimed) return res.status(400).json({ error: 'Already claimed' });
+      
+      const requiredPoints = 500;
+      const currentPoints = userData.points || 0;
 
-      // check if 5 unique referrals have case count >= 10
-      const snapshot = await db.collection("users").where("referred_by", "==", userData.referral_code).get();
-      let eligible = 0;
-      for (let doc of snapshot.docs) {
-        const udata = doc.data() as any;
-        const casesSnap = await db.collection("cases").where("user_id", "==", doc.id).get();
-        const currentCaseCount = casesSnap.size || udata.case_count || 0;
-        if (currentCaseCount >= 10) {
-          eligible++;
-        }
-      }
-
-      if (eligible >= 5) {
+      if (currentPoints >= requiredPoints) {
         const newEndDate = new Date();
         newEndDate.setMonth(newEndDate.getMonth() + 1);
 
-        await db.collection("users").doc(req.user.uid).update({
-          special_pack_claimed: true,
+        await userRef.update({
+          points: FieldValue.increment(-requiredPoints),
           subscription_package: 'special',
           subscription_end_date: newEndDate.toISOString()
         });
-        res.json({ success: true });
+        res.json({ success: true, points: currentPoints - requiredPoints });
       } else {
-        res.status(400).json({ error: 'Not enough eligible referrals' });
+        res.status(400).json({ error: `পর্যাপ্ত পয়েন্ট নেই। আপনার প্রয়োজন ৫০০ পয়েন্ট। বর্তমান পয়েন্ট: ${currentPoints}` });
       }
     } catch (e: any) {
       res.status(500).json({ error: e.message });

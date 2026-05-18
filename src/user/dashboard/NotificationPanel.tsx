@@ -18,13 +18,30 @@ export default function NotificationPanel({
 }: NotificationPanelProps) {
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  // Filter for important/positive notifications
-  const tomorrowAlerts = notifications.filter(n => 
-    (n.type === 'hearing' || n.type === 'task' || n.type === 'case_update') &&
-    n.message.toLowerCase().includes('আগামীকাল') // Matches Bengali text for "tomorrow"
-  );
+  // Define priority logic
+  const getPriority = (n: Notification) => {
+    // Cast to any to avoid strict type issues on unknown notification types
+    const type = (n.type as any);
+    if (type === 'hearing' || type === 'payment') return 1; // High
+    if (type === 'task' || type === 'case_update') return 2; // Medium
+    return 3; // Low
+  };
 
-  const otherNotifications = notifications.filter(n => !tomorrowAlerts.includes(n));
+  const sortedNotifications = [...notifications].sort((a, b) => {
+    // 1. Sort by Priority
+    const pA = getPriority(a);
+    const pB = getPriority(b);
+    if (pA !== pB) return pA - pB;
+    
+    // 2. Sort by time (latest first)
+    const timeA = a.created_at ? (typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : 0) : 0;
+    const timeB = b.created_at ? (typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : 0) : 0;
+    return timeB - timeA;
+  });
+
+  // Split into grouped views based on sorted list
+  const importantNotifications = sortedNotifications.filter(n => getPriority(n) === 1);
+  const otherNotifications = sortedNotifications.filter(n => getPriority(n) !== 1);
 
   return (
     <motion.div 
@@ -67,14 +84,14 @@ export default function NotificationPanel({
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {/* Important Tomorrow's Alerts */}
-            {tomorrowAlerts.length > 0 && (
+            {/* Important Notifications */}
+            {importantNotifications.length > 0 && (
               <div className="bg-amber-50/50">
                 <div className="px-4 py-2 text-xs font-bold text-amber-800 uppercase flex items-center gap-2">
                   <AlertCircle className="w-3 h-3" />
-                  আগামীকালের সতর্কতা
+                  গুরুত্বপূর্ণ (High Priority)
                 </div>
-                {tomorrowAlerts.map(notification => renderNotification(notification, onMarkAsRead))}
+                {importantNotifications.map(notification => renderNotification(notification, onMarkAsRead))}
               </div>
             )}
             

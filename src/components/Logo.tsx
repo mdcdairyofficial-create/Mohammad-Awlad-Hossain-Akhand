@@ -33,7 +33,7 @@ export const Logo = ({ className = "", showSubtitle = false, size = 'md' }: Logo
       {showSubtitle && (
         <div className="flex flex-col">
           <h1 className={`${size === 'sm' ? 'text-sm' : 'text-lg'} text-white font-black leading-none tracking-tighter uppercase flex items-center gap-1`}>
-            MDC <span className="text-indigo-400">DAIRY</span>
+            MDC <span className="text-indigo-400">LEGAL</span>
           </h1>
           <div className="flex flex-col mt-0.5">
             <p className="text-[7px] lg:text-[9px] text-indigo-200 font-bold uppercase tracking-widest leading-none">

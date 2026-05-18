@@ -78,10 +78,30 @@ export const PointsView = ({ language, userPoints, onPointsUpdate }: PointsViewP
   ];
 
   const rewards = [
+    { id: 'special_pack', title: t('স্পেশাল ফ্রি প্যাক', 'Special Free Pack'), cost: 500, icon: Gift, color: 'text-rose-600', bg: 'bg-rose-50', unlockable: true },
     { id: 'ai', title: t('এআই অ্যাসিস্ট্যান্ট আনলিমিটেড', 'AI Assistant Unlimited'), cost: 500, icon: Zap, color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { id: 'premium', title: t('৭ দিন প্রিমিয়াম মেম্বারশিপ', '7 Days Premium'), cost: 2000, icon: ShieldCheck, color: 'text-amber-600', bg: 'bg-amber-50' },
     { id: 'ad', title: t('নিজস্ব বিজ্ঞাপন প্রচার', 'Run Own Ad'), cost: 5000, icon: Gift, color: 'text-rose-600', bg: 'bg-rose-50' },
   ];
+
+  const handleRedeem = async (reward: any) => {
+    if (userPoints < reward.cost) {
+      alert(t('আপনার পর্যাপ্ত পয়েন্ট নেই।', 'Not enough points.'));
+      return;
+    }
+    try {
+      const userRef = doc(db, 'users', auth.currentUser!.uid);
+      await updateDoc(userRef, {
+        points: increment(-reward.cost),
+        [`unlockedRewards.${reward.id}`]: true,
+      });
+      onPointsUpdate(userPoints - reward.cost);
+      alert(t('অভিনন্দন! আপনি স্পেশাল প্যাক আনলক করেছেন।', 'Congratulations! You unlocked the special pack.'));
+    } catch (e) {
+      console.error(e);
+      alert('Error redeeming reward.');
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -191,6 +211,7 @@ export const PointsView = ({ language, userPoints, onPointsUpdate }: PointsViewP
                 {rewards.map((reward) => (
                   <button 
                     key={reward.id}
+                    onClick={() => handleRedeem(reward)}
                     className="w-full p-6 bg-white/5 border-2 border-white/10 rounded-[2rem] flex items-center justify-between hover:bg-white/10 hover:border-indigo-400 transition-all group/btn"
                   >
                     <div className="flex items-center gap-4">

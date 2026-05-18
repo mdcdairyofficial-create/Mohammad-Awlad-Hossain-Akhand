@@ -219,7 +219,7 @@ export default function Media() {
               YouTube
             </a>
             <a 
-              href="https://www.facebook.com/MDCDAIRY" 
+              href="https://www.facebook.com/MDCLEGAL" 
               target="_blank" 
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-6 py-3 bg-blue-50 text-blue-600 rounded-xl font-bold hover:bg-blue-100 transition-colors"
@@ -284,7 +284,7 @@ export default function Media() {
               আইনজীবী, মুহুরি এবং সাধারণ মানুষের জন্য আমাদের ফেসবুক গ্রুপে যুক্ত হোন। আইনি পরামর্শ, আপডেট এবং আলোচনা করুন।
             </p>
             <a 
-              href="https://www.facebook.com/MDCDAIRY" 
+              href="https://www.facebook.com/MDCLEGAL" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-600 rounded-xl font-bold hover:bg-blue-50 transition-colors shadow-lg"

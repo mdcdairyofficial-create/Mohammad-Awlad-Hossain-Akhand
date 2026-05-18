@@ -96,7 +96,7 @@ export const Sidebar = ({
                       w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group
                       ${activeTab === item.id 
                         ? 'bg-indigo-800 text-white shadow-xl shadow-indigo-200 translate-x-1' 
-                        : `text-slate-900 dark:text-slate-300 hover:translate-x-1 ${theme === 'dark' ? 'hover:bg-slate-800 hover:text-slate-200' : 'hover:bg-slate-100 hover:text-indigo-900'}`
+                        : `text-slate-900 dark:text-slate-300 hover:translate-x-1 ${theme === 'dark' ? 'hover:bg-slate-800 hover:text-slate-200' : 'hover:bg-slate-100 hover:text-indigo-900'} ${item.id === 'my_points' ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`
                       }
                     `}
                   >

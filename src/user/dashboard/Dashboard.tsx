@@ -542,6 +542,7 @@ export default function Dashboard({
   const [isJoinCaseOpen, setIsJoinCaseOpen] = useState(false);
   const [emergencyContacts, setEmergencyContacts] = useState<any[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [showAllCases, setShowAllCases] = useState(false);
 
   useEffect(() => {
     if (initialFirebaseUid) {
@@ -575,6 +576,12 @@ export default function Dashboard({
     if (!userId || !isAuthReady) return;
 
     const uid = firebaseUid || userId.toString();
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`;
+
     const unsubNotifications = subscribeToNotifications(uid, (data) => {
       setNotifications(prev => {
         const globalOnes = prev.filter(n => n.isGlobal);
@@ -605,7 +612,7 @@ export default function Dashboard({
 
     const unsubCases = subscribeToCases(uid, (data) => {
       setCases(data);
-    });
+    }, showAllCases ? undefined : todayStr);
 
     return () => {
       unsubNotifications();
@@ -613,7 +620,7 @@ export default function Dashboard({
       unsubTasks();
       unsubCases();
     };
-  }, [userId, isAuthReady, firebaseUid]);
+  }, [userId, isAuthReady, firebaseUid, showAllCases]);
 
   useEffect(() => {
     if (!cases || !tasks) return;
@@ -696,7 +703,7 @@ export default function Dashboard({
   const [mapLink, setMapLink] = useState('https://maps.google.com');
   const [certificates, setCertificates] = useState<string[]>([]);
   const [socialLinks, setSocialLinks] = useState({
-    facebook: initialFacebookUrl || 'https://www.facebook.com/MDCDAIRY',
+    facebook: initialFacebookUrl || 'https://www.facebook.com/MDCLEGAL',
     linkedin: initialLinkedinUrl || '',
     twitter: ''
   });
@@ -854,6 +861,7 @@ export default function Dashboard({
   };
 
   const [isLegalAIOpen, setIsLegalAIOpen] = useState(false);
+  const [userCaseRole, setUserCaseRole] = useState<'none' | 'plaintiff' | 'defendant'>('none');
   const [aiButtonSide, setAiButtonSide] = useState<'left' | 'right'>('right');
   const [aiQuery, setAiQuery] = useState('');
   const [aiMessages, setAiMessages] = useState<{role: 'user'|'model', text: string}[]>([]);
@@ -918,7 +926,9 @@ export default function Dashboard({
     setIsQueryingMemoryAI(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      // Use the key from import.meta.env if available, otherwise fallback
+      const genAI: any = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
       
       // Context from memories
       const context = Array.isArray(memories) ? memories.map(m => `[${new Date(m.created_at).toLocaleDateString()}] ${m.content}`).join('\n') : '';
@@ -934,12 +944,10 @@ export default function Dashboard({
         Please provide a helpful response in Bengali. If the information is not in the memories, politely say you don't have that specific information but can help with what is available.
       `;
 
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts: [{ text: prompt }] }]
-      });
+      const result = await model.generateContent(prompt);
+      const resultText = result.response.text();
       
-      const aiMsg: ChatMessage = { role: 'model', text: result.text || t('no_answer_found') };
+      const aiMsg: ChatMessage = { role: 'model', text: resultText || t('no_answer_found') };
       setMemoryChatMessages(prev => [...prev, aiMsg]);
     } catch (err) {
       console.error("Error querying AI:", err);
@@ -1100,9 +1108,8 @@ export default function Dashboard({
     {
       title: t('support_account'),
       items: [
-        { id: 'recharge', label: t('recharge'), icon: Smartphone },
-        { id: 'my_points', label: language === 'bn' ? 'আমার পয়েন্ট' : 'My Points', icon: Award },
         { id: 'notifications', label: t('notifications'), icon: Bell },
+        { id: 'my_points', label: language === 'bn' ? 'আমার পয়েন্ট' : 'My Points', icon: Award },
       ]
     },
     {
@@ -1150,7 +1157,7 @@ export default function Dashboard({
       title: t('income_offers'),
       items: [
         { id: 'affiliate_zone', label: t('affiliate_zone'), icon: ShoppingCart },
-        { id: 'my_points', label: language === 'bn' ? 'আমার পয়েন্ট' : 'My Points', icon: Award },
+        { id: 'my_points', label: language === 'bn' ? `আমার পয়েন্ট (${userPoints})` : `My Points (${userPoints})`, icon: Award },
         { id: 'news', label: t('news'), icon: Newspaper },
         { id: 'media', label: t('media'), icon: MonitorPlay },
       ]
@@ -1159,7 +1166,6 @@ export default function Dashboard({
       title: t('support_account'),
       items: [
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        { id: 'recharge', label: t('recharge'), icon: Smartphone },
         { id: 'subscription', label: t('subscription'), icon: CreditCard },
       ]
     },
@@ -1539,7 +1545,7 @@ export default function Dashboard({
     // Search is handled by filtering in view components
   };
 
-  const handleJoinCase = (
+  const handleJoinCase = async (
     caseNumber: string, 
     side: 'petitioner' | 'respondent', 
     respondents?: {name: string, serial: string, phone: string}[], 
@@ -1639,9 +1645,16 @@ export default function Dashboard({
       if (additionalOrder) updatedCase.additionalOrder = additionalOrder;
       if (nextDate) updatedCase.nextDate = nextDate;
       
+      // Update locally and persist to Firestore
       setCases(cases.map(c => c.id === targetCase.id ? updatedCase : c));
       
-      setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
+      try {
+        await updateCase(targetCase.id.toString(), updatedCase);
+        setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
+      } catch (err) {
+        console.error("Failed to update case for join:", err);
+        alert(language === 'bn' ? 'ডাটাবেসে আপডেট করতে সমস্যা হয়েছে।' : 'Failed to update database.');
+      }
     } else {
       setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
     }
@@ -1804,6 +1817,10 @@ export default function Dashboard({
 
     const activeCase = selectedCaseForCard || selectedCaseForHistory || editingCase || (isTaskFormOpen && taskCaseNumber ? cases.find(c => c.caseNumber === taskCaseNumber) : null);
 
+    if (aiMode === 'case' && activeCase && userCaseRole === 'none') {
+      return; 
+    }
+
     if (aiMode === 'case' && !activeCase) {
       setAiCaseMessages([...newMessages, { role: 'model', text: 'অনুগ্রহ করে স্ক্রিনে একটি মামলা ওপেন করুন (যেমন: মামলার বিস্তারিত দেখুন বা এডিট করুন)। তাহলে আমি ওই মামলার তথ্য এনালাইসিস করতে পারব।' }]);
       setIsAiLoading(false);
@@ -1848,15 +1865,20 @@ export default function Dashboard({
 
       let systemInstruction = '';
       if (aiMode === 'case' && activeCase) {
+        const roleText = userCaseRole === 'plaintiff' ? 'বাদী' : userCaseRole === 'defendant' ? 'বিবাদী' : '';
         systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট। 
 বর্তমানে ব্যবহারকারী একটি নির্দিষ্ট মামলার তথ্যের উপর ফোকাস করছেন। 
+ব্যবহারকারী এই মামলায় ${roleText} হিসেবে আছেন। অনুগ্রহ করে মামলার তথ্যের ভিত্তিতে ${roleText} এর সুবিধাজনক অবস্থানে থেকে আইনি পরামর্শ ও বিশ্লেষণ দিন।
+মামলার তথ্য: ${JSON.stringify(activeCase)}
+
 মামলার বিস্তারিত তথ্য নিচে দেওয়া হলো:
 - মামলা নং: ${activeCase.caseNumber || 'N/A'}
 - বাদী: ${activeCase.petitioner || 'N/A'}
 - বিবাদী: ${activeCase.respondent || 'N/A'}
 - মামলার তারিখ: ${activeCase.date || 'N/A'}
 - পরবর্তী তারিখ: ${activeCase.nextDate || 'N/A'}
-- আদালত: ${activeCase.court || 'N/A'}
+- আদালত: ${activeCase.courtName || activeCase.court || 'N/A'}
+- মামলার বর্তমান অবস্থা: ${activeCase.status || 'N/A'}
 - মামলার বিবরণ: ${activeCase.details || 'N/A'}
 
 আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
@@ -2265,6 +2287,8 @@ export default function Dashboard({
                     initialShowScoreModal={activeTab === 'performance'}
                     displayDataMb={displayDataMb}
                     estimatedBillTaka={estimatedBillTaka}
+                    showAllCases={showAllCases}
+                    onToggleShowAll={() => setShowAllCases(!showAllCases)}
                   />
                 )
               )}
@@ -2307,6 +2331,8 @@ export default function Dashboard({
                   isPremium={isPremiumFeatures}
                   isPremiumForAds={isAdFree}
                   userType={userType}
+                  showAllCases={showAllCases}
+                  onToggleShowAll={() => setShowAllCases(!showAllCases)}
                 />
               )}
               {activeTab === 'news' && (
@@ -4220,7 +4246,7 @@ export default function Dashboard({
             <div className="flex bg-slate-100 p-1 rounded-xl mx-4 mt-4">
               <button
                 className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${aiMode === 'general' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                onClick={() => setAiMode('general')}
+                onClick={() => { setAiMode('general'); setUserCaseRole('none'); }}
               >
                 জেনারেল বট
               </button>
@@ -4231,6 +4257,16 @@ export default function Dashboard({
                 মামলা বট
               </button>
             </div>
+
+            {aiMode === 'case' && userCaseRole === 'none' && (
+              <div className="p-4 mx-4 mt-4 bg-indigo-50 rounded-2xl border border-indigo-100 text-center">
+                <p className="text-xs font-bold text-indigo-900 mb-3">আপনি কি মামলার বাদী নাকি বিবাদী পক্ষ?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setUserCaseRole('plaintiff')} className="flex-1 py-2 text-xs font-bold bg-white border border-indigo-200 rounded-lg text-indigo-700 hover:border-indigo-400">বাদী</button>
+                  <button onClick={() => setUserCaseRole('defendant')} className="flex-1 py-2 text-xs font-bold bg-white border border-indigo-200 rounded-lg text-indigo-700 hover:border-indigo-400">বিবাদী</button>
+                </div>
+              </div>
+            )}
 
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-slate-50/50">
               {(aiMode === 'case' ? aiCaseMessages : aiMessages).length === 0 ? (
@@ -4277,13 +4313,13 @@ export default function Dashboard({
             <div className="p-3 border-t border-slate-100 bg-white">
               <form onSubmit={handleAiSubmit} className="flex flex-col gap-3">
                 <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1">
-                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t('voice_command')}>
+                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-indigo-300 active:scale-95" aria-label={t('voice_command')}>
                     <Mic size={18} />
                   </button>
-                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t('attach_file')}>
+                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-indigo-300 active:scale-95" aria-label={t('attach_file')}>
                     <Paperclip size={18} />
                   </button>
-                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t('select_element')}>
+                  <button type="button" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-indigo-300 active:scale-95" aria-label={t('select_element')}>
                     <MousePointer2 size={18} />
                   </button>
                   <input 

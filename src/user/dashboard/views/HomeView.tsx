@@ -49,6 +49,8 @@ interface HomeViewProps {
   initialShowScoreModal?: boolean;
   displayDataMb?: string;
   estimatedBillTaka?: number;
+  showAllCases?: boolean;
+  onToggleShowAll?: () => void;
 }
 
 export const HomeView = ({
@@ -68,7 +70,9 @@ export const HomeView = ({
   referralCount = 0,
   initialShowScoreModal = false,
   displayDataMb = '0.00',
-  estimatedBillTaka = 0
+  estimatedBillTaka = 0,
+  showAllCases = false,
+  onToggleShowAll
 }: HomeViewProps) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
@@ -150,31 +154,78 @@ export const HomeView = ({
       
       {/* Welcome Section */}
       <div className="relative overflow-hidden bg-indigo-600 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-12 text-white shadow-2xl shadow-indigo-200">
-        <div className="relative z-10 text-center sm:text-left">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black mb-3 break-words">
-              {language === 'bn' ? (
-                <>
-                  স্বাগতম, {userName}!
-                </>
-              ) : (
-                `Welcome, {name}!`.replace('{name}', userName)
-              )}
-            </h2>
-            <p className="text-indigo-100 text-lg font-medium max-w-xl leading-relaxed">
-              {language === 'bn' ? (
-                <>
-                  আপনার আইনি কার্যক্রমকে আরও সহজ ও স্মার্ট করতে আমরা সবসময় আপনার পাশে আছি।
-                </>
-              ) : (
-                t('latest_update_message')
-              )}
-            </p>
-          </motion.div>
+        <div className="relative z-10">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              className="flex-1"
+            >
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 break-words">
+                {language === 'bn' ? `স্বাগতম, ${userName}!` : `Welcome, ${userName}!`}
+              </h2>
+              <p className="text-indigo-100 text-lg sm:text-xl font-medium max-w-xl leading-relaxed">
+                {language === 'bn' 
+                  ? 'আপনার আইনি কার্যক্রমকে আরও সহজ ও সাশ্রয়ী করতে আমরা সবসময় আপনার পাশে আছি।' 
+                  : 'We are always with you to make your legal activities easier and more cost-effective.'}
+              </p>
+            </motion.div>
+
+            {/* Efficiency Dashboard for User */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] shadow-inner"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-400 rounded-lg text-amber-900">
+                    <Zap size={16} fill="currentColor" />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">সিস্টেম এফিসিয়েন্সি</span>
+                </div>
+                <div className="text-[10px] font-black bg-emerald-500 px-2 py-0.5 rounded-full text-white">LIVE</div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span>{language === 'bn' ? 'ডেটা সাশ্রয়' : 'Data Saving'}</span>
+                    <span className="text-amber-300">৯৫%</span>
+                  </div>
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-400 w-[95%] rounded-full shadow-[0_0_10px_rgba(251,191,36,0.5)]"></div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                  <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
+                    <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'ডেটা রিড' : 'DATA READ'}</p>
+                    <p className="text-lg font-black">{showAllCases ? 'HIGH' : 'LOW'}</p>
+                  </div>
+                  <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
+                    <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'সেশন কস্ট' : 'SESSION COST'}</p>
+                    <p className="text-lg font-black">৳{estimatedBillTaka.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={onToggleShowAll}
+                  className={`w-full py-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                    showAllCases 
+                      ? 'bg-white text-indigo-600 hover:bg-slate-100' 
+                      : 'bg-indigo-500 text-white hover:bg-indigo-400 shadow-lg shadow-indigo-900/40'
+                  }`}
+                >
+                  {showAllCases 
+                    ? (language === 'bn' ? 'অপ্টিমাইজ মুড অন করুন' : 'Turn On Optimized Mode')
+                    : (language === 'bn' ? 'সব মামলা লোড করুন' : 'Load All Cases')
+                  }
+                </button>
+              </div>
+            </motion.div>
+          </div>
           
           <div className="flex flex-wrap gap-4 mt-8 justify-center sm:justify-start">
             <button 

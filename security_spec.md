@@ -1,25 +1,16 @@
-# Security Specification for MDC LEGAL Ad Dashboard
+# Security Specification for MDC LEGAL Firestore
 
 ## 1. Data Invariants
-- A campaign must always have an `ownerId` matching the authenticated user's UID.
-- A campaign's `status` must be one of: 'pending', 'active', 'paused', 'completed'.
-- `totalPrice` must be a non-negative number.
-- `createdAt` and `ownerId` are immutable after creation.
-- Users can only read and write their own campaigns.
+- Users can only read/write their own profile (`/users/{userId}`).
+- Lawyers, Clerks, and Users can only access cases they are explicitly part of or authorized to view.
+- Recharge orders are write-only for users once submitted.
+- Chat messages can only be read by the session participants.
 
-## 2. The "Dirty Dozen" Payloads (Campaigns)
-1. **Identity Spoofing**: Attempt to create a campaign with `ownerId` of another user.
-2. **Identity Escalation**: Attempt to update `ownerId` of an existing campaign.
-3. **Price Poisoning**: Set `totalPrice` to a negative number.
-4. **Status Injection**: Set `status` to 'active' without payment (logic handles this, but rules should restrict).
-5. **Shadow Field**: Include `isVerified: true` in the payload.
-6. **Large Payload**: Send a 1MB string in `adTitle`.
-7. **Orphaned Campaign**: Create a campaign with a malicious document ID that is dangerously long.
-8. **Immutability Breach**: Attempt to change `createdAt` timestamp.
-9. **Unauthorized Read**: Attempt to 'get' or 'list' campaigns belonging to another user.
-10. **Type Mismatch**: Send a boolean instead of a string for `adTitle`.
-11. **Regex Bypass**: Use special characters in a document ID that aren't allowed.
-12. **Mass Update**: Attempt to update `paymentStatus` directly (should only be updated via admin or specific action).
+## 2. The "Dirty Dozen" Payloads (Examples to deny)
+- Trying to write `{ "points": 999999 }` to a User document by a client.
+- Trying to update `user_type` to "super_admin" by a regular user.
+- Trying to read another user's profile.
+- Trying to modify another user's case information.
 
 ## 3. Test Runner
-Refer to `firestore.rules.test.ts` for implementation details.
+We will generate `firestore.rules.test.ts` to verify these rules against the payload defined.

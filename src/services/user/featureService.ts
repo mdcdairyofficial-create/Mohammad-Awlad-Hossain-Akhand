@@ -14,7 +14,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { Notification, Task, SupportMessage, ArchiveCase, Case } from '../../types';
-import { deleteDoc } from 'firebase/firestore';
+import { deleteDoc, increment } from 'firebase/firestore';
 
 
 // User Profile
@@ -41,11 +41,16 @@ export const updateProfile = async (userId: string, data: any) => {
 };
 
 // Cases
-export const subscribeToCases = (userId: string, callback: (cases: Case[]) => void) => {
-  const q = query(
+export const subscribeToCases = (userId: string, callback: (cases: Case[]) => void, dateFilter?: string) => {
+  let q = query(
     collection(db, 'cases'),
     where('user_id', '==', userId)
   );
+
+  if (dateFilter) {
+    q = query(q, where('nextDate', '==', dateFilter));
+  }
+
   return onSnapshot(q, (snapshot) => {
     const cases = snapshot.docs.map(doc => ({
       id: doc.id,
@@ -66,10 +71,19 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
 };
 
 export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
-  return await addDoc(collection(db, 'cases'), {
+  const caseRef = await addDoc(collection(db, 'cases'), {
     ...caseData,
     created_at: serverTimestamp()
   });
+
+  if (caseData.user_id) {
+    const userRef = doc(db, 'users', caseData.user_id.toString());
+    await updateDoc(userRef, {
+      points: increment(10)
+    });
+  }
+
+  return caseRef;
 };
 
 export const updateCase = async (caseId: string, caseData: Partial<Case>) => {

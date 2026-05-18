@@ -53,11 +53,48 @@ export default function App() {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("payment") === "success") {
+      alert("পেমেন্ট সফলভাবে সম্পন্ন হয়েছে!");
+      // Clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setAuthReady(true);
+      
+      // If we have a Firebase user but no local app user, attempt to sync/restore
+      if (fbUser && !user) {
+        console.log("[App] Firebase session found, restoring user profile...");
+        try {
+          const response = await fetchWithAuth('/api/auth/firebase-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              firebaseUid: fbUser.uid,
+              email: fbUser.email,
+              mobile: fbUser.phoneNumber,
+              fullName: fbUser.displayName,
+              profilePicture: fbUser.photoURL
+            })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+              console.log("[App] Session restored successfully");
+              setUser(data.user);
+            }
+          }
+        } catch (err) {
+          console.error("[App] Failed to restore session:", err);
+        }
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) {

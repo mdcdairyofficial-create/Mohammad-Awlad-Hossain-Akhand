@@ -13,7 +13,7 @@ export default function PaymentGateway({
   isSubmitting?: boolean
 }) {
   const [txId, setTxId] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('bkash');
+  const [paymentMethod, setPaymentMethod] = useState('nagad');
   const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>('idle');
 
   const isSubmitting = externalSubmitting || status === 'verifying';
@@ -86,13 +86,18 @@ export default function PaymentGateway({
       </div>
 
       <div className="flex gap-2 mb-4">
-        {['bkash', 'nagad', 'rocket'].map(method => (
+        {[
+          { id: 'bkash', name: 'বিকাশ (প্রস্তুত হচ্ছে)', disabled: true },
+          { id: 'nagad', name: 'নগদ', disabled: false },
+          { id: 'rocket', name: 'রকেট', disabled: false }
+        ].map(method => (
           <button
-            key={method}
-            onClick={() => setPaymentMethod(method)}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold uppercase transition-colors ${paymentMethod === method ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            key={method.id}
+            onClick={() => !method.disabled && setPaymentMethod(method.id)}
+            disabled={method.disabled}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold uppercase transition-colors ${paymentMethod === method.id ? 'bg-indigo-600 text-white' : method.disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
-            {method}
+            {method.name}
           </button>
         ))}
       </div>

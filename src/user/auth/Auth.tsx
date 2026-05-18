@@ -153,9 +153,11 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
       if (resetMode) {
         try {
+          console.log(`[Auth] Sending password reset to: ${firebaseEmail}`);
           await sendPasswordResetEmail(auth, firebaseEmail);
           setSuccess("পাসওয়ার্ড রিসেট লিংক ইমেইলে পাঠানো হয়েছে (অথবা ভার্চুয়াল সিস্টেমে লগইন করুন)।");
         } catch (e: any) {
+          console.error("[Auth] Reset error:", e);
           throw new Error("এই নম্বর বা ইমেইলটি আমাদের সিস্টেমে পাওয়া যায়নি।");
         }
         setLoading(false);
@@ -168,10 +170,12 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         }
         
         // 1. Firebase Auth Registration
+        console.log(`[Auth] Registering with: ${firebaseEmail}`);
         const userCred = await createUserWithEmailAndPassword(auth, firebaseEmail, formData.password);
         const fbUser = userCred.user;
 
         // 2. Server Profile Registration (SQLite)
+        console.log(`[Auth] Syncing registration to server for UID: ${fbUser.uid}`);
         const response = await fetchWithAuth('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -192,7 +196,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
 
-        // 3. Firestore Backup (Complete save in Firebase as requested)
+        // 3. Firestore Backup
         const userToSaveFirestore = {
           firebase_uid: data.user.firebase_uid,
           name: data.user.fullName,
@@ -210,8 +214,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           ai_questions_count: 0,
           createdAt: new Date().toISOString()
         };
-        console.log("[DEBUG] Firestore writing to:", `users/${fbUser.uid}`);
-        console.log("[DEBUG] Firestore User to save:", JSON.stringify(userToSaveFirestore));
         try {
           await setDoc(doc(db, 'users', fbUser.uid), userToSaveFirestore);
         } catch (e) {
@@ -224,22 +226,29 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         // 1. Firebase Auth Login
         let userCred;
         try {
+          console.log(`[Auth] Logging in with: ${firebaseEmail}`);
           userCred = await signInWithEmailAndPassword(auth, firebaseEmail, formData.password);
         } catch (err: any) {
+          console.warn("[Auth] Primary login failed:", err.code, err.message);
           // Fallback: try with a slightly different normalization if it was not an email
           if (!isEmail) {
             // Try removing country code but keeping the zero or vice-versa, depending on how they registered
-            // Let's try to infer if we should have kept the zero
             const firebaseEmailWithZero = `${inputVal.replace(/[^\d+]/g, '').replace(/^\+880/, '0')}@auth.local`;
-            console.log(`[Auth] Primary login failed, trying fallback: ${firebaseEmailWithZero}`);
-            userCred = await signInWithEmailAndPassword(auth, firebaseEmailWithZero, formData.password);
+            console.log(`[Auth] Trying fallback normalization: ${firebaseEmailWithZero}`);
+            try {
+              userCred = await signInWithEmailAndPassword(auth, firebaseEmailWithZero, formData.password);
+            } catch (fallbackErr: any) {
+              console.error("[Auth] Fallback login also failed:", fallbackErr.code);
+              throw fallbackErr;
+            }
           } else {
             throw err;
           }
         }
         const fbUser = userCred.user;
 
-        // 2. Server Sync with SQLite session
+        // 2. Server Sync
+        console.log(`[Auth] Syncing login session for UID: ${fbUser.uid}`);
         const response = await fetchWithAuth('/api/auth/firebase-sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -248,7 +257,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             email: fbUser.email,
             mobile: fullMobile,
             userType: userType,
-            fullName: fbUser.displayName, // Only for Google/Popups but okay to send
+            fullName: fbUser.displayName,
             profilePicture: fbUser.photoURL
           })
         });
@@ -260,7 +269,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         onAuthSuccess(data.user);
       }
     } catch (err: any) {
-      console.error("Auth Error:", err.code || 'unknown', err.message || 'unknown');
+      console.error("Auth Error:", err);
       
       // Update form state: clear password fields on error
       setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
@@ -268,27 +277,20 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       const errorCode = err.code || '';
       
       if (errorCode === 'auth/email-already-in-use') {
-        const isEmailInput = formData.mobile.includes('@');
-        setError(isEmailInput 
-          ? 'এই ইমেইলটি দিয়ে আগে থেকেই একটি অ্যাকাউন্ট খোলা আছে। দয়া করে লগইন করুন।' 
-          : 'এই মোবাইল নম্বরটি দিয়ে আগে থেকেই একটি অ্যাকাউন্ট খোলা হয়েছে। আপনি চাইলে সরাসরি লগইন করতে পারেন।');
-        // Auto switch to login after a brief delay so they can read the error
-        setTimeout(() => {
-          setIsLogin(true);
-          setError(null);
-        }, 3000);
+        setError('এই ইমেইল বা নম্বরটি দিয়ে আগে থেকেই অ্যাকাউন্ট আছে। লগইন করুন।');
+        setTimeout(() => setIsLogin(true), 3000);
       } else if (errorCode === 'auth/invalid-email') {
-        setError('আপনার ইমেইল বা মোবাইল নম্বরটি সঠিক নয়। দয়া করে আবার যাচাই করুন।');
-      } else if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/wrong-password') {
-        setError('আপনার মোবাইল নম্বর বা পাসওয়ার্ড আমাদের তথ্যের সাথে মিলছে না। দয়া করে সঠিক তথ্য দিন।');
-      } else if (errorCode === 'auth/user-not-found') {
-        setError('এই ইউজার নামে কোনো অ্যাকাউন্ট পাওয়া যায়নি। আপনি কি নতুন অ্যাকাউন্ট খুলতে চান?');
+        setError('সঠিক ইমেইল বা মোবাইল নম্বর দিন।');
+      } else if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/wrong-password' || errorCode === 'auth/user-not-found') {
+        if (formData.mobile.includes('gmail.com') || formData.mobile.includes('yahoo.com')) {
+           setError('পাসওয়ার্ড ভুল হতে পারে অথবা আপনি গুগল দিয়ে অ্যাকাউন্ট খুলেছেন। দয়া করে "গুগল দিয়ে লগইন" বাটনটি চেষ্টা করুন।');
+        } else {
+           setError('মোবাইল নম্বর বা পাসওয়ার্ড সঠিক নয়। দয়া করে আবার যাচাই করুন।');
+        }
       } else if (errorCode === 'auth/too-many-requests') {
-        setError('অনেক বেশি চেষ্টা করা হয়েছে। নিরাপত্তার খাতিরে কিছু সময় পর আবার চেষ্টা করুন।');
-      } else if (errorCode === 'auth/network-request-failed') {
-        setError('ইন্টারনে সংযোগে সমস্যা হচ্ছে। আপনার ইন্টারনেট কানেকশন চেক করুন।');
+        setError('অতিরিক্ত বার চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।');
       } else {
-        setError(err.message || 'অপ্রত্যাশিত সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+        setError(err.message || 'লগইন করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।');
       }
       setLoading(false);
     }

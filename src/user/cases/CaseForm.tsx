@@ -265,7 +265,17 @@ export default function CaseForm({
     }
 
     const rawNumber = formData.rawCaseNumber || formData.caseNumber || '';
-    const year = formData.filingDate ? new Date(formData.filingDate).getFullYear() : '';
+    let year = '';
+    
+    if (formData.filingDate) {
+      const d = new Date(formData.filingDate);
+      if (!isNaN(d.getFullYear())) {
+        year = d.getFullYear().toString();
+      }
+    }
+    
+    if (!year && mode === 'quick') year = new Date().getFullYear().toString();
+    
     const type = formData.caseType || '';
     const thana = formData.policeStation || '';
     
@@ -540,19 +550,63 @@ export default function CaseForm({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('next_date')} *</label>
-                    <input
-                      type="date"
-                      name="nextDate"
-                      value={formData.nextDate}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('priority_label')}</label>
+                    <div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('next_date')} *</label>
+                      <input
+                        type="date"
+                        name="nextDate"
+                        value={formData.nextDate}
+                        onChange={handleChange}
+                        required
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                      />
+                    </div>
+                    
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('district_label')}</label>
+                        <select
+                          name="district"
+                          value={formData.district || userDistrict}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                        >
+                          <option value="">{t('district_placeholder')}</option>
+                          {BANGLADESH_DISTRICTS.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'থানা' : 'Police Station'}</label>
+                        <select
+                          name="policeStation"
+                          value={formData.policeStation}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                        >
+                          <option value="">{t('select_police_station' as any)}</option>
+                          {getPoliceStations(formData.district || userDistrict, userCountry).map(ps => (
+                            <option key={ps} value={ps}>{ps}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('court_name')}</label>
+                        <select
+                          name="courtName"
+                          value={formData.courtName}
+                          onChange={handleChange}
+                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                        >
+                          <option value="">{t('court_placeholder')}</option>
+                          {getCourtsForDistrict(formData.district || userDistrict).map(court => (
+                            <option key={court} value={court}>{court}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('priority_label')}</label>
                     <select
                       name="priority"
                       value={formData.priority || 'medium'}

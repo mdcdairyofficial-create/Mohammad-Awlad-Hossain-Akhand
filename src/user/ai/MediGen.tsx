@@ -1,20 +1,18 @@
 import React, { useState } from 'react';
 import { Stethoscope, Building2, Globe, Languages, Printer, ExternalLink, Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
-import { GoogleGenAI } from '@google/genai';
 import { AdBanner } from '../dashboard/AdBanner';
-
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY });
+import { fetchWithAuth } from '../../lib/api';
+import { auth } from '../../firebase';
 
 type Language = 'en' | 'bn';
 
 export default function MediGen() {
-  const [lang, setLang] = useState<Language>('en');
+  const [lang, setLang] = useState<Language>('en'); 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>('');
   const [references, setReferences] = useState<{ uri: string; title: string }[]>([]);
 
-  // Form states
   const [patientName, setPatientName] = useState('');
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
@@ -50,14 +48,28 @@ export default function MediGen() {
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!disease) return;
+    console.log("[MediGen] handleGenerate called");
+    if (!disease) {
+        console.warn("[MediGen] No disease description");
+        return;
+    }
 
     setLoading(true);
     setResult('');
     setReferences([]);
 
     try {
-      const systemInstruction = `Act as an expert Doctor/Hakeem/Vaidya. Generate a safe prescription/remedy including Diagnosis, The Remedy (Dosage, Preparation), and Instructions.`;
+      const user = auth.currentUser;
+      console.log("[MediGen] Current user UID:", user?.uid);
+      if (!user) {
+         console.warn("[MediGen] No user logged in, but trying to generate!");
+      }
+
+      const systemInstruction = `Act as an expert Doctor/Hakeem/Vaidya. Generate a safe prescription/remedy following this strict structure:                
+1. Remedy/Formula: Include Dosage, Preparation, and Instructions.
+2. Reason and Explanation (কারণ ও ব্যাখ্যা): Provide a DETAILED medical reasoning behind this specific formula and why these ingredients/actions are chosen.
+3. Cause of Disease (রোগটি কেন হল): Explain the root causes and contributing factors to why this specific disease/problem occurred in the patient (e.g., lifestyle, diet, environmental or physiological reasons).
+Always keep Scientific/Medical names in brackets.`;
       const prompt = `
         Patient Name: ${patientName}
         Age: ${age}
@@ -70,31 +82,28 @@ export default function MediGen() {
       `;
 
       const languageInstruction = lang === 'bn' 
-        ? `Write the main content in Bengali but ALWAYS keep English Scientific/Medical names in brackets. Use Markdown for readability. Add a standard medical disclaimer at the bottom.`
-        : `Write the content in English. Use Markdown for readability. Add a standard medical disclaimer at the bottom.`;
+        ? `Write the main content in Bengali but ALWAYS keep English Scientific/Medical names in brackets. Use Markdown for readability. Add a standard medical disclaimer at the bottom. ALWAYS include the 'কারন ও ব্যাখ্যা' section in Bengali.`
+        : `Write the content in English. Use Markdown for readability. Add a standard medical disclaimer at the bottom. ALWAYS include the 'Reason and Explanation' section.`;
 
       const finalPrompt = `${systemInstruction}\n\n${languageInstruction}\n\nDetails:\n${prompt}`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: finalPrompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        }
+      const response = await fetchWithAuth('/api/medigen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: finalPrompt })
       });
 
-      setResult(response.text || '');
-
-      const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-      if (chunks) {
-        const refs = chunks
-          .filter((chunk: any) => chunk.web?.uri && chunk.web?.title)
-          .map((chunk: any) => ({ uri: chunk.web.uri, title: chunk.web.title }));
-        
-        // Remove duplicates
-        const uniqueRefs = Array.from(new Map(refs.map((item: any) => [item.uri, item])).values()) as {uri: string, title: string}[];
-        setReferences(uniqueRefs);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 400) {
+            alert(lang === 'bn' ? 'আপনার পর্যাপ্ত পয়েন্ট নেই। দয়া করে রিচার্জ করুন।' : 'Insufficient points. Please recharge.');
+            return;
+        }
+        throw new Error(errorData.error || `Failed to generate formula: ${response.statusText}`);
       }
+
+      const data = await response.json();
+      setResult(data.text || '');
 
     } catch (error) {
       console.error('Error generating formula:', error);
@@ -110,7 +119,6 @@ export default function MediGen() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      {/* Header */}
       <header className={`px-6 py-4 shadow-md flex justify-between items-center transition-colors duration-300 bg-teal-600 text-white`}>
         <div className="flex items-center gap-3">
           <Stethoscope size={28} />
@@ -128,10 +136,8 @@ export default function MediGen() {
         </button>
       </header>
 
-      {/* Main Content - Split Screen */}
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         
-        {/* Left Side: Form */}
         <div className="w-full lg:w-1/3 p-6 overflow-y-auto border-r border-slate-200 bg-white print:hidden">
           
           <form onSubmit={handleGenerate} className="space-y-4">
@@ -145,29 +151,29 @@ export default function MediGen() {
                   className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                 />
               </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('age')}</label>
-                  <input 
-                    type="number" 
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">{t('gender')}</label>
-                  <select 
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all bg-white"
-                  >
-                    <option value="">{t('select')}</option>
-                    <option value="Male">{t('male')}</option>
-                    <option value="Female">{t('female')}</option>
-                    <option value="Other">{t('other')}</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t('age')}</label>
+                <input 
+                  type="number" 
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t('gender')}</label>
+                <select 
+                  value={gender}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all bg-white"
+                >
+                  <option value="">{t('select')}</option>
+                  <option value="Male">{t('male')}</option>
+                  <option value="Female">{t('female')}</option>
+                  <option value="Other">{t('other')}</option>
+                </select>
+              </div>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">{t('disease')} *</label>
@@ -251,15 +257,15 @@ export default function MediGen() {
             <button 
               type="submit" 
               disabled={loading || !disease}
-              className={`w-full py-3 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+              className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 text-lg mt-6 ${
                 loading || !disease 
                   ? 'bg-slate-400 cursor-not-allowed' 
-                  : 'bg-teal-600 hover:bg-teal-700 hover:shadow-teal-600/20'
+                  : 'bg-teal-600 hover:bg-teal-700 hover:shadow-teal-600/20 shadow-teal-500/10'
               }`}
             >
               {loading ? (
                 <>
-                  <Loader2 className="animate-spin" size={20} />
+                  <Loader2 className="animate-spin" size={24} />
                   {t('generating')}
                 </>
               ) : (
@@ -268,13 +274,11 @@ export default function MediGen() {
             </button>
           </form>
 
-          {/* Ad Space below form */}
           <div className="mt-8 print:hidden">
             <AdBanner />
           </div>
         </div>
 
-        {/* Right Side: Result */}
         <div className="w-full lg:w-2/3 p-6 lg:p-10 overflow-y-auto bg-slate-50 print:p-0 print:bg-white print:w-full">
           {result ? (
             <div className="max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100 print:shadow-none print:border-none print:p-0">
@@ -293,32 +297,7 @@ export default function MediGen() {
                   <Markdown>{result}</Markdown>
                 </div>
               </div>
-
-              {references.length > 0 && (
-                <div className="mt-12 pt-8 border-t border-slate-200 print:hidden">
-                  <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <Globe size={20} className="text-teal-600" />
-                    {t('references')}
-                  </h3>
-                  <ul className="space-y-3">
-                    {references.map((ref, idx) => (
-                      <li key={idx}>
-                        <a 
-                          href={ref.uri} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-start gap-2 text-sm text-slate-600 hover:text-teal-700 transition-colors group"
-                        >
-                          <ExternalLink size={16} className="mt-0.5 opacity-50 group-hover:opacity-100 shrink-0" />
-                          <span className="group-hover:underline leading-tight">{ref.title || ref.uri}</span>
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Ad Space below result */}
+              
               <div className="mt-12 pt-8 border-t border-slate-200 print:hidden">
                 <AdBanner />
               </div>
@@ -334,7 +313,6 @@ export default function MediGen() {
         </div>
       </div>
       
-      {/* Print Styles */}
       <style>{`
         @media print {
           body * {

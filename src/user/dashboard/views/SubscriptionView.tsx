@@ -13,7 +13,9 @@ interface SubscriptionViewProps {
 
 export const SubscriptionView = ({ t, userId, userType, currentPackage, expiryDate, onSubscribe }: SubscriptionViewProps) => {
   const [recipientId, setRecipientId] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PACKAGES[0]);
+  const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PACKAGES.filter(p => p.id === 'special')[0]);
+
+  const displayedPackages = SUBSCRIPTION_PACKAGES.filter(pkg => pkg.id === 'special');
 
   const handleGift = () => {
     if (!recipientId) return;
@@ -35,7 +37,7 @@ export const SubscriptionView = ({ t, userId, userType, currentPackage, expiryDa
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {SUBSCRIPTION_PACKAGES.map(pkg => (
+        {displayedPackages.map(pkg => (
           <button
             key={pkg.id}
             onClick={() => setSelectedPlan(pkg)}
@@ -75,10 +77,10 @@ export const SubscriptionView = ({ t, userId, userType, currentPackage, expiryDa
 
       {selectedPlan.id === 'special' ? (
         <button
-          disabled
-          className="w-full py-4 px-2 bg-slate-300 text-slate-600 font-bold rounded-2xl cursor-not-allowed text-base md:text-lg"
+          onClick={() => onSubscribe(selectedPlan)}
+          className="w-full py-4 px-2 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 text-base md:text-lg shadow-lg shadow-indigo-200 transition-all active:scale-[0.98]"
         >
-          এই প্যাকেজটি ৫ টি রেফার করে অথবা রেফার লিংকের মাধ্যমে সাইনআপ করলে পাওয়া যাবে
+          ৫০০ পয়েন্ট দিয়ে স্পেশাল ফ্রি প্যাক কিনুন
         </button>
       ) : (
         <button

@@ -42,6 +42,8 @@ interface CasesViewProps {
   isPremium?: boolean;
   isPremiumForAds?: boolean;
   userType?: string;
+  showAllCases?: boolean;
+  onToggleShowAll?: () => void;
 }
 
 export const CasesView = ({
@@ -64,7 +66,9 @@ export const CasesView = ({
   language,
   isPremium = false,
   isPremiumForAds = false,
-  userType = 'lawyer'
+  userType = 'lawyer',
+  showAllCases = false,
+  onToggleShowAll
 }: CasesViewProps) => {
   const [selectedDistrict, setSelectedDistrict] = React.useState('all');
   const isClient = userType === 'client';
@@ -92,7 +96,20 @@ export const CasesView = ({
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">
             {t('my_cases')} <span className="text-indigo-600 ml-2">({filteredCases.length})</span>
           </h2>
-          <p className="text-slate-500 font-medium mt-1">{t('all_cases_info')}</p>
+          <p className="text-slate-500 font-medium mt-1">
+            {showAllCases 
+              ? (language === 'bn' ? 'আপনার সব মামলার তালিকা এখানে আছে।' : 'All your cases are listed here.')
+              : (language === 'bn' ? 'শুধুমাত্র আজকের মামলাগুলো দেখানো হচ্ছে (অপ্টিমাইজড)।' : 'Showing only today\'s cases (Optimized).')
+            }
+          </p>
+          {!showAllCases && onToggleShowAll && (
+            <button 
+              onClick={onToggleShowAll}
+              className="mt-2 text-xs font-black text-indigo-600 hover:underline flex items-center gap-1"
+            >
+              <History size={12} /> {language === 'bn' ? 'সব মামলা লোড করুন' : 'Load All Cases'}
+            </button>
+          )}
         </div>
         {!isClient && (
           <div className="flex flex-wrap items-center gap-3">
@@ -365,18 +382,32 @@ export const CasesView = ({
           </div>
           <div>
             <h4 className="text-xl font-bold text-slate-900">{t('no_cases_found')}</h4>
-            <p className="text-slate-500 font-medium">{t('change_search_filter')}</p>
+            <p className="text-slate-500 font-medium">
+              {!showAllCases 
+                ? (language === 'bn' ? 'শুধুমাত্র আজকের মামলাগুলো সার্চ করা হয়েছে। সব মামলার মধ্যে সার্চ করতে "সব মামলা লোড করুন" বাটনে ক্লিক করুন।' : 'Only today\'s cases were searched. Click "Load All Cases" to search everything.')
+                : t('change_search_filter')
+              }
+            </p>
           </div>
-          <button 
-            onClick={() => {
-              setCaseSearchQuery('');
-              setCaseFilter('all');
-              setCaseStatusFilter('all');
-            }}
-            className="text-indigo-600 font-bold hover:underline"
-          >
-            {t('reset_filters')}
-          </button>
+          {!showAllCases ? (
+            <button 
+              onClick={onToggleShowAll}
+              className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200"
+            >
+              {language === 'bn' ? 'সব মামলা লোড করুন' : 'Load All Cases'}
+            </button>
+          ) : (
+            <button 
+              onClick={() => {
+                setCaseSearchQuery('');
+                setCaseFilter('all');
+                setCaseStatusFilter('all');
+              }}
+              className="text-indigo-600 font-bold hover:underline"
+            >
+              {t('reset_filters')}
+            </button>
+          )}
         </div>
       )}
     </div>
