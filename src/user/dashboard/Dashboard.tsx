@@ -84,7 +84,7 @@ import AdminPanel from '../../admin/AdminPanel';
 import LawyerDirectory from '../profile/LawyerDirectory';
 import ClerkDirectory from '../profile/ClerkDirectory';
 import ArchiveCaseHistory from '../cases/ArchiveCaseHistory';
-import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase } from '../../types';
+import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry } from '../../types';
 import CaseForm from '../cases/CaseForm';
 import NotificationPanel from './NotificationPanel';
 import { Logo } from '../../components/Logo';
@@ -190,7 +190,34 @@ const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boo
                              entry.actionBy === 'admin' ? t('admin_label') : t('client_label')}
                           </span>
                         </div>
-                        <p className="text-slate-700 text-sm font-medium leading-relaxed">{entry.description}</p>
+                        <p className="text-slate-700 text-sm font-medium leading-relaxed mb-3">{entry.description}</p>
+                        
+                        {entry.order && (
+                          <div className="mb-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                             <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'আদেশ' : 'Order'}</p>
+                             <p className="text-sm font-bold text-slate-800">{entry.order}</p>
+                          </div>
+                        )}
+
+                        {entry.documents && entry.documents.length > 0 && (
+                          <div className="space-y-2">
+                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'সংযুক্ত ডকুমেন্ট' : 'Attached Documents'}</p>
+                             <div className="flex flex-wrap gap-2">
+                               {entry.documents.map((doc, dIdx) => (
+                                 <a 
+                                   key={dIdx}
+                                   href={doc.url} 
+                                   target="_blank" 
+                                   rel="noopener noreferrer"
+                                   className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-all"
+                                 >
+                                   <FileText size={14} />
+                                   <span className="truncate max-w-[120px]">{doc.name}</span>
+                                 </a>
+                               ))}
+                             </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1221,30 +1248,54 @@ export default function Dashboard({
     alert(t('meeting_request_sent'));
   };
 
-  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public') => {
-    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility);
+  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = []) => {
+    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
     handleUpdateSelectedParty(id, selectedParty);
   };
 
-  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public') => {
+  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = []) => {
     const targetCase = cases.find(c => c.id === caseId);
-    if (targetCase && nextDate) {
-      // Auto-generate attendance task
-      const autoTask: Omit<Task, 'id' | 'created_at'> = {
-        title: `হাজিরা: ${targetCase.caseNumber}`,
-        description: `${targetCase.courtName} - এ হাজিরা দিতে হবে।`,
-        dueDate: nextDate,
-        status: 'pending',
-        priority: 'high',
-        category: 'attendance',
-        caseNumber: targetCase.caseNumber,
-        courtName: targetCase.courtName,
-        assignedTo: firebaseUid || String(userId),
-        assignedBy: firebaseUid || String(userId),
+    if (targetCase) {
+      if (nextDate) {
+        // Auto-generate attendance task
+        const autoTask: Omit<Task, 'id' | 'created_at'> = {
+          title: `হাজিরা: ${targetCase.caseNumber}`,
+          description: `${targetCase.courtName} - এ হাজিরা দিতে হবে।`,
+          dueDate: nextDate,
+          status: 'pending',
+          priority: 'high',
+          category: 'attendance',
+          caseNumber: targetCase.caseNumber,
+          courtName: targetCase.courtName,
+          assignedTo: firebaseUid || String(userId),
+          assignedBy: firebaseUid || String(userId),
+        };
+        await createTask(autoTask);
+      }
+
+      // Add to history
+      const actionBy: any = (currentViewMode === 'bar_admin' ? 'admin' : currentViewMode);
+      const newHistoryEntry: CaseHistoryEntry = {
+        id: Date.now().toString(),
+        date: new Date().toISOString().split('T')[0],
+        actionBy,
+        description: language === 'bn' ? 'মামলার তথ্য আপডেট করা হয়েছে।' : 'Case information updated.',
+        order: order,
+        documents: attachedDocs
       };
-      await createTask(autoTask);
+
+      const updatedHistory = [...(targetCase.history || []), newHistoryEntry];
+      await updateCase(caseId.toString(), { 
+        nextDate, 
+        order, 
+        isUpdated: true, 
+        clerkCanCall, 
+        lawyerCanCall, 
+        visibility,
+        history: updatedHistory,
+        documents: [...(targetCase.documents || []), ...attachedDocs]
+      });
     }
-    await updateCase(caseId.toString(), { nextDate, order, isUpdated: true, clerkCanCall, lawyerCanCall, visibility });
   };
 
   const handleAddDocument = async (caseId: string | number, document: { name: string; type: string; url: string }) => {
@@ -4495,8 +4546,8 @@ export default function Dashboard({
                   caseData={selectedCaseForCard}
                   isPetitioner={isUserPetitioner(selectedCaseForCard)}
                   isRespondent={isUserRespondent(selectedCaseForCard)}
-                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility) => {
-                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility);
+                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs) => {
+                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
                   }}
                   onAddDocument={handleAddDocument}
                   onCaseNumberClick={(caseNum) => {

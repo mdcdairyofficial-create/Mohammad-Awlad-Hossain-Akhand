@@ -10,7 +10,11 @@ import {
   Smartphone,
   CheckCircle2,
   Camera,
-  Share2
+  Share2,
+  Paperclip,
+  X,
+  Loader2,
+  Upload
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case } from '../../types';
@@ -19,7 +23,7 @@ import { AdBanner } from './AdBanner';
 
 interface CaseCardProProps {
   caseData: Case;
-  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public') => void;
+  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs?: {name: string, type: string, url: string}[]) => void;
   onCaseNumberClick?: (caseNumber: string) => void;
   onAddDocument: (id: string | number, document: { name: string; type: string; url: string }) => void;
   onDelete?: (id: string | number) => void;
@@ -46,6 +50,8 @@ export const CaseCardPro = ({
   const [clerkCanCall, setClerkCanCall] = useState(caseData.clerkCanCall || false);
   const [lawyerCanCall, setLawyerCanCall] = useState(caseData.lawyerCanCall || false);
   const [visibility, setVisibility] = useState<'private' | 'public'>(caseData.visibility as any || 'private');
+  const [attachedDocs, setAttachedDocs] = useState<{name: string, type: string, url: string}[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [calDate, setCalDate] = useState(new Date());
   const [showAd, setShowAd] = useState(false);
@@ -140,7 +146,8 @@ export const CaseCardPro = ({
 
   const handleAction = (msg: string, update: boolean = false) => {
     if (update) {
-      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility);
+      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
+      setAttachedDocs([]);
     }
     setConfirmMsg(msg);
     setShowAd(true);
@@ -151,7 +158,8 @@ export const CaseCardPro = ({
       handleAction('ধন্যবাদ, আপনার আগেই তথ্য আপলোড করা হয়েছে। আপনি অন্যত্র চেষ্টা করুন।', false);
       return;
     }
-    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility);
+    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
+    setAttachedDocs([]);
     handleAction('সকল পক্ষের ক্যালেন্ডারে তথ্য আপডেট করা হয়েছে।', true);
   };
 
@@ -338,8 +346,53 @@ export const CaseCardPro = ({
                   value={order}
                   onChange={(e) => setOrder(e.target.value)}
                   placeholder="হাজিরা, সময়, স্বাক্ষী, জেরা অথবা আজকের আদেশ লিখুন..."
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24"
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24 mb-3"
                 />
+                
+                <div className="mb-4">
+                  <p className="text-[10px] font-bold text-slate-400 mb-2 ml-1">সংযুক্ত ডকুমেন্ট (Attached Documents)</p>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {attachedDocs.map((doc, idx) => (
+                      <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600">
+                        <FileText size={14} />
+                        <span className="truncate max-w-[100px]">{doc.name}</span>
+                        <button type="button" onClick={() => setAttachedDocs(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700">
+                           <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <input 
+                    type="file" 
+                    id="update-doc-upload"
+                    className="hidden" 
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsUploading(true);
+                      try {
+                        const dateStr = new Date().toISOString().split('T')[0];
+                        const path = `${caseData.caseNumber}/${dateStr}/updates/${Date.now()}_${file.name}`;
+                        await uploadFile('documents', path, file);
+                        const url = await getPublicUrl('documents', path);
+                        setAttachedDocs(prev => [...prev, { name: file.name, type: file.type, url }]);
+                      } catch (err) {
+                        console.error("Upload failed", err);
+                      } finally {
+                        setIsUploading(false);
+                      }
+                    }}
+                  />
+                  <button 
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => document.getElementById('update-doc-upload')?.click()}
+                    className="flex items-center gap-2 px-4 py-2 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all"
+                  >
+                    {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
+                    ডকুমেন্ট যোগ করুন
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, Trash2, ChevronRight, ChevronLeft, Save, Search, Zap, FileText, UserPlus } from 'lucide-react';
+import { X, Plus, Trash2, ChevronRight, ChevronLeft, Save, Search, Zap, FileText, UserPlus, Upload, Paperclip, Eye, Loader2 } from 'lucide-react';
 import { Case } from '../../types';
 import { translations } from '../../translations';
 import { BANGLADESH_DISTRICTS, getPoliceStations, getCourtsForDistrict } from '../../constants';
+import { uploadFile, getPublicUrl } from '../../lib/storage';
 
 interface CaseFormProps {
   onSave: (caseData: any) => void;
@@ -79,6 +80,10 @@ export default function CaseForm({
     additionalOrder: '',
     totalRespondents: ''
   });
+
+  const [caseDocuments, setCaseDocuments] = useState<{ name: string; type: string; url: string }[]>(initialData?.documents || []);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [plaintiffs, setPlaintiffs] = useState<PartyRow[]>([{ name: '', phone: '' }]);
   const [defendants, setDefendants] = useState<PartyRow[]>([{ name: '', phone: '', serial: 1 }]);
@@ -306,7 +311,34 @@ export default function CaseForm({
       petitionerClerkMobile: clerks.map(c => c.phone).filter(Boolean),
     };
 
-    onSave(finalData);
+    onSave({ ...finalData, documents: caseDocuments });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const path = `cases/documents/${Date.now()}_${file.name}`;
+      await uploadFile('', path, file);
+      const url = await getPublicUrl('', path);
+      
+      setCaseDocuments(prev => [...prev, {
+        name: file.name,
+        type: file.type,
+        url: url
+      }]);
+    } catch (err) {
+      console.error("File upload failed:", err);
+      alert(language === 'bn' ? 'ফাইল আপলোড করতে সমস্যা হয়েছে।' : 'File upload failed.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeDocument = (index: number) => {
+    setCaseDocuments(prev => prev.filter((_, i) => i !== index));
   };
 
   const renderPartySection = (

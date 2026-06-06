@@ -9,6 +9,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
 import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
+import SocialGate from "./user/auth/SocialGate";
 import Dashboard from "./user/dashboard/Dashboard";
 import AdminDashboard from "./admin/AdminDashboard";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -50,6 +51,9 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(() => {
     const savedUser = localStorage.getItem("appUser");
     return savedUser ? JSON.parse(savedUser) : null;
+  });
+  const [socialCompleted, setSocialCompleted] = useState(() => {
+    return localStorage.getItem("socialVerificationCompleted") === "true";
   });
 
   useEffect(() => {
@@ -198,7 +202,11 @@ export default function App() {
               }}
             />
           ) : !user ? (
-            <Auth onAuthSuccess={handleAuthSuccess} />
+            !socialCompleted ? (
+              <SocialGate onComplete={() => setSocialCompleted(true)} />
+            ) : (
+              <Auth onAuthSuccess={handleAuthSuccess} />
+            )
           ) : (
             <Dashboard
               userId={user.id}

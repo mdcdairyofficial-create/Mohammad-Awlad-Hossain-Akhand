@@ -1,9 +1,12 @@
 export type UserRole = 'super_admin' | 'country_manager' | 'district_admin' | 'bar_admin' | 'lawyer' | 'clerk' | 'admin' | 'client' | 'bar_association' | 'advertiser';
 
 export interface CaseHistoryEntry {
+  id?: string;
   date: string;
   actionBy: UserRole | 'petitioner' | 'respondent' | 'court' | 'accused';
   description: string;
+  order?: string;
+  documents?: { name: string; type: string; url: string }[];
 }
 
 export interface Case {
