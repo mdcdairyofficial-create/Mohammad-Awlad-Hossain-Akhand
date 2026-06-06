@@ -2258,9 +2258,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               </div>
 
                     </div>
-                  </div>
-                </div>
-              )}
+                      )}
               </main>
 
           <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
@@ -2279,16 +2277,8 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 }`}
 </pre>
 
-@media (max-width: 1024px) {
-  .sidebar-container {
-    transform: translateX(-100%); /* মোবাইলে স্বয়ংক্রিয় হাইড */
-  }
-  .sidebar-container.open {
-    transform: translateX(0); /* টগল বাটন ক্লিক করলে ওপেন */
-  }
-}
-
-/* ২. ফ্লুইড উইজেট গ্রिড স্ট্রাকচার */
+<pre className="overflow-x-auto text-emerald-400 font-bold leading-relaxed">
+{`/* ২. ফ্লুইড উইজেট গ্রিড স্ট্রাকচার */
 .responsive-stats-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr)); /* মোবাইলে ১ কলাম */
@@ -2306,44 +2296,17 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
     grid-template-columns: repeat(3, minmax(0, 1fr)); /* ডেস্কটপ ৩ কলাম */
   }
 }`}
-                </pre>
+</pre>
                 <p className="text-zinc-500 text-[10px] font-bold">
                   * আমাদের ডোমেন ফ্লেক্স গ্রিডগুলোর সাথে পুরোপুরি কানেক্ট করা এবং সমস্ত ফাইল বা বডি রেন্ডারিং ভিউপোর্ট কন্ট্রোল করে।
                 </p>
               </div>
 
-            </div>simulatedDevice !== 'mobile' ? (
-                                  <div className="col-span-3 bg-white p-4 rounded-xl border border-slate-200 h-full flex flex-col justify-between">
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between border-b pb-2">
-                                        <h5 className="text-[11px] font-bold text-slate-800">মামলার গভীর বিবরণ ও অগ্রগতি</h5>
-                                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-black rounded">নথিভুক্ত</span>
-                                      </div>
-                                      <p className="text-[10px] text-slate-600 leading-relaxed">
-                                        মামলা নং খ-২৪/২০২৬ ঢাকার প্রথম দেওয়ানি সহকারী জজ আদালতে শুনানি ও সাক্ষী প্রমাণের জন্য প্রক্রিয়াধীন রয়েছে। নথিটি সম্পূর্ণরূপে স্ক্যান এবং ডিজিটাল সার্ভারে ক্লাউড সিঙ্কড করা হয়েছে।
-                                      </p>
-                                      <div className="grid grid-cols-2 gap-2 text-[9px] bg-slate-50 p-2 rounded-lg">
-                                        <div>
-                                          <span className="text-slate-400 font-bold block">পরবর্তী তারিখ:</span>
-                                          <span className="text-slate-800 font-extrabold">১৫ জুন, ২০২৬</span>
-                                        </div>
-                                        <div>
-                                          <span className="text-slate-400 font-bold block">দায়িত্বপ্রাপ্ত মুহুরী:</span>
-                                          <span className="text-slate-800 font-extrabold">মোঃ রফিকুল ইসলাম</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <button className="w-full py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-bold hover:bg-indigo-700">ডিজিটাল ওকালতনামা ডাউনলোড</button>
-                                  </div>
-                                ) : (
-                                  /* Mobile details prompt/hint banner */
-                                  <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-100 flex items-center justify-between">
-                                    <p className="text-[9px] text-amber-800 font-bold">💡 মোবাইলে স্পেস বাঁচাতে বিশদ বিবরণ প্যানেলটি স্বয়ংক্রিয়ভাবে একটি বটম শিট মডালে স্থানান্তরিত হয়।</p>
-                                  </div>
-                                )}
+            </div>
+
+            
                               </div>
                             </div>
-                          )}
 
                           {/* VIEW: RECHARGE GATEWAY */}
                           {simulatedViewMode === 'recharge' && (
@@ -2420,7 +2383,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                             </div>
                           )}
 
-                        </main>
+                  </div>
 
                         {/* Simulated Bottom Navigation Bar (ONLY Visible on Mobile viewport) */}
                         {simulatedDevice === 'mobile' && (
@@ -2445,14 +2408,6 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 
                       </div>
 
-                    </div>
-
-                  </div>
-                </div>
-
-              </div>
-
-              {/* In-depth Responsive Grid & Breakpoint Specifications in fluent Bangla */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 
                 {/* Mobile Specs */}
@@ -2518,14 +2473,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
   transition: transform 300ms ease-in-out;
 }
 
-@media (max-width: 1024px) {
-  .sidebar-container {
-    transform: translateX(-100%); /* মোবাইলে স্বয়ংক্রিয় হাইড */
-  }
-  .sidebar-container.open {
-    transform: translateX(0); /* টগল বাটন ক্লিক করলে ওপেন */
-  }
-}
+
 
 /* ২. ফ্লুইড উইজেট গ্রিড স্ট্রাকচার */
 .responsive-stats-grid {
