@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Clock, 
@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Plus
 } from 'lucide-react';
+import { Case } from '../../types';
 
 interface TimelineEvent {
   id: string;
@@ -25,7 +26,7 @@ interface TimelineEvent {
   uploaderRole: 'lawyer' | 'clerk' | 'client' | 'admin';
   uploaderSide: 'petitioner' | 'respondent'; // বাদী | বিবাদী
   isSharedWithOpponent: boolean;
-  attachments?: string[];
+  attachments?: (string | { name: string; url: string })[];
 }
 
 interface CaseTimelineProps {
@@ -36,50 +37,102 @@ interface CaseTimelineProps {
     respondent: string;
     status: string;
   };
+  caseData?: Case | null;
   currentUserRole: 'lawyer' | 'clerk' | 'client' | 'admin';
   currentUserSide: 'petitioner' | 'respondent';
   onBack: () => void;
   theme: 'light' | 'dark';
 }
 
-export default function CaseTimeline({ caseInfo, currentUserRole, currentUserSide, onBack, theme }: CaseTimelineProps) {
-  const [events, setEvents] = useState<TimelineEvent[]>([
-    {
-      id: '1',
-      type: 'date',
-      content: 'আগামী শুনানির তারিখ নির্ধারণ করা হয়েছে।',
-      date: '2025-03-15',
-      time: '10:30 AM',
-      uploaderName: 'অ্যাডভোকেট রহিম',
-      uploaderRole: 'lawyer',
-      uploaderSide: 'petitioner',
-      isSharedWithOpponent: true,
-    },
-    {
-      id: '2',
-      type: 'order',
-      content: 'আদালত আসামির জামিন মঞ্জুর করেছেন।',
-      date: '2025-02-28',
-      time: '02:15 PM',
-      uploaderName: 'অ্যাডভোকেট করিম',
-      uploaderRole: 'lawyer',
-      uploaderSide: 'respondent',
-      isSharedWithOpponent: true,
-      attachments: ['bail_order.pdf'],
-    },
-    {
-      id: '3',
-      type: 'diary',
-      content: 'ক্লায়েন্টের সাথে মিটিং সম্পন্ন হয়েছে। প্রয়োজনীয় কাগজপত্র সংগ্রহ করা হয়েছে।',
-      date: '2025-02-25',
-      time: '05:00 PM',
-      uploaderName: 'মুহুরি রফিক',
-      uploaderRole: 'clerk',
-      uploaderSide: 'petitioner',
-      isSharedWithOpponent: false,
-    }
-  ]);
+export default function CaseTimeline({ caseInfo, caseData, currentUserRole, currentUserSide, onBack, theme }: CaseTimelineProps) {
+  const initialEvents = useMemo(() => {
+    if (!caseData) return [
+      {
+        id: '1',
+        type: 'date' as const,
+        content: 'আগামী শুনানির তারিখ নির্ধারণ করা হয়েছে।',
+        date: '2025-03-15',
+        time: '10:30 AM',
+        uploaderName: 'অ্যাডভোকেট রহিম',
+        uploaderRole: 'lawyer' as const,
+        uploaderSide: 'petitioner' as const,
+        isSharedWithOpponent: true,
+      },
+      {
+        id: '2',
+        type: 'order' as const,
+        content: 'আদালত আসামির জামিন মঞ্জুর করেছেন।',
+        date: '2025-02-28',
+        time: '02:15 PM',
+        uploaderName: 'অ্যাডভোকেট করিম',
+        uploaderRole: 'lawyer' as const,
+        uploaderSide: 'respondent' as const,
+        isSharedWithOpponent: true,
+        attachments: ['bail_order.pdf'],
+      },
+      {
+        id: '3',
+        type: 'diary' as const,
+        content: 'ক্লায়েন্টের সাথে মিটিং সম্পন্ন হয়েছে। প্রয়োজনীয় কাগজপত্র সংগ্রহ করা হয়েছে।',
+        date: '2025-02-25',
+        time: '05:00 PM',
+        uploaderName: 'মুহুরি রফিক',
+        uploaderRole: 'clerk' as const,
+        uploaderSide: 'petitioner' as const,
+        isSharedWithOpponent: false,
+      }
+    ];
 
+    const mapped: TimelineEvent[] = [];
+
+    // Map case files if any
+    if (caseData.documents && caseData.documents.length > 0) {
+      mapped.push({
+        id: 'profile-docs-event',
+        type: 'document' as const,
+        content: 'মামলার সাথে প্রয়োজনীয় নথিপত্র সংযুক্ত করা হয়েছে।',
+        date: caseData.filingDate || caseData.lastDate || new Date().toISOString().split('T')[0],
+        time: '12:00 PM',
+        uploaderName: 'আইনজীবী / মুহুরি',
+        uploaderRole: 'lawyer' as const,
+        uploaderSide: 'petitioner' as const,
+        isSharedWithOpponent: true,
+        attachments: caseData.documents.map(d => ({ name: d.name, url: d.url }))
+      });
+    }
+
+    // Map history entries
+    if (caseData.history && caseData.history.length > 0) {
+      caseData.history.forEach((entry, idx) => {
+        const uploaderR: TimelineEvent['uploaderRole'] = 
+          entry.actionBy === 'lawyer' ? 'lawyer' : 
+          entry.actionBy === 'clerk' ? 'clerk' :
+          entry.actionBy === 'client' ? 'client' : 'admin';
+        
+        const uploads = entry.documents?.map(d => ({ name: d.name, url: d.url })) || [];
+
+        mapped.push({
+          id: `hist-${idx}`,
+          type: entry.order ? ('order' as const) : ('diary' as const),
+          content: entry.description + (entry.order ? `\n\nআদেশ: ${entry.order}` : ''),
+          date: entry.date,
+          time: '10:00 AM',
+          uploaderName: entry.actionBy === 'court' ? 'আদালত' : entry.actionBy === 'lawyer' ? 'আইনজীবী' : entry.actionBy === 'clerk' ? 'মুহুরি' : 'অন্যান্য',
+          uploaderRole: uploaderR,
+          uploaderSide: entry.actionBy === 'respondent' || entry.actionBy === 'accused' ? 'respondent' : 'petitioner',
+          isSharedWithOpponent: true,
+          attachments: uploads
+        });
+      });
+    }
+
+    // Sort descending by date
+    mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return mapped;
+  }, [caseData]);
+
+  const [localEvents, setLocalEvents] = useState<TimelineEvent[]>([]);
   const [newEventContent, setNewEventContent] = useState('');
   const [newEventType, setNewEventType] = useState<TimelineEvent['type']>('diary');
   const [isShared, setIsShared] = useState(false);
@@ -100,7 +153,7 @@ export default function CaseTimeline({ caseInfo, currentUserRole, currentUserSid
       isSharedWithOpponent: isShared,
     };
 
-    setEvents([newEvent, ...events]);
+    setLocalEvents([newEvent, ...localEvents]);
     setNewEventContent('');
     setIsAdding(false);
   };
@@ -138,8 +191,12 @@ export default function CaseTimeline({ caseInfo, currentUserRole, currentUserSid
     }
   };
 
+  const allEvents = useMemo(() => {
+    return [...localEvents, ...initialEvents];
+  }, [localEvents, initialEvents]);
+
   // Filter events based on visibility rules
-  const visibleEvents = events.filter(event => {
+  const visibleEvents = allEvents.filter(event => {
     // If I am the uploader's side, I can see it
     if (event.uploaderSide === currentUserSide) return true;
     // If it's from the opponent, I can only see it if it's shared
@@ -323,13 +380,34 @@ export default function CaseTimeline({ caseInfo, currentUserRole, currentUserSid
                   </div>
 
                   {event.attachments && event.attachments.length > 0 && (
-                    <div className="mt-4 flex gap-2">
-                      {event.attachments.map((file, i) => (
-                        <div key={i} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-600'}`}>
-                          <Paperclip size={14} />
-                          {file}
-                        </div>
-                      ))}
+                    <div className="mt-4 flex gap-2 flex-wrap">
+                      {event.attachments.map((file, i) => {
+                        const isObj = typeof file === 'object' && file !== null;
+                        const fileName = isObj ? (file as any).name : file;
+                        const fileUrl = isObj ? (file as any).url : undefined;
+                        
+                        if (fileUrl) {
+                          return (
+                            <a 
+                              key={i} 
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-colors ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-600'}`}
+                            >
+                              <Paperclip size={14} />
+                              {fileName}
+                            </a>
+                          );
+                        } else {
+                          return (
+                            <div key={i} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border ${theme === 'dark' ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-600'}`}>
+                              <Paperclip size={14} />
+                              {fileName}
+                            </div>
+                          );
+                        }
+                      })}
                     </div>
                   )}
                 </div>

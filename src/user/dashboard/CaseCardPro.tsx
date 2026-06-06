@@ -23,7 +23,7 @@ import { AdBanner } from './AdBanner';
 
 interface CaseCardProProps {
   caseData: Case;
-  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs?: {name: string, type: string, url: string}[]) => void;
+  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs?: {name: string, type: string, url: string}[], lastDate?: string) => void;
   onCaseNumberClick?: (caseNumber: string) => void;
   onAddDocument: (id: string | number, document: { name: string; type: string; url: string }) => void;
   onDelete?: (id: string | number) => void;
@@ -46,6 +46,7 @@ export const CaseCardPro = ({
 }: CaseCardProProps) => {
   const [side, setSide] = useState<'petitioner' | 'respondent' | 'accused'>(caseData.selectedParty || 'petitioner');
   const [nextDate, setNextDate] = useState(caseData.nextDate);
+  const [lastDate, setLastDate] = useState(caseData.lastDate || '');
   const [order, setOrder] = useState(caseData.order || '');
   const [clerkCanCall, setClerkCanCall] = useState(caseData.clerkCanCall || false);
   const [lawyerCanCall, setLawyerCanCall] = useState(caseData.lawyerCanCall || false);
@@ -146,7 +147,7 @@ export const CaseCardPro = ({
 
   const handleAction = (msg: string, update: boolean = false) => {
     if (update) {
-      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
+      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
       setAttachedDocs([]);
     }
     setConfirmMsg(msg);
@@ -158,7 +159,7 @@ export const CaseCardPro = ({
       handleAction('ধন্যবাদ, আপনার আগেই তথ্য আপলোড করা হয়েছে। আপনি অন্যত্র চেষ্টা করুন।', false);
       return;
     }
-    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
+    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
     setAttachedDocs([]);
     handleAction('সকল পক্ষের ক্যালেন্ডারে তথ্য আপডেট করা হয়েছে।', true);
   };
@@ -251,6 +252,13 @@ export const CaseCardPro = ({
             <div className="h-8 w-px bg-slate-100 mx-2 hidden md:block"></div>
             <div className="text-right">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                গত তারিখ <span className="opacity-70">(Last Date)</span>
+              </p>
+              <p className="text-sm font-bold text-slate-500">{caseData.lastDate || 'N/A'}</p>
+            </div>
+            <div className="h-8 w-px bg-slate-100 mx-2 hidden md:block"></div>
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
                 আগামী তারিখ <span className="opacity-70">(Next Date)</span>
               </p>
               <p className="text-sm font-bold text-indigo-600">{caseData.nextDate}</p>
@@ -288,129 +296,242 @@ export const CaseCardPro = ({
                 <p className="text-sm font-bold text-slate-700">{caseData.order || caseData.status}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">আসামী সংখ্যা (Total Respondents)</p>
+                <p className="text-sm font-bold text-slate-700">{caseData.totalRespondents || '১'}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 col-span-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">আইনজীবী (Lawyer)</p>
                 <p className="text-sm font-bold text-slate-700">{caseData.petitionerLawyer || caseData.respondentLawyer || 'নির্ধারিত নেই'}</p>
               </div>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 relative">
-                  <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আগামী তারিখ (Next Date)</p>
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      value={nextDate}
-                      readOnly
-                      onClick={() => setShowCalendar(true)}
-                      placeholder="YYYY-MM-DD"
-                      className="w-full pl-4 pr-10 py-3 bg-white border border-indigo-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer shadow-sm"
-                    />
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setShowCalendar(!showCalendar); }}
-                      className="absolute right-3 top-3.5 text-indigo-500 hover:text-indigo-700 transition-colors bg-indigo-50 p-1 rounded-lg"
-                    >
-                      <Calendar size={18} />
-                    </button>
-                    {showCalendar && (
-                      <div className="absolute z-[60] mt-2 top-full right-0">
-                        {renderCalendarTable()}
-                      </div>
-                    )}
+          {userType === 'client' ? (
+            <div className="space-y-6">
+              <div className="p-5 bg-indigo-50/70 border border-indigo-100/50 rounded-3xl space-y-4">
+                <h4 className="text-[11px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+                  <CheckCircle2 size={14} /> মামলার অগ্রগতি (Case Health & Summary)
+                </h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white p-3 rounded-2xl border border-indigo-100/30">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">স্ট্যাটাস (Status)</p>
+                    <p className="text-sm font-black text-emerald-600 capitalize">{caseData.status}</p>
                   </div>
-                </div>
-                
-                <div className="flex-1">
-                  <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আপনার পক্ষ (Your Party)</p>
-                  <select 
-                    value={side}
-                    onChange={(e) => setSide(e.target.value as any)}
-                    className={`w-full px-4 py-3 border rounded-2xl text-sm font-bold outline-none focus:ring-2 transition-all ${
-                      side === 'petitioner' 
-                        ? 'bg-sky-50 text-sky-700 border-sky-100 focus:ring-sky-500' 
-                        : 'bg-red-50 text-red-700 border-red-100 focus:ring-red-500'
-                    }`}
-                  >
-                    <option value="petitioner" className="text-sky-700">বাদী পক্ষ (Petitioner - Sky)</option>
-                    <option value="respondent" className="text-red-700">বিবাদী পক্ষ (Respondent - Red)</option>
-                    <option value="accused" className="text-red-700">আসামি পক্ষ (Accused - Red)</option>
-                  </select>
+                  <div className="bg-white p-3 rounded-2xl border border-indigo-100/30">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">পরবর্তী পদক্ষেপ (Next Step)</p>
+                    <p className="text-sm font-bold text-slate-700 truncate">{caseData.order || caseData.status || 'হাজিরা (Hearing)'}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl border border-indigo-100/30">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">গত শুনানির তারিখ (Last Date)</p>
+                    <p className="text-sm font-bold text-slate-600">{caseData.lastDate || 'N/A'}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-2xl border border-indigo-100/30">
+                    <p className="text-[9px] font-black text-slate-400 uppercase">পরবর্তী শুনানির তারিখ (Next Date)</p>
+                    <p className="text-sm font-black text-indigo-600">{caseData.nextDate || 'N/A'}</p>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">পদক্ষেপ / আদেশ (Step / Order)</p>
-                <textarea 
-                  value={order}
-                  onChange={(e) => setOrder(e.target.value)}
-                  placeholder="হাজিরা, সময়, স্বাক্ষী, জেরা অথবা আজকের আদেশ লিখুন..."
-                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24 mb-3"
-                />
-                
-                <div className="mb-4">
-                  <p className="text-[10px] font-bold text-slate-400 mb-2 ml-1">সংযুক্ত ডকুমেন্ট (Attached Documents)</p>
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {attachedDocs.map((doc, idx) => (
-                      <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600">
-                        <FileText size={14} />
-                        <span className="truncate max-w-[100px]">{doc.name}</span>
-                        <button type="button" onClick={() => setAttachedDocs(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700">
-                           <X size={14} />
-                        </button>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                    <FileText size={16} className="text-slate-500" /> মামলা সম্পর্কিত ডকুমেন্ট (Case Documents)
+                  </h4>
+                  <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                    {(() => {
+                      const caseDocs = caseData.documents || [];
+                      const historyDocs = caseData.history?.reduce<any[]>((acc, entry) => {
+                        if (entry.documents) acc.push(...entry.documents);
+                        return acc;
+                      }, []) || [];
+                      const uniqueUrls = new Set([...caseDocs.map(d => d.url), ...historyDocs.map(d => d.url)]);
+                      return uniqueUrls.size;
+                    })()} Files
+                  </span>
+                </div>
+                {(() => {
+                  const caseDocs = caseData.documents || [];
+                  const historyDocs = caseData.history?.reduce<{name: string, type: string, url: string}[]>((acc, entry) => {
+                    if (entry.documents && entry.documents.length > 0) {
+                      entry.documents.forEach(doc => {
+                        if (!acc.some(d => d.url === doc.url)) {
+                          acc.push({ name: doc.name, type: doc.type || 'application/pdf', url: doc.url });
+                        }
+                      });
+                    }
+                    return acc;
+                  }, []) || [];
+                  
+                  const allDocsDict: { [url: string]: { name: string, type: string, url: string } } = {};
+                  caseDocs.forEach(d => { allDocsDict[d.url] = d; });
+                  historyDocs.forEach(d => { allDocsDict[d.url] = d; });
+                  const allCaseDocs = Object.values(allDocsDict);
+
+                  if (allCaseDocs.length === 0) {
+                    return (
+                      <div className="p-8 text-center bg-slate-50 border border-slate-100 rounded-[2rem] text-slate-400">
+                        <FileText className="w-10 h-10 mx-auto mb-2 opacity-40 text-slate-300" />
+                        <p className="text-sm font-bold text-slate-500">কোনো ফাইল সংযুক্ত নেই</p>
+                        <p className="text-[10px] text-slate-400">আপনার আইনজীবী এই মামলার সাথে যুক্ত করলে এখানে দেখতে পাবেন।</p>
                       </div>
-                    ))}
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[180px] overflow-y-auto pr-1">
+                      {allCaseDocs.map((doc, idx) => (
+                        <a 
+                          key={idx}
+                          href={doc.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-2xl hover:border-indigo-400 hover:shadow-md transition-all group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-100 transition-all shrink-0">
+                              <FileText size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-800 truncate max-w-[120px] sm:max-w-[140px]" title={doc.name}>{doc.name}</p>
+                              <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">দেখা ও ডাউনলোড</p>
+                            </div>
+                          </div>
+                          <ChevronRight size={16} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">গত তারিখ (Last Date)</p>
+                    <input 
+                      type="date"
+                      value={lastDate}
+                      onChange={(e) => setLastDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-white border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                    />
                   </div>
-                  <input 
-                    type="file" 
-                    id="update-doc-upload"
-                    className="hidden" 
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setIsUploading(true);
-                      try {
-                        const dateStr = new Date().toISOString().split('T')[0];
-                        const path = `${caseData.caseNumber}/${dateStr}/updates/${Date.now()}_${file.name}`;
-                        await uploadFile('documents', path, file);
-                        const url = await getPublicUrl('documents', path);
-                        setAttachedDocs(prev => [...prev, { name: file.name, type: file.type, url }]);
-                      } catch (err) {
-                        console.error("Upload failed", err);
-                      } finally {
-                        setIsUploading(false);
-                      }
-                    }}
+                  <div className="flex-1 relative">
+                    <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আগামী তারিখ (Next Date)</p>
+                    <div className="relative">
+                      <input 
+                        type="text"
+                        value={nextDate}
+                        readOnly
+                        onClick={() => setShowCalendar(true)}
+                        placeholder="YYYY-MM-DD"
+                        className="w-full pl-4 pr-10 py-3 bg-white border border-indigo-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer shadow-sm"
+                      />
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setShowCalendar(!showCalendar); }}
+                        className="absolute right-3 top-3.5 text-indigo-500 hover:text-indigo-700 transition-colors bg-indigo-50 p-1 rounded-lg"
+                      >
+                        <Calendar size={18} />
+                      </button>
+                      {showCalendar && (
+                        <div className="absolute z-[60] mt-2 top-full right-0">
+                          {renderCalendarTable()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আপনার পক্ষ (Your Party)</p>
+                    <select 
+                      value={side}
+                      onChange={(e) => setSide(e.target.value as any)}
+                      className={`w-full px-4 py-3 border rounded-2xl text-sm font-bold outline-none focus:ring-2 transition-all ${
+                        side === 'petitioner' 
+                          ? 'bg-sky-50 text-sky-700 border-sky-100 focus:ring-sky-500' 
+                          : 'bg-red-50 text-red-700 border-red-100 focus:ring-red-500'
+                      }`}
+                    >
+                      <option value="petitioner" className="text-sky-700">বাদী পক্ষ (Petitioner - Sky)</option>
+                      <option value="respondent" className="text-red-700">বিবাদী পক্ষ (Respondent - Red)</option>
+                      <option value="accused" className="text-red-700">আসামি পক্ষ (Accused - Red)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">পদক্ষেপ / আদেশ (Step / Order)</p>
+                  <textarea 
+                    value={order}
+                    onChange={(e) => setOrder(e.target.value)}
+                    placeholder="হাজিরা, সময়, স্বাক্ষী, জেরা অথবা আজকের আদেশ লিখুন..."
+                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24 mb-3"
                   />
+                  
+                  <div className="mb-4">
+                    <p className="text-[10px] font-bold text-slate-400 mb-2 ml-1">সংযুক্ত ডকুমেন্ট (Attached Documents)</p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {attachedDocs.map((doc, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600">
+                          <FileText size={14} />
+                          <span className="truncate max-w-[100px]">{doc.name}</span>
+                          <button type="button" onClick={() => setAttachedDocs(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700">
+                             <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <input 
+                      type="file" 
+                      id="update-doc-upload"
+                      className="hidden" 
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setIsUploading(true);
+                        try {
+                          const dateStr = new Date().toISOString().split('T')[0];
+                          const path = `${caseData.caseNumber}/${dateStr}/updates/${Date.now()}_${file.name}`;
+                          await uploadFile('documents', path, file);
+                          const url = await getPublicUrl('documents', path);
+                          setAttachedDocs(prev => [...prev, { name: file.name, type: file.type, url }]);
+                        } catch (err) {
+                          console.error("Upload failed", err);
+                        } finally {
+                          setIsUploading(false);
+                        }
+                      }}
+                    />
+                    <button 
+                      type="button"
+                      disabled={isUploading}
+                      onClick={() => document.getElementById('update-doc-upload')?.click()}
+                      className="flex items-center gap-2 px-4 py-2 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all"
+                    >
+                      {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
+                      ডকুমেন্ট যোগ করুন
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
                   <button 
-                    type="button"
-                    disabled={isUploading}
-                    onClick={() => document.getElementById('update-doc-upload')?.click()}
-                    className="flex items-center gap-2 px-4 py-2 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all"
+                    onClick={() => handleAction('আপনার তথ্য সফলভাবে আপডেট হয়েছে।', true)}
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                   >
-                    {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
-                    ডকুমেন্ট যোগ করুন
+                    আপডেট করুন
+                  </button>
+                  <button 
+                    onClick={handleAllPartiesUpdate}
+                    className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
+                  >
+                    সকল পক্ষকে জানান
                   </button>
                 </div>
               </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <button 
-                  onClick={() => handleAction('আপনার তথ্য সফলভাবে আপডেট হয়েছে।', true)}
-                  className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-                >
-                  আপডেট করুন
-                </button>
-                <button 
-                  onClick={handleAllPartiesUpdate}
-                  className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
-                >
-                  সকল পক্ষকে জানান
-                </button>
-              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="mt-6 pt-6 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">

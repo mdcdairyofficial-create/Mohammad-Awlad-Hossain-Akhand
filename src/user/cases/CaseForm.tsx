@@ -77,6 +77,7 @@ export default function CaseForm({
     isUpdated: false,
     caseSection: '',
     order: '',
+    lastDate: '',
     additionalOrder: '',
     totalRespondents: ''
   });
@@ -582,17 +583,70 @@ export default function CaseForm({
                     </div>
                   </div>
 
-                    <div>
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('next_date')} *</label>
-                      <input
-                        type="date"
-                        name="nextDate"
-                        value={formData.nextDate}
-                        onChange={handleChange}
-                        required
-                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                      />
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'আগের তারিখ' : 'Previous Date'}</label>
+                    <input
+                      type="date"
+                      name="lastDate"
+                      value={formData.lastDate}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('next_date')} *</label>
+                    <input
+                      type="date"
+                      name="nextDate"
+                      value={formData.nextDate}
+                      onChange={handleChange}
+                      required
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'পদক্ষেপ / আদেশ' : 'Step / Order'}</label>
+                    <input
+                      type="text"
+                      name="order"
+                      value={formData.order}
+                      onChange={handleChange}
+                      placeholder={language === 'bn' ? 'যেমন: হাজিরা, জবাব, সাক্ষ্য...' : 'e.g. Attendance, Reply, Evidence...'}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'ডকুমেন্ট আপলোড' : 'Document Upload'}</label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {caseDocuments.map((doc, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600">
+                          <FileText size={14} />
+                          <span className="truncate max-w-[150px]">{doc.name}</span>
+                          <button type="button" onClick={() => removeDocument(idx)} className="text-red-500 hover:text-red-700">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef}
+                      className="hidden" 
+                      onChange={handleFileUpload}
+                    />
+                    <button 
+                      type="button"
+                      disabled={isUploading}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-slate-300 rounded-2xl text-sm font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all bg-white"
+                    >
+                      {isUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
+                      {language === 'bn' ? 'ফাইল সিলেক্ট করুন' : 'Select Files'}
+                    </button>
+                  </div>
                     
                     <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
@@ -930,7 +984,17 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৪. {t('filing_date')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৪. {language === 'bn' ? 'আগের তারিখ (মেইন)' : 'Previous Date'}</label>
+                    <input
+                      type="date"
+                      name="lastDate"
+                      value={formData.lastDate}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৫. {t('filing_date')}</label>
                     <input
                       type="date"
                       name="filingDate"
@@ -940,7 +1004,7 @@ export default function CaseForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৫. {t('priority_label')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৬. {t('priority_label')}</label>
                     <select
                       name="priority"
                       value={formData.priority || 'medium'}
@@ -953,7 +1017,7 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৬. মামলার ধরন (বিভাগ)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৭. মামলার ধরন (বিভাগ)</label>
                     <select
                       value={caseCategory}
                       onChange={(e) => {
@@ -969,7 +1033,7 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৬. {t('case_type')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৮. {t('case_type')}</label>
                     <select
                       name="caseType"
                       value={formData.caseType}
@@ -993,7 +1057,7 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৭. {t('case_number')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৯. {t('case_number')}</label>
                     <input
                       type="text"
                       name="rawCaseNumber"
@@ -1013,7 +1077,7 @@ export default function CaseForm({
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৮. {t('section')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">১০. {t('section')}</label>
                     <input
                       type="text"
                       name="caseSection"
@@ -1178,8 +1242,38 @@ export default function CaseForm({
                       onChange={handleChange}
                       rows={3}
                       placeholder={language === 'bn' ? 'অতিরিক্ত কোন আদেশ থাকলে তা লিখুন...' : 'Enter any additional order or notes...'}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all mb-4"
                     />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'ডকুমেন্ট আপলোড' : 'Document Upload'}</label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {caseDocuments.map((doc, idx) => (
+                        <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-xs font-bold text-indigo-600">
+                          <FileText size={14} />
+                          <span className="truncate max-w-[200px]">{doc.name}</span>
+                          <button type="button" onClick={() => removeDocument(idx)} className="text-red-500 hover:text-red-700">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <input 
+                      type="file" 
+                      id="detailed-doc-upload"
+                      className="hidden" 
+                      onChange={handleFileUpload}
+                    />
+                    <button 
+                      type="button"
+                      disabled={isUploading}
+                      onClick={() => document.getElementById('detailed-doc-upload')?.click()}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-dashed border-slate-300 rounded-2xl text-sm font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all bg-slate-50"
+                    >
+                      {isUploading ? <Loader2 className="animate-spin" size={18} /> : <Paperclip size={18} />}
+                      {language === 'bn' ? 'ডকুমেন্ট যোগ করুন' : 'Attach Documents'}
+                    </button>
                   </div>
                 </div>
 

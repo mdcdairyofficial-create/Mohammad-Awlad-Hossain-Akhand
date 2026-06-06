@@ -167,6 +167,19 @@ export const sendGlobalNotification = async (notification: Omit<Notification, 'i
   }
 };
 
+export const sendNotification = async (userId: string, notification: Omit<Notification, 'id' | 'created_at' | 'isRead'>) => {
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      ...notification,
+      user_id: userId,
+      read: false,
+      created_at: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, 'notifications');
+  }
+};
+
 export const markNotificationAsRead = async (notificationId: string) => {
   const ref = doc(db, 'notifications', notificationId);
   await updateDoc(ref, { read: true });

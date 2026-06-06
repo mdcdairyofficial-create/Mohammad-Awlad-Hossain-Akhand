@@ -1,20 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, User, Phone, MapPin, Briefcase, Star, Filter, Mail, TrendingUp, CheckCircle2, XCircle, Handshake, ChevronRight } from 'lucide-react';
+import { Search, User, Phone, MapPin, Briefcase, Star, Filter, Mail, TrendingUp, CheckCircle2, XCircle, Handshake, ChevronRight, ShieldAlert } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getLawyers } from '../../services/user/featureService';
 import { BANGLADESH_DISTRICTS } from '../../constants';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../firebase';
 
 interface LawyerDirectoryProps {
   currentUserId?: string;
+  currentUserName?: string;
+  currentUserMobile?: string;
   t?: (key: string) => string;
 }
 
-export default function LawyerDirectory({ currentUserId, t = (k) => k }: LawyerDirectoryProps) {
+export default function LawyerDirectory({ currentUserId, currentUserName = 'User', currentUserMobile = '', t = (k) => k }: LawyerDirectoryProps) {
   const [lawyers, setLawyers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('সকল');
   const [loading, setLoading] = useState(true);
+
+  // Complaint states
+  const [complaintTarget, setComplaintTarget] = useState<any | null>(null);
+  const [complaintTitle, setComplaintTitle] = useState('');
+  const [complaintDesc, setComplaintDesc] = useState('');
+  const [complaintSubmitting, setComplaintSubmitting] = useState(false);
 
   const categories = ['সকল', 'ফৌজদারী', 'দেওয়ানি', 'ট্যাক্স', 'লিগ্যাল এইড', 'আদালত'];
 
@@ -41,6 +51,9 @@ export default function LawyerDirectory({ currentUserId, t = (k) => k }: LawyerD
             specialization: lawyer.specialization || randomCat,
             profile_picture: lawyer.profile_picture || lawyer.photoUrl || null,
             email: lawyer.email || `${lawyer.name?.toLowerCase().replace(/\s+/g, '.')}@lawyer.com`,
+            trust_score: lawyer.trust_score !== undefined ? lawyer.trust_score : 100,
+            warnings_count: lawyer.warnings_count || 0,
+            red_balls_count: lawyer.red_balls_count || 0,
             stats: {
               active: lawyer.is_active !== false,
               ongoing,
@@ -62,6 +75,50 @@ export default function LawyerDirectory({ currentUserId, t = (k) => k }: LawyerD
     };
     fetchLawyers();
   }, [currentUserId]);
+
+  const handleComplaintSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!complaintTarget || !complaintTitle.trim() || !complaintDesc.trim()) return;
+
+    setComplaintSubmitting(true);
+    try {
+      // 1. Submit complaint document to Firestore
+      const complaintDoc = {
+        title: complaintTitle.trim(),
+        description: complaintDesc.trim(),
+        complainantId: currentUserId || 'anonymous',
+        complainantName: currentUserName,
+        complainantMobile: currentUserMobile,
+        accusedId: complaintTarget.firebase_uid || complaintTarget.id || '',
+        accusedName: complaintTarget.name || '',
+        accusedType: 'lawyer',
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      };
+
+      await addDoc(collection(db, 'complaints'), complaintDoc);
+
+      // 2. Write an administrative audit log entry
+      const logDoc = {
+        action: 'filed_complaint',
+        details: `${currentUserName} (${currentUserMobile || 'N/A'}) filed a complaint against lawyer ${complaintTarget.name}`,
+        userId: currentUserId || 'anonymous',
+        userName: currentUserName,
+        timestamp: serverTimestamp(),
+      };
+      await addDoc(collection(db, 'audit_logs'), logDoc);
+
+      alert('আপনার অভিযোগটি সফলভাবে দাখিল করা হয়েছে। অ্যাডমিন প্যানেল শীঘ্রই এটি পর্যালোচনা করবে।');
+      setComplaintTarget(null);
+      setComplaintTitle('');
+      setComplaintDesc('');
+    } catch (err) {
+      console.error('Error submitting complaint:', err);
+      alert('অভিযোগ দাখিল করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+    } finally {
+      setComplaintSubmitting(false);
+    }
+  };
 
   const filteredLawyers = useMemo(() => {
     return lawyers.filter(l => {
@@ -204,6 +261,44 @@ export default function LawyerDirectory({ currentUserId, t = (k) => k }: LawyerD
                     <span>{lawyer.rating}</span>
                     <span className="text-slate-400 font-bold ml-1">({lawyer.reviews})</span>
                   </div>
+
+                  {/* Trust Rating Badge */}
+                  <div className="mt-3 flex items-center gap-1 bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-full">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">আস্থা স্কোর:</span>
+                    <span className={`text-xs font-black ${
+                      (lawyer.trust_score || 100) >= 90 ? 'text-emerald-600' :
+                      (lawyer.trust_score || 100) >= 70 ? 'text-amber-600' : 'text-rose-600'
+                    }`}>
+                      {lawyer.trust_score || 100}%
+                    </span>
+                  </div>
+
+                  {/* Warning / Red Ball Indicator */}
+                  {((lawyer.warnings_count || 0) > 0 || (lawyer.red_balls_count || 0) > 0) && (
+                    <div className="mt-3 flex flex-col items-center gap-1.5 bg-rose-50/50 p-2.5 rounded-2xl border border-rose-100 w-full">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest">স্ট্যাটাস:</span>
+                        {(lawyer.red_balls_count || 0) > 0 && (
+                          <span className="bg-rose-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 animate-pulse">
+                            {(lawyer.red_balls_count || 0)} রেড বল
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {[1, 2, 3].map((strike) => (
+                          <div 
+                            key={strike} 
+                            className={`w-3 h-3 rounded-full border transition-all duration-300 ${
+                              strike <= (lawyer.warnings_count || 0) 
+                                ? 'bg-rose-600 border-rose-700 shadow-md shadow-rose-200 scale-110' 
+                                : 'bg-slate-100 border-slate-200'
+                            }`}
+                            title={strike <= (lawyer.warnings_count || 0) ? `Warning ${strike}` : `Slot ${strike}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Stats & Info Side */}
@@ -263,11 +358,23 @@ export default function LawyerDirectory({ currentUserId, t = (k) => k }: LawyerD
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-3 pt-2">
-                    <a href={`tel:${lawyer.mobile}`} className="flex-1 flex items-center justify-center gap-2 py-4 bg-indigo-600 text-white rounded-[1.5rem] font-black text-sm hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 group/btn">
-                      <Phone size={18} className="group-hover/btn:animate-bounce" /> কল করুন
+                  <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                    <a href={`tel:${lawyer.mobile}`} className="flex-1 flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-2xl font-black text-xs hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 group/btn">
+                      <Phone size={14} className="group-hover/btn:animate-bounce" /> কল করুন
                     </a>
-                    <button className="px-6 py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-sm hover:bg-indigo-900 transition-all border border-slate-800">
+                    {!isMe ? (
+                      <button 
+                        onClick={() => setComplaintTarget(lawyer)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-3 bg-rose-50 text-rose-700 rounded-2xl font-black text-xs hover:bg-rose-100 transition-all border border-rose-100"
+                      >
+                        <ShieldAlert size={14} /> অভিযোগ করুন
+                      </button>
+                    ) : (
+                      <span className="flex-1 text-center py-2.5 bg-slate-50 border border-slate-100 text-slate-400 rounded-2xl font-black text-xs self-center">
+                        আমার আইডি
+                      </span>
+                    )}
+                    <button className="px-5 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs hover:bg-indigo-950 transition-all">
                       প্রোফাইল
                     </button>
                   </div>
@@ -275,6 +382,73 @@ export default function LawyerDirectory({ currentUserId, t = (k) => k }: LawyerD
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Complaint Submission Modal */}
+      {complaintTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl border border-slate-100 flex flex-col p-8 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2 text-rose-600">
+                <ShieldAlert size={24} />
+                <h3 className="text-xl font-black text-slate-900">অভিযোগ ফর্ম দায়ের করুন</h3>
+              </div>
+              <button 
+                onClick={() => setComplaintTarget(null)}
+                className="w-10 h-10 bg-slate-50 text-slate-400 hover:text-slate-600 rounded-full font-black text-lg flex items-center justify-center border border-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-500 font-medium text-xs mb-6 bg-rose-50/50 p-4 rounded-2xl border border-rose-100/50">
+              আপনি আইনজীবী <strong className="text-slate-800">{complaintTarget.name}</strong> এর বিরুদ্ধে লিখিত অভিযোগ জমা দিচ্ছেন। অভিযোগটি নির্ভরযোগ্য ও সঠিক হতে হবে।
+            </p>
+
+            <form onSubmit={handleComplaintSubmit} className="space-y-4">
+              <div>
+                <label className="block text-slate-700 font-black text-xs mb-2">অভিযোগের শিরোনাম</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="যেমন: মামলা সংক্রান্ত ভুল তথ্য প্রদান"
+                  value={complaintTitle}
+                  onChange={(e) => setComplaintTitle(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-black text-xs mb-2">অভিযোগের বিবরণ</label>
+                <textarea 
+                  required
+                  rows={4}
+                  placeholder="অভিযোগের বিস্তারিত কারণ এখানে ব্যাখ্যা করুন..."
+                  value={complaintDesc}
+                  onChange={(e) => setComplaintDesc(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700"
+                />
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setComplaintTarget(null)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-sm transition-all"
+                >
+                  বাতিল করুন
+                </button>
+                <button 
+                  type="submit"
+                  disabled={complaintSubmitting}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white rounded-2xl font-black text-sm transition-all shadow-lg shadow-rose-200"
+                >
+                  {complaintSubmitting ? 'দাখিল হচ্ছে...' : 'অভিযোগ পেশ করুন'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

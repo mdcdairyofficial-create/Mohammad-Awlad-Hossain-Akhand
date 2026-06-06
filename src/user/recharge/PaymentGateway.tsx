@@ -87,7 +87,7 @@ export default function PaymentGateway({
 
       <div className="flex gap-2 mb-4">
         {[
-          { id: 'bkash', name: 'বিকাশ (প্রস্তুত হচ্ছে)', disabled: true },
+          { id: 'bkash', name: 'বিকাশ', disabled: false },
           { id: 'nagad', name: 'নগদ', disabled: false },
           { id: 'rocket', name: 'রকেট', disabled: false }
         ].map(method => (
@@ -95,7 +95,15 @@ export default function PaymentGateway({
             key={method.id}
             onClick={() => !method.disabled && setPaymentMethod(method.id)}
             disabled={method.disabled}
-            className={`flex-1 py-2 rounded-lg text-sm font-bold uppercase transition-colors ${paymentMethod === method.id ? 'bg-indigo-600 text-white' : method.disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold uppercase transition-colors ${
+              paymentMethod === method.id 
+                ? method.id === 'bkash' 
+                  ? 'bg-pink-600 text-white shadow-md' 
+                  : method.id === 'nagad' 
+                    ? 'bg-orange-600 text-white shadow-md' 
+                    : 'bg-purple-600 text-white shadow-md'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
           >
             {method.name}
           </button>

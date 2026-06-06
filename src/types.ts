@@ -39,6 +39,7 @@ export interface Case {
   petitionerAsstClerk?: string;
   respondentAsstClerk?: string;
   filingDate?: string;
+  lastDate?: string;
   lastEditedBySide?: string;
   reportedErrorBySide?: string;
   visibility?: 'public' | 'private';
@@ -67,7 +68,7 @@ export interface Notification {
   title?: string;
   message: string;
   time?: string;
-  type?: 'case_update' | 'task_assigned' | 'affiliate_approved' | 'system' | 'hearing' | 'update' | 'task';
+  type?: 'case_update' | 'task_assigned' | 'affiliate_approved' | 'system' | 'hearing' | 'update' | 'task' | 'payment';
   isRead: boolean;
   isGlobal?: boolean;
   created_at?: string;

@@ -64,7 +64,8 @@ import {
   MessageSquare,
   QrCode,
   Award,
-  Landmark
+  Landmark,
+  ShieldAlert
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { auth, db } from '../../firebase';
@@ -132,6 +133,7 @@ import { InvoicesView } from './views/InvoicesView';
 import { LegalDraftsView } from './views/LegalDraftsView';
 import { SubscriptionView } from './views/SubscriptionView';
 import { LotteryView } from './views/LotteryView';
+import { NotificationsView } from './views/NotificationsView';
 
 import { ProfessionalIDCard } from './components/ProfessionalIDCard';
 import { AdFlexiplan } from './components/AdFlexiplan';
@@ -265,6 +267,11 @@ interface DashboardProps {
   facebookUrl?: string;
   linkedinUrl?: string;
   userPoliceStation?: string;
+  trustScore?: number;
+  warningsCount?: number;
+  redBallsCount?: number;
+  isSuspended?: boolean;
+  suspensionReason?: string;
   onLogout: () => void;
   onUpdateProfile?: (updatedProfile: any) => void;
 }
@@ -294,6 +301,11 @@ export default function Dashboard({
   membershipId: initialMembershipId,
   facebookUrl: initialFacebookUrl,
   linkedinUrl: initialLinkedinUrl,
+  trustScore = 100,
+  warningsCount = 0,
+  redBallsCount = 0,
+  isSuspended = false,
+  suspensionReason = '',
   onLogout, 
   onUpdateProfile 
 }: DashboardProps) {
@@ -328,6 +340,122 @@ export default function Dashboard({
   const [profilePic, setProfilePic] = useState(profilePicture || '');
   const [showFullscreenAd, setShowFullscreenAd] = useState(false);
   const [userPoints, setUserPoints] = useState(points || 0);
+
+  // Suspension states
+  const [appealReason, setAppealReason] = useState('');
+  const [appealSubmitted, setAppealSubmitted] = useState(false);
+  const [appealLoading, setAppealLoading] = useState(false);
+
+  const handleAppealSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!appealReason.trim()) return;
+    setAppealLoading(true);
+    try {
+      await addDoc(collection(db, 'appeals'), {
+        userId: firebaseUid || userId?.toString() || 'anonymous',
+        userName: userName,
+        userEmail: userEmail || '',
+        appealReason: appealReason.trim(),
+        status: 'pending',
+        createdAt: serverTimestamp(),
+      });
+      await addDoc(collection(db, 'audit_logs'), {
+        action: 'appeal_submitted',
+        details: `Suspended user ${userName} submitted a suspension appeal: "${appealReason.trim()}"`,
+        userId: firebaseUid || userId?.toString() || 'anonymous',
+        userName: userName,
+        timestamp: serverTimestamp(),
+      });
+      setAppealSubmitted(true);
+      alert('আপনার রিভিউ আবেদনটি সফলভাবে দাখিল করা হয়েছে। অ্যাডমিন প্যানেল এটি পর্যালোচনা করবে।');
+    } catch (err) {
+      console.error('Error submitting appeal:', err);
+      alert('আবেদন জমা দিতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
+    } finally {
+      setAppealLoading(false);
+    }
+  };
+
+  if (isSuspended) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950 font-sans text-slate-100 p-6 overflow-y-auto z-50">
+        <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 p-8 sm:p-12 rounded-[3.5rem] shadow-2xl flex flex-col items-center text-center space-y-8 animate-in zoom-in-95 duration-300">
+          
+          {/* Logo / Shield Area */}
+          <div className="relative">
+            <div className="w-24 h-24 rounded-[2.5rem] bg-rose-500/10 border-2 border-rose-500/30 flex items-center justify-center text-rose-500 animate-pulse">
+              <ShieldAlert size={48} />
+            </div>
+            <span className="absolute -top-1 -right-1 flex h-5 w-5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-5 w-5 bg-rose-500"></span>
+            </span>
+          </div>
+
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-white mb-3">
+              অ্যাকাউন্ট <span className="text-rose-500">স্থগিত করা হয়েছে</span>
+            </h1>
+            <p className="text-slate-400 font-medium">MDC Casebook - রেগুলেটরি সিস্টেম</p>
+          </div>
+
+          <div className="w-full bg-rose-500/5 border border-rose-500/10 p-6 rounded-2xl text-left block">
+            <h4 className="text-rose-400 font-bold text-sm uppercase tracking-wide mb-2">স্থগিতকরণের কারণ:</h4>
+            <p className="text-slate-300 text-sm font-semibold leading-relaxed">
+              {suspensionReason || 'অ্যাডমিন দ্বারা কোনো কারণ নির্ধারিত নেই বা আপনার অ্যাকাউন্ট পর্যালোচনাধীন রয়েছে।'}
+            </p>
+          </div>
+
+          {!appealSubmitted ? (
+            <form onSubmit={handleAppealSubmit} className="w-full space-y-4 pt-4 text-left border-t border-slate-800/85">
+              <h3 className="text-base font-black text-white">রিভিউ বা পুনর্বিবেচনার আবেদন</h3>
+              <p className="text-slate-400 text-xs font-medium">অ্যাকাউন্ট সক্রিয় করতে চাইলে আপনার ব্যাখ্যা বা রিভিউ আবেদন জমা দিন:</p>
+              
+              <textarea
+                required
+                rows={3}
+                placeholder="যেমন: আমি মামলার পরবর্তী তারিখগুলো সফলভাবে আপডেট বা সংশোধন করেছি..."
+                value={appealReason}
+                onChange={(e) => setAppealReason(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-950 border border-slate-850 rounded-xl font-bold text-sm text-slate-200 outline-none focus:ring-2 focus:ring-rose-500 placeholder:text-slate-700"
+              />
+
+              <div className="flex gap-4 pt-2">
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="flex-1 py-3.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold text-sm rounded-xl transition-all"
+                >
+                  লগআউট করুন
+                </button>
+                <button
+                  type="submit"
+                  disabled={appealLoading}
+                  className="flex-1 py-3.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-black text-sm rounded-xl transition-all shadow-lg"
+                >
+                  {appealLoading ? 'দাখিল হচ্ছে...' : 'আবেদন প্রেরণ করুন'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="w-full border-t border-slate-800 pt-6 space-y-4">
+              <div className="bg-emerald-500/5 border border-emerald-500/10 text-emerald-400 p-4 rounded-xl text-center text-xs font-bold">
+                ✓ আপনার রিভিউ আবেদন দাখিল হয়েছে। অনুগ্রহ করে অ্যাডমিন পর্যালোচনার জন্য অপেক্ষা করুন।
+              </div>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold text-sm rounded-xl transition-all"
+              >
+                লগআউট করুন
+              </button>
+            </div>
+          )}
+
+        </div>
+      </div>
+    );
+  }
 
   useEffect(() => {
     // Show fullscreen ad once after a few seconds of landing on dashboard
@@ -1248,15 +1376,15 @@ export default function Dashboard({
     alert(t('meeting_request_sent'));
   };
 
-  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = []) => {
-    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
+  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string) => {
+    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
     handleUpdateSelectedParty(id, selectedParty);
   };
 
-  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = []) => {
+  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string) => {
     const targetCase = cases.find(c => c.id === caseId);
     if (targetCase) {
-      if (nextDate) {
+      if (nextDate && nextDate !== targetCase.nextDate) {
         // Auto-generate attendance task
         const autoTask: Omit<Task, 'id' | 'created_at'> = {
           title: `হাজিরা: ${targetCase.caseNumber}`,
@@ -1287,6 +1415,7 @@ export default function Dashboard({
       const updatedHistory = [...(targetCase.history || []), newHistoryEntry];
       await updateCase(caseId.toString(), { 
         nextDate, 
+        lastDate: lastDate || targetCase.lastDate,
         order, 
         isUpdated: true, 
         clerkCanCall, 
@@ -2250,6 +2379,7 @@ export default function Dashboard({
                     respondent: selectedCaseForTimeline.respondent,
                     status: selectedCaseForTimeline.status,
                   }}
+                  caseData={selectedCaseForTimeline}
                   currentUserRole={(currentViewMode === 'bar_admin' ? 'admin' : currentViewMode) as any}
                   currentUserSide={currentViewMode === 'client' ? 'petitioner' : 'respondent'}
                   onBack={() => setSelectedCaseForTimeline(null)}
@@ -2294,21 +2424,29 @@ export default function Dashboard({
                 </div>
               )}
               {activeTab === 'notifications' && (
-                <div className="p-6">
-                  <h2 className="text-2xl font-bold mb-4">{t('notifications')}</h2>
-                  <NotificationPanel 
-                    notifications={notifications} 
-                    onClose={() => setActiveTab('dashboard')}
-                    onMarkAsRead={handleMarkAsRead}
-                    onMarkAllAsRead={handleMarkAllAsRead}
-                  />
-                </div>
+                <NotificationsView 
+                  t={t}
+                  notifications={notifications}
+                  userId={firebaseUid || userId?.toString() || ''}
+                  onMarkAsRead={handleMarkAsRead}
+                  onMarkAllAsRead={handleMarkAllAsRead}
+                />
               )}
               {activeTab === 'lawyer_directory' && (
-                <LawyerDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
+                <LawyerDirectory 
+                  currentUserId={firebaseUid || userId?.toString()} 
+                  currentUserName={userName}
+                  currentUserMobile={userMobile}
+                  t={t} 
+                />
               )}
               {activeTab === 'clerk_directory' && (
-                <ClerkDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
+                <ClerkDirectory 
+                  currentUserId={firebaseUid || userId?.toString()} 
+                  currentUserName={userName}
+                  currentUserMobile={userMobile}
+                  t={t} 
+                />
               )}
               {activeTab === 'case_history_20y' && (
                 <ArchiveCaseHistory />
@@ -2351,6 +2489,8 @@ export default function Dashboard({
                     estimatedBillTaka={estimatedBillTaka}
                     showAllCases={showAllCases}
                     onToggleShowAll={() => setShowAllCases(!showAllCases)}
+                    warningsCount={warningsCount}
+                    redBallsCount={redBallsCount}
                   />
                 )
               )}
@@ -2823,7 +2963,12 @@ export default function Dashboard({
               {activeTab === 'lawyers' && (
                 <div className="space-y-6 max-w-4xl mx-auto pb-20">
                   <AdBanner isPremium={isAdFree} />
-                  <LawyerDirectory currentUserId={firebaseUid || userId?.toString()} t={t} />
+                  <LawyerDirectory 
+                    currentUserId={firebaseUid || userId?.toString()} 
+                    currentUserName={userName}
+                    currentUserMobile={userMobile}
+                    t={t} 
+                  />
                 </div>
               )}
 
@@ -4546,8 +4691,8 @@ export default function Dashboard({
                   caseData={selectedCaseForCard}
                   isPetitioner={isUserPetitioner(selectedCaseForCard)}
                   isRespondent={isUserRespondent(selectedCaseForCard)}
-                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs) => {
-                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs);
+                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate) => {
+                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
                   }}
                   onAddDocument={handleAddDocument}
                   onCaseNumberClick={(caseNum) => {

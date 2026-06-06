@@ -15,7 +15,8 @@ import {
   Star,
   Award,
   Zap,
-  X
+  X,
+  ShieldAlert
 } from 'lucide-react';
 import { AdBanner } from '../AdBanner';
 import { Case, Task } from '../../../types';
@@ -52,6 +53,8 @@ interface HomeViewProps {
   estimatedBillTaka?: number;
   showAllCases?: boolean;
   onToggleShowAll?: () => void;
+  warningsCount?: number;
+  redBallsCount?: number;
 }
 
 export const HomeView = ({
@@ -74,7 +77,9 @@ export const HomeView = ({
   displayDataMb = '0.00',
   estimatedBillTaka = 0,
   showAllCases = false,
-  onToggleShowAll
+  onToggleShowAll,
+  warningsCount = 0,
+  redBallsCount = 0
 }: HomeViewProps) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
@@ -153,6 +158,44 @@ export const HomeView = ({
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <AdBanner isPremium={isPremiumForAds} />
+
+      {/* Dynamic Warning Alert Banner */}
+      {warningsCount > 0 && (
+        <div className="bg-rose-50 border border-rose-100 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-start gap-4 shadow-xl shadow-rose-500/5 animate-in slide-in-from-top-4 duration-500">
+          <div className="p-4 bg-rose-500 text-white rounded-2xl shrink-0">
+            <ShieldAlert size={28} />
+          </div>
+          <div className="space-y-2 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-black text-slate-900">সতর্ক বার্তা! পেনাল্টি নোটিশ</h3>
+              <span className="bg-rose-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
+                সতর্কতা {warningsCount}/৩
+              </span>
+              {redBallsCount > 0 && (
+                <span className="bg-rose-900 text-rose-100 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 flex items-center gap-1">
+                  ● {redBallsCount} লাল বল
+                </span>
+              )}
+            </div>
+            <p className="text-slate-600 text-sm font-semibold leading-relaxed">
+              আপনার অ্যাকাউন্টে নীতি লঙ্ঘনজনিত কারণে অথবা মামলার ভুল তথ্য রিপোর্টের ফলস্বরূপ সতর্ক সংকেত রয়েছে। ৩টি স্তর পূর্ণ হলে আপনার আইনজীবী/মুহুরি লাইসেন্স সাময়িকভাবে স্থগিত হতে পারে।
+            </p>
+            <div className="flex gap-2.5 pt-1.5">
+              {[1, 2, 3].map((strike) => (
+                <div 
+                  key={strike} 
+                  className={`w-4 h-4 rounded-full border transition-all duration-300 ${
+                    strike <= warningsCount 
+                      ? 'bg-rose-600 border-rose-700 shadow-md shadow-rose-300 scale-110' 
+                      : 'bg-slate-200 border-slate-300'
+                  }`}
+                  title={`সংকেত ${strike}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Welcome Section */}
       <div className="relative overflow-hidden bg-indigo-600 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-12 text-white shadow-2xl shadow-indigo-200">

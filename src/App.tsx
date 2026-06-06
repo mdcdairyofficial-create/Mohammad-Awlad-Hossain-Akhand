@@ -6,7 +6,8 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { onSnapshot, doc } from "firebase/firestore";
 import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
 import SocialGate from "./user/auth/SocialGate";
@@ -41,6 +42,11 @@ interface UserProfile {
   facebookUrl?: string;
   linkedinUrl?: string;
   policeStation?: string;
+  trustScore?: number;
+  warningsCount?: number;
+  redBallsCount?: number;
+  isSuspended?: boolean;
+  suspensionReason?: string;
 }
 
 import { fetchWithAuth } from "./lib/api";
@@ -142,6 +148,11 @@ export default function App() {
             if (data.lastAiResetDate !== user.lastAiResetDate) { newProfile.lastAiResetDate = data.lastAiResetDate; updated = true; }
             if (data.display_data_mb && data.display_data_mb !== user.displayDataMb) { newProfile.displayDataMb = data.display_data_mb; updated = true; }
             if (data.estimated_bill_taka && data.estimated_bill_taka !== user.estimatedBillTaka) { newProfile.estimatedBillTaka = data.estimated_bill_taka; updated = true; }
+            if (data.trustScore !== undefined && data.trustScore !== user.trustScore) { newProfile.trustScore = data.trustScore; updated = true; }
+            if (data.warningsCount !== undefined && data.warningsCount !== user.warningsCount) { newProfile.warningsCount = data.warningsCount; updated = true; }
+            if (data.redBallsCount !== undefined && data.redBallsCount !== user.redBallsCount) { newProfile.redBallsCount = data.redBallsCount; updated = true; }
+            if (data.isSuspended !== undefined && data.isSuspended !== user.isSuspended) { newProfile.isSuspended = data.isSuspended; updated = true; }
+            if (data.suspensionReason !== undefined && data.suspensionReason !== user.suspensionReason) { newProfile.suspensionReason = data.suspensionReason; updated = true; }
 
             if (updated) {
               setUser(newProfile);
@@ -162,6 +173,62 @@ export default function App() {
     }
   }, [user?.id, authReady]);
 
+
+  useEffect(() => {
+    if (!user || !user.firebaseUid) return;
+    
+    // Real-time synchronization of user's core attributes (Trust style & suspension triggers)
+    const userDocRef = doc(db, 'users', user.firebaseUid);
+    const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setUser(prev => {
+          if (!prev) return null;
+          
+          let updated = false;
+          const newProfile = { ...prev };
+          
+          const fieldsToSync = {
+            fullName: data.name,
+            email: data.email,
+            mobile: data.mobile,
+            userType: data.user_type,
+            district: data.district,
+            country: data.country,
+            referralCode: data.referral_code,
+            subscriptionEndDate: data.subscription_end_date,
+            subscriptionPackage: data.subscription_package,
+            profilePicture: data.profile_picture,
+            aiQuestionsCount: data.ai_questions_count,
+            lastAiResetDate: data.last_ai_reset_date,
+            points: data.points,
+            trustScore: data.trust_score !== undefined ? data.trust_score : 100,
+            warningsCount: data.warnings_count !== undefined ? data.warnings_count : 0,
+            redBallsCount: data.red_balls_count !== undefined ? data.red_balls_count : 0,
+            isSuspended: data.is_suspended || false,
+            suspensionReason: data.suspension_reason || '',
+          };
+          
+          Object.entries(fieldsToSync).forEach(([key, value]) => {
+            if (value !== undefined && value !== (prev as any)[key]) {
+              (newProfile as any)[key] = value;
+              updated = true;
+            }
+          });
+          
+          if (updated) {
+            localStorage.setItem("appUser", JSON.stringify(newProfile));
+            return newProfile;
+          }
+          return prev;
+        });
+      }
+    }, (err) => {
+      console.error("[App] Users onSnapshot failed:", err);
+    });
+    
+    return () => unsubscribe();
+  }, [user?.firebaseUid]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -233,6 +300,11 @@ export default function App() {
               facebookUrl={user.facebookUrl}
               linkedinUrl={user.linkedinUrl}
               userPoliceStation={user.policeStation}
+              trustScore={user.trustScore !== undefined ? user.trustScore : 100}
+              warningsCount={user.warningsCount || 0}
+              redBallsCount={user.redBallsCount || 0}
+              isSuspended={user.isSuspended || false}
+              suspensionReason={user.suspensionReason || ''}
               onLogout={handleLogout}
               onUpdateProfile={handleUpdateProfile}
             />
