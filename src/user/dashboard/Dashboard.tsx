@@ -131,6 +131,7 @@ import { ReligiousTextsView } from './views/ReligiousTextsView';
 import { InvoicesView } from './views/InvoicesView';
 import { LegalDraftsView } from './views/LegalDraftsView';
 import { SubscriptionView } from './views/SubscriptionView';
+import { LotteryView } from './views/LotteryView';
 
 import { ProfessionalIDCard } from './components/ProfessionalIDCard';
 import { AdFlexiplan } from './components/AdFlexiplan';
@@ -280,7 +281,7 @@ export default function Dashboard({
   const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery'>('dashboard');
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
   const [cases, setCases] = useState<Case[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -320,6 +321,12 @@ export default function Dashboard({
   useEffect(() => {
     if (profilePicture) setProfilePic(profilePicture);
   }, [profilePicture]);
+
+  useEffect(() => {
+    if (activeTab === 'lottery' && currentViewMode !== 'lawyer' && currentViewMode !== 'clerk') {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, currentViewMode]);
 
   const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let file = e.target.files?.[0];
@@ -1167,6 +1174,9 @@ export default function Dashboard({
       items: [
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
         { id: 'subscription', label: t('subscription'), icon: CreditCard },
+        ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
+          { id: 'lottery', label: language === 'bn' ? 'সাপ্তাহিক লটারি 🎁' : 'Weekly Lottery 🎁', icon: Award }
+        ] : []),
       ]
     },
     {
@@ -2281,10 +2291,11 @@ export default function Dashboard({
                     }}
                     onWhatsAppShare={() => {
                       const link = `${window.location.origin}/register?ref=${referralCode}`;
-                      const text = `Join MDC Diary and manage cases easily: ${link}`;
+                      const text = `Join MDC Casebook and manage cases easily: ${link}`;
                       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                     }}
                     initialShowScoreModal={activeTab === 'performance'}
+                    points={userPoints}
                     displayDataMb={displayDataMb}
                     estimatedBillTaka={estimatedBillTaka}
                     showAllCases={showAllCases}
@@ -3662,11 +3673,22 @@ export default function Dashboard({
                             ) : (
                               memoryChatMessages.map((msg, idx) => (
                                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                  <div className={`max-w-[85%] p-4 rounded-2xl ${
+                                  <div className={`group relative max-w-[85%] p-4 rounded-2xl ${
                                     msg.role === 'user' 
                                       ? 'bg-indigo-600 text-white rounded-tr-none' 
                                       : 'bg-slate-800 text-slate-200 rounded-tl-none'
                                   }`}>
+                                    {msg.role !== 'user' && (
+                                      <button 
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(msg.text);
+                                        }}
+                                        className="absolute -right-10 top-0 p-2 text-slate-400 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-all active:scale-95"
+                                        title="Copy"
+                                      >
+                                        <Copy size={16} />
+                                      </button>
+                                    )}
                                     <div className="text-sm leading-relaxed prose prose-invert max-w-none">
                                       <Markdown>{msg.text}</Markdown>
                                     </div>
@@ -3975,7 +3997,10 @@ export default function Dashboard({
                     <AdBanner isPremium={isAdFree} />
                   </div>
                   <div className="flex-1">
-                    <MediGen />
+                    <MediGen 
+                      points={userPoints}
+                      onPointsUpdate={(newPoints) => setUserPoints(newPoints)}
+                    />
                   </div>
                 </div>
               )}
@@ -4043,7 +4068,20 @@ export default function Dashboard({
                 </div>
               )}
 
-              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && (
+              {activeTab === 'lottery' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <LotteryView
+                    language={language}
+                    currentPackage={subscriptionPackage}
+                    expiryDate={subscriptionEndDate}
+                    userMobile={userMobile}
+                    userName={userName}
+                    onNavigateToSubscription={() => setActiveTab('subscription')}
+                  />
+                </div>
+              )}
+
+              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && activeTab !== 'lottery' && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <AdBanner isPremium={isAdFree} />
                   <div className="bg-indigo-100 p-6 rounded-full mb-6 mt-8">
@@ -4283,11 +4321,22 @@ export default function Dashboard({
               ) : (
                 (aiMode === 'case' ? aiCaseMessages : aiMessages).map((msg, idx) => (
                   <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-2xl p-3 text-sm ${
+                    <div className={`group relative max-w-[85%] rounded-2xl p-3 text-sm ${
                       msg.role === 'user' 
                         ? 'bg-indigo-600 text-white rounded-br-none shadow-sm' 
                         : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-sm'
                     }`}>
+                      {msg.role !== 'user' && (
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.text);
+                          }}
+                          className="absolute -right-8 top-0 p-1.5 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all active:scale-95"
+                          title="Copy"
+                        >
+                          <Copy size={14} />
+                        </button>
+                      )}
                       {msg.role === 'user' ? (
                         <p className="whitespace-pre-wrap">{msg.text}</p>
                       ) : (

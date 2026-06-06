@@ -47,6 +47,7 @@ interface HomeViewProps {
   onWhatsAppShare?: () => void;
   referralCount?: number;
   initialShowScoreModal?: boolean;
+  points?: number;
   displayDataMb?: string;
   estimatedBillTaka?: number;
   showAllCases?: boolean;
@@ -69,6 +70,7 @@ export const HomeView = ({
   onWhatsAppShare,
   referralCount = 0,
   initialShowScoreModal = false,
+  points = 0,
   displayDataMb = '0.00',
   estimatedBillTaka = 0,
   showAllCases = false,
@@ -189,6 +191,17 @@ export const HomeView = ({
               </div>
 
               <div className="space-y-4">
+                {isPremium && (
+                  <div className="bg-white/20 backdrop-blur-md border border-white/30 p-3 rounded-2xl flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-amber-400 rounded-xl text-amber-900 shrink-0">
+                      <Award size={20} fill="currentColor" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-indigo-100 leading-none mb-1">লটারি স্ট্যাটাস</p>
+                      <p className="text-sm font-bold text-white">সাপ্তাহিক প্রতিটি লটারির জন্য এলিজিবেল</p>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <div className="flex justify-between text-xs font-bold mb-1">
                     <span>{language === 'bn' ? 'ডেটা সাশ্রয়' : 'Data Saving'}</span>
@@ -251,6 +264,7 @@ export const HomeView = ({
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
+          { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-teal-600', shadow: 'shadow-teal-100', action: () => setActiveTab('recharge') },
           { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-indigo-600', shadow: 'shadow-indigo-100' },
           { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-emerald-600', shadow: 'shadow-emerald-100' },
           { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-amber-600', shadow: 'shadow-amber-100' },
@@ -275,6 +289,7 @@ export const HomeView = ({
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 * idx }}
             className={`bg-white p-6 rounded-3xl border border-slate-100 ${stat.shadow} shadow-lg hover:scale-105 transition-transform group cursor-pointer`}
+            onClick={stat.action}
           >
             <div className={`w-12 h-12 ${stat.color} text-white rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform`}>
               <stat.icon size={24} />

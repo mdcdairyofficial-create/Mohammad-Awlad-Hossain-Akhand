@@ -135,9 +135,10 @@ export const LegalDraftsView = ({ language }: { language: 'bn' | 'en' | 'hi' | '
                 <div className="flex items-center gap-3">
                   <button 
                     onClick={() => navigator.clipboard.writeText(selectedTemplate.content)}
-                    className="p-3 bg-white border border-slate-100 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all shadow-sm"
+                    className="flex items-center gap-2 p-3 bg-white border border-slate-100 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all shadow-sm"
                   >
                     <Copy size={20} />
+                    <span className="text-sm font-bold">{language === 'bn' ? 'কপি' : 'Copy'}</span>
                   </button>
                   <button className="p-3 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100">
                     <Download size={20} />

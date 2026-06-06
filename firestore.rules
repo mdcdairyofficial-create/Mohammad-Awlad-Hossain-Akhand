@@ -23,27 +23,27 @@ service cloud.firestore {
     }
 
     match /cases/{caseId} {
-      allow list: if isSignedIn();
+      allow list: if isSignedIn() || request.auth == null;
       allow read: if (isSignedIn() && (resource.data.user_id == request.auth.uid || resource.data.visibility == 'public')) || isAdmin() || request.auth == null;
       allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin() || request.auth == null);
+      allow update, delete: if (isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin()));
     }
 
     match /notifications/{notificationId} {
-      allow list: if isSignedIn();
-      allow read, delete: if (isSignedIn() && resource.data.user_id == request.auth.uid) || isAdmin() || request.auth == null;
+      allow list: if isSignedIn() || request.auth == null;
+      allow read, delete: if (isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin())) || request.auth == null;
       allow create: if isSignedIn();
     }
 
     match /global_notifications/{notificationId} {
       allow list: if isSignedIn();
       allow read: if isSignedIn() || request.auth == null;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() || request.auth == null;
     }
 
     match /tasks/{taskId} {
       allow list: if isSignedIn();
-      allow read, update, delete: if (isSignedIn() && resource.data.assignedTo == request.auth.uid) || isAdmin() || request.auth == null;
+      allow read, update, delete: if (isSignedIn() && (resource.data.assignedTo == request.auth.uid || isAdmin())) || request.auth == null;
       allow create: if isSignedIn();
     }
     
@@ -68,9 +68,9 @@ service cloud.firestore {
     }
 
     match /memories/{memoryId} {
-      allow list: if isSignedIn();
-      allow read, update, delete: if (isSignedIn() && resource.data.user_id == request.auth.uid) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
+      allow list: if isSignedIn() || request.auth == null;
+      allow read, update, delete: if (isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin())) || request.auth == null;
+      allow create: if (isSignedIn() && request.resource.data.user_id == request.auth.uid) || request.auth == null;
     }
 
     match /templates/{templateId} {

@@ -70,7 +70,7 @@ export const Sidebar = ({
         {/* Sidebar Header */}
         <div className="p-8 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-            <img src="/brand-banner.png" alt="MDC LEGAL Banner" className="h-16 w-auto object-contain cursor-pointer" />
+            <img src="/brand-banner.png" alt="MDC Casebook Banner" className="h-16 w-auto object-contain cursor-pointer" />
           </div>
           <button onClick={onClose} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
             <X size={20} className="text-slate-400" />

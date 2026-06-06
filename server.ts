@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
 import admin from "firebase-admin";
+import { getFirestore as getAdminFirestore, FieldValue as AdminFieldValue } from "firebase-admin/firestore";
 
 import { initializeApp as initializeClientApp } from "firebase/app";
 import { 
@@ -29,6 +30,7 @@ import {
 // Initialize Firebase Admin
 let _firestoreInstance: any;
 let _clientDb: any;
+let _databaseId: string | undefined;
 
 // FieldValue shim for Client SDK
 const FieldValue = {
@@ -50,13 +52,25 @@ function initializeFirebase() {
       console.warn("[Firebase] Config file NOT found!");
     }
 
-    const projectId = firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID;
+    const projectId = firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+    _databaseId = firebaseConfig.firestoreDatabaseId;
     
-    // Initialize Admin for Auth (still needed for some things)
+    console.log(`[Firebase] Initializing Admin SDK. Project: ${projectId}, Database: ${_databaseId}`);
+
+    // Initialize Admin for Auth and Firestore
     if (!admin.apps.length) {
-      admin.initializeApp({
-        projectId: projectId || "(default)"
-      });
+      const adminConfig: any = {
+        projectId: projectId || undefined
+      };
+      
+      // In Cloud Run, credential.applicationDefault() is the standard way to get service identity
+      try {
+        adminConfig.credential = admin.credential.applicationDefault();
+      } catch (e) {
+        console.warn("[Firebase] Could not load application default credentials, falling back to basic initialization.");
+      }
+
+      admin.initializeApp(adminConfig);
     }
 
     // Initialize Client SDK as primary Firestore driver due to IAM issues with Admin SDK
@@ -72,7 +86,29 @@ function initializeFirebase() {
 
 initializeFirebase();
 
-// Helper to ensure Firestore is initialized. Returns Client DB.
+let _useDefaultDbFallback = false;
+
+// Helper to get Admin Firestore instance with correct database targeting
+const getAdminDb = (targetDb?: string) => {
+  try {
+    const app = admin.app();
+    const dbName = targetDb || (_useDefaultDbFallback ? "(default)" : _databaseId);
+    
+    // In firebase-admin v11+, getFirestore(app, databaseId) or getFirestore(databaseId) is the way.
+    // Explicitly passing the app instance can sometimes resolve credential ambiguity.
+    if (dbName && dbName !== "(default)" && dbName !== "") {
+      try {
+        return getAdminFirestore(app, dbName);
+      } catch (e) {
+        return getAdminFirestore(dbName);
+      }
+    }
+    return getAdminFirestore(app);
+  } catch (err) {
+    console.error("[Firebase] Error getting Admin Firestore instance:", err);
+    return getAdminFirestore();
+  }
+};
 const getDb = () => {
   if (!_clientDb) {
     initializeFirebase();
@@ -289,6 +325,56 @@ const authenticate = async (req: any, res: any, next: any) => {
           const userDoc = snapshot.docs[0];
           req.profile = { id: userDoc.id, ...userDoc.data() };
           
+          // Track operations for billing
+          const userId = userDoc.id;
+          let opType = 'read_count';
+          if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+            opType = 'write_count';
+          } else if (req.method === 'DELETE') {
+            opType = 'delete_count';
+          }
+          
+          // Use Admin SDK directly to bypass security rules for internal bookkeeping
+          const trackOperation = async (dbId?: string) => {
+            try {
+              const adminDb = getAdminDb(dbId);
+              await adminDb.collection("users").doc(userId).set({
+                [opType]: AdminFieldValue.increment(1)
+              }, { merge: true });
+            } catch (err: any) {
+              // If specifically 5 NOT_FOUND and we were using a named DB, try (default)
+              if (err.code === 5 && dbId !== "(default)" && _databaseId) {
+                console.warn(`[Firebase] DB ${dbId} NOT_FOUND, retrying operation track with (default)`);
+                _useDefaultDbFallback = true;
+                const defaultDb = getAdminDb("(default)");
+                await defaultDb.collection("users").doc(userId).set({
+                  [opType]: AdminFieldValue.increment(1)
+                }, { merge: true });
+              } else {
+                throw err;
+              }
+            }
+          };
+
+          trackOperation(_databaseId).catch((err: any) => {
+            // Keep error logging minimal for permission issues to avoid cluttering if it's an environment/IAM constraint
+            if (err.code === 7) {
+               if (process.env.NODE_ENV !== 'production') {
+                 console.warn(`[Firebase] Admin PERMISSION_DENIED while tracking for ${userId}. The Service Account may lack necessary IAM roles.`);
+               }
+               // Attempt fallback to Client SDK if possible
+               // We only attempt if we have a client DB instance and the user is updating their own record
+               // (Note: This relies on security rules allowing the update)
+               if (_clientDb && (userId === decodedToken.uid || req.profile?.firebase_uid === decodedToken.uid)) {
+                 db.collection("users").doc(userId).set({ [opType]: FieldValue.increment(1) }, { merge: true })
+                   .catch(() => { /* Silently fail Client fallback */ });
+               }
+            } else {
+              console.error(`[Firebase] FAILED to track operation for user ${userId}. DB: ${_databaseId || '(default)'}`);
+              console.error("Error Detail:", err.message || err);
+            }
+          });
+
           // --- 500MB Usage Limit Logic ---
           const displayMb = parseFloat(req.profile.display_data_mb || "0");
           const isSubscribed = req.profile.subscription_status === 'active' || (req.profile.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
@@ -394,11 +480,12 @@ async function startServer() {
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const costPerRequest = 10;
+      const adminDb = getAdminDb();
 
-      // Firestore transaction to check and deduct points
-      let userPoints;
-      await db.runTransaction(async (transaction: any) => {
-        const userRef = db.doc(`users/${userId}`);
+      // Firestore transaction with Admin SDK to bypass security rules
+      let userPoints = 0;
+      await adminDb.runTransaction(async (transaction: any) => {
+        const userRef = adminDb.collection("users").doc(userId);
         const userDoc = await transaction.get(userRef);
         const userData = userDoc.data();
 
@@ -413,14 +500,55 @@ async function startServer() {
       });
 
       // Call Gemini API on server
-      const genAI: any = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-      const { prompt } = req.body;
+      const genAI = new GoogleGenAI({ 
+        apiKey: process.env.GEMINI_API_KEY || '',
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
       
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
+      const { prompt } = req.body;
+      if (!prompt) {
+        throw new Error("Prompt is missing in the request.");
+      }
+      
+      let responseText = "";
+      let references: any[] = [];
 
-      res.json({ success: true, text: responseText, points: userPoints });
+      try {
+        const result = await genAI.models.generateContent({
+          model: "gemini-flash-latest",
+          contents: prompt
+        });
+
+        responseText = result.text || "";
+        
+        // Extract grounding metadata if available
+        const groundingChunks = result.candidates?.[0]?.groundingMetadata?.groundingChunks;
+        if (groundingChunks) {
+          references = groundingChunks
+            .filter((chunk: any) => chunk.web)
+            .map((chunk: any) => ({
+              uri: chunk.web.uri,
+              title: chunk.web.title
+            }));
+        }
+      } catch (aiErr: any) {
+        console.error("[MediGen AI Error]", aiErr);
+        // If it's a safety block or something similar, provide a friendly fallback
+        responseText = "I'm sorry, I cannot provide a recommendation for this specific condition. Please consult a qualified healthcare professional in person.";
+        if (req.profile?.district) {
+           responseText += `\nYou may want to visit the nearest hospital in ${req.profile.district} district.`;
+        }
+      }
+
+      if (!responseText) {
+        responseText = "I could not generate a response at this time. Please try again with a different description.";
+      }
+
+      res.json({ success: true, text: responseText, points: userPoints, references });
     } catch (error: any) {
       if (error.message === "INSUFFICIENT_POINTS") {
         return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই।" });
@@ -596,21 +724,21 @@ app.post('/api/subscription/request', async (req, res) => {
         if ((user.points || 0) < 10) {
           return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই।" });
         }
-        await db.collection("users").doc(userId).update({
-          points: FieldValue.increment(-10)
+        await getAdminDb().collection("users").doc(userId).update({
+          points: AdminFieldValue.increment(-10)
         });
       } else {
         const lastReset = user.last_ai_reset_date?.toDate ? user.last_ai_reset_date.toDate() : user.last_ai_reset_date ? new Date(user.last_ai_reset_date) : new Date(0);
         const now = new Date();
         
         if (lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
-          await db.doc("users/" + userId).update({
+          await getAdminDb().doc("users/" + userId).update({
             ai_questions_count: 1,
-            last_ai_reset_date: FieldValue.serverTimestamp()
+            last_ai_reset_date: AdminFieldValue.serverTimestamp()
           });
         } else {
-          await db.doc("users/" + userId).update({
-            ai_questions_count: FieldValue.increment(1)
+          await getAdminDb().doc("users/" + userId).update({
+            ai_questions_count: AdminFieldValue.increment(1)
           });
         }
       }
@@ -934,7 +1062,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const now = new Date();
       const newEndDate = new Date(now.getTime() + (days || 30) * 24 * 60 * 60 * 1000);
 
-      await db.collection("users").doc(id).update({
+      await getAdminDb().collection("users").doc(id).update({
         subscription_package: pkg,
         subscription_end_date: newEndDate.toISOString()
       });
@@ -954,7 +1082,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         return res.status(400).json({ error: "Invalid role" });
       }
 
-      await db.collection("users").doc(id).update({ user_type: role });
+      await getAdminDb().collection("users").doc(id).update({ user_type: role });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
@@ -1383,20 +1511,48 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       memoriesSnapshot.docs.forEach(doc => totalBytes += calculateObjectSize(doc.data()));
       
       const userDoc = await db.collection("users").doc(userId).get();
+      const userData = userDoc.exists ? userDoc.data() : {};
+      
       if (userDoc.exists) {
-        totalBytes += calculateObjectSize(userDoc.data());
+        totalBytes += calculateObjectSize(userData);
       }
 
-      // 10x multiplier as requested
-      const virtualBytes = totalBytes * 10;
-      const virtualMB = virtualBytes / (1024 * 1024);
-      const cost = Math.ceil(virtualMB * 3); // 3 Taka per MB
+      // Business Rules (May 2026 Update):
+      // 1. Actual MB Price: 1 Taka
+      // 2. Actual Op Price: 0.01 Taka (1 Paisa)
+      // 3. User sees 20x multiplier on both data and cost
+      
+      const actualMB = totalBytes / (1024 * 1024);
+      const writeCount = userData.write_count || 0;
+      const readCount = userData.read_count || 0;
+      const deleteCount = userData.delete_count || 0;
+      const totalOps = writeCount + readCount + deleteCount;
+      
+      const virtualMB = actualMB * 20;
+      
+      // REAL COST (Firestore Blaze Standard Rates - Approx to BDT)
+      // Read: $0.06/100k, Write: $0.18/100k, Delete: $0.02/100k, Storage: $0.18/GB
+      const firestoreReadRate = 0.000072; // 7.2 BDT per 100k reads
+      const firestoreWriteRate = 0.000216; // 21.6 BDT per 100k writes
+      const firestoreDeleteRate = 0.000024; // 2.4 BDT per 100k deletes
+      const firestoreStorageRate = 0.021; // ~21.6 BDT per GB (per MB approx 0.021)
+      
+      const realCost = (readCount * firestoreReadRate) + 
+                       (writeCount * firestoreWriteRate) + 
+                       (deleteCount * firestoreDeleteRate) + 
+                       (actualMB * firestoreStorageRate);
+      
+      // USER COST (Estimated): 1 MB = 3 Taka, 1 OP = 0.02 Taka (2 Paisa)
+      // The 20x multiplier is applied to the MB volume, we use that for the 3 Taka rate.
+      const displayCost = (virtualMB * 3) + (totalOps * 0.02);
 
-      await db.collection("users").doc(userId).update({
+      // Use Admin SDK to bypass rules
+      await getAdminDb().collection("users").doc(userId).update({
         actual_data_bytes: totalBytes,
         display_data_mb: virtualMB.toFixed(2),
-        estimated_bill_taka: cost,
-        last_usage_update: FieldValue.serverTimestamp()
+        estimated_bill_taka: Math.ceil(displayCost),
+        real_cost_estimated: realCost, // Tracked for admin comparison
+        last_usage_update: AdminFieldValue.serverTimestamp()
       });
     } catch (error) {
       console.error("Error updating usage:", error);
@@ -1469,9 +1625,9 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         });
         
         // Award 10 points for entry
-        await db.collection("users").doc(userId).update({
-          case_count: FieldValue.increment(1),
-          points: FieldValue.increment(10)
+        await getAdminDb().collection("users").doc(userId).update({
+          case_count: AdminFieldValue.increment(1),
+          points: AdminFieldValue.increment(10)
         });
         
         updateUserDataUsage(userId).catch(console.error);
@@ -1929,7 +2085,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     try {
       const { profilePicture } = req.body;
       const { id } = req.params;
-      await db.collection("users").doc(id).update({ profile_picture: profilePicture });
+      await getAdminDb().collection("users").doc(id).update({ profile_picture: profilePicture });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Failed to update profile picture" });

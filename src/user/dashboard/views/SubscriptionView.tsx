@@ -15,7 +15,7 @@ export const SubscriptionView = ({ t, userId, userType, currentPackage, expiryDa
   const [recipientId, setRecipientId] = useState('');
   const [selectedPlan, setSelectedPlan] = useState(SUBSCRIPTION_PACKAGES.filter(p => p.id === 'special')[0]);
 
-  const displayedPackages = SUBSCRIPTION_PACKAGES.filter(pkg => pkg.id === 'special');
+  const displayedPackages = SUBSCRIPTION_PACKAGES;
 
   const handleGift = () => {
     if (!recipientId) return;
@@ -36,7 +36,19 @@ export const SubscriptionView = ({ t, userId, userType, currentPackage, expiryDa
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+        <div className="p-2 bg-amber-100 rounded-xl text-amber-600 shrink-0">
+          <Gift size={20} />
+        </div>
+        <div>
+          <h4 className="font-bold text-amber-900 text-sm md:text-base">সাপ্তাহিক লটারি সংক্রান্ত নিয়মাবলী</h4>
+          <p className="text-amber-800 text-xs md:text-sm mt-1">
+            ১০০০ টাকার ডায়মন্ড প্যাকেজটি ক্রয় করলেই আপনি ১ বছর মেয়াদে প্রতি সপ্তাহে অনুষ্ঠিত প্রতিটি লটারির জন্য যোগ্য হবেন। প্রতি সপ্তাহের রবিবার ঠিক দুপুর ১২:০০ ঘটিকায় আমাদের লটারি ড্র অনুষ্ঠিত হয়ে থাকে এবং মোট ৫ জন বিজয়ী আকর্ষণীয় পুরস্কার লাভ করেন।
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {displayedPackages.map(pkg => (
           <button
             key={pkg.id}

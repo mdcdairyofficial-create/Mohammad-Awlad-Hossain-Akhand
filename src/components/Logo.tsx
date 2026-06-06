@@ -21,7 +21,7 @@ export const Logo = ({ className = "", showSubtitle = false, size = 'md' }: Logo
         <div className={`${sizeClasses[size]} bg-white rounded-xl lg:rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-600/10 overflow-hidden border border-slate-100 group-hover:scale-105 transition-transform duration-500 relative z-10`}>
           <img 
             src="https://ais-blob-abpf5up7tfpf5iiqmxk4bl-213411422099.asia-southeast1.run.app/42d20120-cfbc-4b95-bdb1-995b057baf36" 
-            alt="MDC LEGAL" 
+            alt="MDC Casebook" 
             className="w-full h-full object-contain"
           />
         </div>
@@ -33,7 +33,7 @@ export const Logo = ({ className = "", showSubtitle = false, size = 'md' }: Logo
       {showSubtitle && (
         <div className="flex flex-col">
           <h1 className={`${size === 'sm' ? 'text-sm' : 'text-lg'} text-white font-black leading-none tracking-tighter uppercase flex items-center gap-1`}>
-            MDC <span className="text-indigo-400">LEGAL</span>
+            MDC <span className="text-indigo-400">CASEBOOK</span>
           </h1>
           <div className="flex flex-col mt-0.5">
             <p className="text-[7px] lg:text-[9px] text-indigo-200 font-bold uppercase tracking-widest leading-none">

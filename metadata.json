@@ -1,5 +1,6 @@
 {
-  "name": "MDC LEGAL",
+  "name": "MDC Casebook",
   "description": "আদালত ভিত্তিক মামলার তথ্য আদান-প্রদান প্ল্যাটফর্ম (উকিল, মুহুরী ও পক্ষদের জন্য)",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -865,7 +865,7 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
                 />
                 {fbLink && (
                   <div className="mt-4">
-                    <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest ml-4 mb-2 block">{t('MDC LEGAL ফেসবুক কাভার ফটো', 'MDC LEGAL FB COVER PHOTO')}</label>
+                    <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest ml-4 mb-2 block">{t('MDC Casebook ফেসবুক কাভার ফটো', 'MDC Casebook FB COVER PHOTO')}</label>
                     <input 
                       type="file" 
                       accept="image/*"

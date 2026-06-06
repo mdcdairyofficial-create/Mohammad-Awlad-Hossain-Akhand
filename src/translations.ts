@@ -460,7 +460,7 @@ export const translations = {
     ongoing_label: 'চলমান',
 // DUP:     no_referral_found: 'কোনো রেফারেল পাওয়া যায়নি।',
     select_plan_title: 'আপনার সাবস্ক্রিপশন প্ল্যান নির্বাচন করুন',
-    select_plan_desc: 'MDC LEGAL-এর সকল প্রিমিয়াম ফিচার ব্যবহার করতে সাবস্ক্রিপশন নিন।',
+    select_plan_desc: 'MDC Casebook-এর সকল প্রিমিয়াম ফিচার ব্যবহার করতে সাবস্ক্রিপশন নিন।',
     for_self: 'নিজের জন্য',
     for_clerk: 'মুহুরির জন্য',
     premium_package_title: 'প্রিমিয়াম প্যাকেজ (Premium)',
@@ -1216,7 +1216,7 @@ export const translations = {
     ongoing_label: 'Ongoing',
 // DUP:     no_referral_found: 'No referrals found.',
     select_plan_title: 'Select Your Subscription Plan',
-    select_plan_desc: 'Subscribe to unlock all premium features of MDC LEGAL.',
+    select_plan_desc: 'Subscribe to unlock all premium features of MDC Casebook.',
     for_self: 'For Self',
     for_clerk: 'For Clerk',
     premium_package_title: 'Premium Package',
@@ -1293,7 +1293,7 @@ export const translations = {
     none_label: 'None',
     clerk_plan_title: 'Select Subscription Plan for Your Clerk',
     clerk_plan_desc: 'Subscribe to unlock all premium features on your clerk\'s account.',
-    ai_system_instruction: 'You are a Bangladeshi Legal Assistant and guide for this "MDC LEGAL" app. You help lawyers and clerks with Bangladesh laws, sections, punishments, testimony techniques, cross-examination techniques, arguments, and application writing rules. Provide more relevant advice based on user type. Also provide information about every menu, button, and process of this app. Main features: 1. Dashboard, 2. Calendar, 3. Case List, 4. Recharge, 5. Notification, 6. Law Library, 7. Professional Resource, 8. Affiliate Zone, 9. Emergency, 10. Settings, 11. Documents, 12. 20 Years Memory, 13. Task Management. Explain simply if user asks about any button or process. Answer in Bengali.',
+    ai_system_instruction: 'You are a Bangladeshi Legal Assistant and guide for this "MDC Casebook" app. You help lawyers and clerks with Bangladesh laws, sections, punishments, testimony techniques, cross-examination techniques, arguments, and application writing rules. Provide more relevant advice based on user type. Also provide information about every menu, button, and process of this app. Main features: 1. Dashboard, 2. Calendar, 3. Case List, 4. Recharge, 5. Notification, 6. Law Library, 7. Professional Resource, 8. Affiliate Zone, 9. Emergency, 10. Settings, 11. Documents, 12. 20 Years Memory, 13. Task Management. Explain simply if user asks about any button or process. Answer in Bengali.',
 
     // New translations
     karim_kha: 'Karim Kha',

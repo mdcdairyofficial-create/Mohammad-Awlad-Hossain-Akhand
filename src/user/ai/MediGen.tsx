@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Stethoscope, Building2, Globe, Languages, Printer, ExternalLink, Loader2 } from 'lucide-react';
+import { Stethoscope, Building2, Globe, Languages, Printer, ExternalLink, Loader2, Copy, Award } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { AdBanner } from '../dashboard/AdBanner';
 import { fetchWithAuth } from '../../lib/api';
@@ -7,8 +7,13 @@ import { auth } from '../../firebase';
 
 type Language = 'en' | 'bn';
 
-export default function MediGen() {
-  const [lang, setLang] = useState<Language>('en'); 
+interface MediGenProps {
+  points?: number;
+  onPointsUpdate?: (newPoints: number) => void;
+}
+
+export default function MediGen({ points = 0, onPointsUpdate }: MediGenProps) {
+  const [lang, setLang] = useState<Language>('bn'); 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>('');
   const [references, setReferences] = useState<{ uri: string; title: string }[]>([]);
@@ -18,9 +23,26 @@ export default function MediGen() {
   const [gender, setGender] = useState('');
   const [disease, setDisease] = useState('');
   const [formulaSystem, setFormulaSystem] = useState('');
-  const [productForm, setProductForm] = useState('');
+  const [selectedProductForms, setSelectedProductForms] = useState<string[]>([]);
   const [qualityTier, setQualityTier] = useState('');
   const [keyIngredients, setKeyIngredients] = useState('');
+
+  const productForms = [
+    { id: 'Syrup', en: 'Syrup', bn: 'সিরাপ' },
+    { id: 'Tablet', en: 'Tablet', bn: 'ট্যাবলেট' },
+    { id: 'Capsule', en: 'Capsule', bn: 'ক্যাপসুল' },
+    { id: 'Oil', en: 'Oil', bn: 'তেল' },
+    { id: 'Powder', en: 'Powder', bn: 'পাউডার' },
+    { id: 'Ointment', en: 'Ointment', bn: 'মলম' },
+    { id: 'Drop', en: 'Drop', bn: 'ড্রপ' },
+    { id: 'Injection', en: 'Injection', bn: 'ইনজেকশন' },
+  ];
+
+  const toggleProductForm = (id: string) => {
+    setSelectedProductForms(prev => 
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    );
+  };
 
   const t = (key: string) => {
     const translations: Record<string, Record<Language, string>> = {
@@ -76,7 +98,7 @@ Always keep Scientific/Medical names in brackets.`;
         Gender: ${gender}
         Disease/Problem: ${disease}
         Formula System: ${formulaSystem}
-        Product Form: ${productForm}
+        Product Forms: ${selectedProductForms.join(', ') || 'Any'}
         Quality Tier: ${qualityTier}
         Key Ingredients: ${keyIngredients}
       `;
@@ -96,7 +118,7 @@ Always keep Scientific/Medical names in brackets.`;
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 400) {
-            alert(lang === 'bn' ? 'আপনার পর্যাপ্ত পয়েন্ট নেই। দয়া করে রিচার্জ করুন।' : 'Insufficient points. Please recharge.');
+            setResult(lang === 'bn' ? '### আপনার পর্যাপ্ত পয়েন্ট নেই।\nদয়া করে রিচার্জ করুন।' : '### Insufficient points.\nPlease recharge.');
             return;
         }
         throw new Error(errorData.error || `Failed to generate formula: ${response.statusText}`);
@@ -104,6 +126,11 @@ Always keep Scientific/Medical names in brackets.`;
 
       const data = await response.json();
       setResult(data.text || '');
+      setReferences(data.references || []);
+      
+      if (data.points !== undefined && onPointsUpdate) {
+        onPointsUpdate(data.points);
+      }
 
     } catch (error) {
       console.error('Error generating formula:', error);
@@ -127,13 +154,20 @@ Always keep Scientific/Medical names in brackets.`;
             <p className="text-xs opacity-80">{t('subtitle_personal')}</p>
           </div>
         </div>
-        <button 
-          onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
-          className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition-colors text-sm font-medium"
-        >
-          <Languages size={18} />
-          {lang === 'en' ? 'বাংলা' : 'English'}
-        </button>
+        
+        <div className="flex items-center gap-4">
+          <div className="hidden sm:flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-xs font-bold">
+            <Award size={14} />
+            <span>{points} {lang === 'bn' ? 'পয়েন্ট' : 'Points'}</span>
+          </div>
+          <button 
+            onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
+            className="flex items-center gap-2 bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full transition-colors text-sm font-medium"
+          >
+            <Languages size={18} />
+            {lang === 'en' ? 'বাংলা' : 'English'}
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
@@ -210,37 +244,47 @@ Always keep Scientific/Medical names in brackets.`;
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">{t('product_form')}</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">{t('quality_tier')}</label>
                 <select 
-                  value={productForm}
-                  onChange={(e) => setProductForm(e.target.value)}
+                  value={qualityTier}
+                  onChange={(e) => setQualityTier(e.target.value)}
                   className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all bg-white"
                 >
                   <option value="">{t('select')}</option>
-                  <option value="Syrup">Syrup</option>
-                  <option value="Tablet">Tablet</option>
-                  <option value="Capsule">Capsule</option>
-                  <option value="Oil">Oil</option>
-                  <option value="Powder">Powder</option>
-                  <option value="Ointment">Ointment</option>
-                  <option value="Drop">Drop</option>
-                  <option value="Injection">Injection</option>
+                  <option value="Premium">Premium</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Economy">Economy</option>
                 </select>
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{t('quality_tier')}</label>
-              <select 
-                value={qualityTier}
-                onChange={(e) => setQualityTier(e.target.value)}
-                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all bg-white"
-              >
-                <option value="">{t('select')}</option>
-                <option value="Premium">Premium</option>
-                <option value="Standard">Standard</option>
-                <option value="Economy">Economy</option>
-              </select>
+              <label className="block text-sm font-medium text-slate-700 mb-2">{t('product_form')}</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {productForms.map((form) => (
+                  <button
+                    key={form.id}
+                    type="button"
+                    onClick={() => toggleProductForm(form.id)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
+                      selectedProductForms.includes(form.id)
+                        ? 'bg-teal-50 border-teal-500 text-teal-700 shadow-sm'
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className={`w-3 h-3 rounded-sm border ${
+                      selectedProductForms.includes(form.id)
+                        ? 'bg-teal-500 border-teal-500 flex items-center justify-center'
+                        : 'border-slate-300'
+                    }`}>
+                      {selectedProductForms.includes(form.id) && (
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                      )}
+                    </div>
+                    {lang === 'bn' ? form.bn : form.en}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -282,7 +326,16 @@ Always keep Scientific/Medical names in brackets.`;
         <div className="w-full lg:w-2/3 p-6 lg:p-10 overflow-y-auto bg-slate-50 print:p-0 print:bg-white print:w-full">
           {result ? (
             <div className="max-w-3xl mx-auto bg-white p-8 rounded-2xl shadow-sm border border-slate-100 print:shadow-none print:border-none print:p-0">
-              <div className="flex justify-end mb-6 print:hidden">
+              <div className="flex justify-end mb-6 print:hidden gap-2">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(result);
+                  }}
+                  className="flex items-center gap-2 text-slate-500 hover:text-teal-600 transition-colors px-4 py-2 rounded-lg hover:bg-teal-50 border border-transparent hover:border-teal-100"
+                >
+                  <Copy size={18} />
+                  <span className="text-sm font-medium">{lang === 'bn' ? 'কপি করুন' : 'Copy'}</span>
+                </button>
                 <button 
                   onClick={handlePrint}
                   className="flex items-center gap-2 text-slate-500 hover:text-slate-800 transition-colors px-4 py-2 rounded-lg hover:bg-slate-100"
@@ -297,6 +350,29 @@ Always keep Scientific/Medical names in brackets.`;
                   <Markdown>{result}</Markdown>
                 </div>
               </div>
+
+              {references.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-slate-100 print:hidden">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                    <ExternalLink size={16} />
+                    {t('references')}
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {references.map((ref, idx) => (
+                      <a 
+                        key={idx}
+                        href={ref.uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs bg-slate-50 hover:bg-teal-50 text-slate-600 hover:text-teal-700 px-3 py-1.5 rounded-full border border-slate-200 hover:border-teal-200 transition-all flex items-center gap-1.5"
+                      >
+                        {ref.title || 'Source'}
+                        <ExternalLink size={10} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="mt-12 pt-8 border-t border-slate-200 print:hidden">
                 <AdBanner />

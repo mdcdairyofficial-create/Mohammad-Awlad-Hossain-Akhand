@@ -1,4 +1,4 @@
-# Security Specification for MDC LEGAL Firestore
+# Security Specification for MDC Casebook Firestore
 
 ## 1. Data Invariants
 - Users can only read/write their own profile (`/users/{userId}`).

@@ -117,19 +117,19 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
     };
   }, []);
 
-  const calculateEstimateCost = () => {
-    // Basic estimation based on data volume
-    // Firebase Enterprise (Blaze) pricing:
-    // Read: $0.06 per 100,000
-    // Write: $0.18 per 100,000
-    // Storage: $0.18/GB
+  const calculateStats = () => {
+    let totalUserPerceived = 0;
+    let totalRealCost = 0;
     
-    const totalDocs = liveUsage.usersCount + liveUsage.casesCount + liveUsage.rechargeCount + liveUsage.adsCount + liveUsage.notificationsCount;
-    const estDailyReads = totalDocs * 10; // Assume 10 reads per doc per day avg
-    const estReadsCost = (estDailyReads / 100000) * 0.06;
-    
-    return estReadsCost * 120; // in BDT (approx)
+    users.forEach(u => {
+      totalUserPerceived += u.estimated_bill_taka || 0;
+      totalRealCost += u.real_cost_estimated || 0;
+    });
+
+    return { totalUserPerceived, totalRealCost };
   };
+
+  const { totalUserPerceived, totalRealCost } = calculateStats();
 
   const handleVerifyLawyer = async (lawyerId: string, verify: boolean) => {
     try {
@@ -554,52 +554,46 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
 
           {activeTab === 'usage' && (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-6 opacity-5">
-                    <Zap size={120} />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="bg-indigo-600 p-8 rounded-[3rem] text-white shadow-xl shadow-indigo-200 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-6 opacity-10">
+                    <DollarSign size={80} />
                   </div>
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">অনুমানকৃত দৈনিক খরচ</h3>
+                  <h3 className="text-[10px] font-black text-indigo-100 uppercase tracking-widest mb-4">মোট ইউজার জেনারেটেড বিল (Perceived)</h3>
                   <div className="flex items-baseline gap-2">
-                    <p className="text-4xl font-black text-emerald-600">৳{calculateEstimateCost().toFixed(2)}</p>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">/ দিন</p>
+                    <p className="text-4xl font-black text-white">৳{totalUserPerceived.toLocaleString()}</p>
+                    <p className="text-xs font-bold text-indigo-200 uppercase tracking-widest">টাকা</p>
                   </div>
-                  <p className="mt-4 text-[10px] text-slate-400 font-medium">
-                    * বর্তমান ডেটা ভলিউম এবং গড় ইউজার অ্যাক্টিভিটির উপর ভিত্তি করে।
+                  <p className="mt-4 text-[10px] text-indigo-200 font-medium">
+                    * এমবি প্রতি ৩ টাকা (২০ গুণ মাল্টিপ্লায়ার) এবং প্রতি অপারেশন ২ পয়সা হিসেবে।
                   </p>
                 </div>
 
-                <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">সিস্টেম অবজেক্ট কাউন্ট</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-slate-600">ইউজার প্রোফাইল</span>
-                      <span className="font-black text-slate-900">{liveUsage.usersCount}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-slate-600">মামলা রেকর্ডস</span>
-                      <span className="font-black text-slate-900">{liveUsage.casesCount}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-bold text-slate-600">রিচার্জ ট্রানজাকশন</span>
-                      <span className="font-black text-slate-900">{liveUsage.rechargeCount}</span>
-                    </div>
+                <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-6 opacity-5">
+                    <Activity size={80} />
                   </div>
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">প্রকৃত সম্ভাব্য খরচ (Real Cost Basis)</h3>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-4xl font-black text-slate-900">৳{totalRealCost.toLocaleString()}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">টাকা</p>
+                  </div>
+                  <p className="mt-4 text-[10px] text-slate-400 font-medium">
+                    * ফায়ারস্টোর ব্লেজ রেট (রিড/রাইট/ডিলিট ও স্টোরেজ) অনুযায়ী প্রকৃত খরচ।
+                  </p>
                 </div>
 
-                <div className="bg-indigo-900 p-8 rounded-[3rem] text-white shadow-xl shadow-indigo-900/20">
-                  <h3 className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-4">ডেটা অপ্টিমাইজেশন মুড</h3>
-                  <div className="flex items-center gap-4 mb-4">
-                    <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-amber-400">
-                      <Zap size={24} fill="currentColor" />
-                    </div>
-                    <div>
-                      <p className="text-lg font-black leading-tight">৮০% সাশ্রয়</p>
-                      <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">রিড অপারেশন</p>
-                    </div>
+                <div className="bg-emerald-500 p-8 rounded-[3rem] text-white shadow-xl shadow-emerald-200 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-6 opacity-10">
+                    <Zap size={80} />
                   </div>
-                  <p className="text-xs text-indigo-200 font-medium leading-relaxed">
-                    ইউজার আইডিতে "শুধুমাত্র আজকের মামলা" ফিল্টার চালু থাকার কারণে ফায়ারবেজ রিড উল্লেখযোগ্যভাবে কমেছে।
+                  <h3 className="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-4">নেট সিস্টেম সারপ্লাস/লাভ</h3>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-4xl font-black text-white">৳{(totalUserPerceived - totalRealCost).toLocaleString()}</p>
+                    <p className="text-xs font-bold text-emerald-100 uppercase tracking-widest">টাকা</p>
+                  </div>
+                  <p className="mt-4 text-[10px] text-emerald-100 font-medium font-bold">
+                    সাশ্রয় এবং মাল্টিপ্লায়ার থেকে মোট প্রফিট।
                   </p>
                 </div>
               </div>
