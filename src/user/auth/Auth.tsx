@@ -297,32 +297,38 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-50 relative overflow-hidden">
+      {/* Decorative blurred circles for rich context */}
+      <div className="absolute top-[-10%] left-[-10%] w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-purple-500/5 rounded-full blur-3xl"></div>
+      
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden"
+        className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-indigo-200/30 border border-white/80 overflow-hidden relative z-10"
       >
         <div className="p-8">
-          <div className="flex justify-center mb-10">
+          <div className="flex justify-center mb-8">
             <Logo size="xl" />
           </div>
           
-          <h2 className="text-2xl font-bold text-center text-slate-900 mb-2">
+          <h2 className="text-2xl font-black text-center text-slate-900 mb-2 tracking-tight">
             {resetMode ? 'পাসওয়ার্ড রিসেট' : (isLogin ? 'স্বাগতম!' : 'নতুন অ্যাকাউন্ট তৈরি করুন')}
           </h2>
-          <p className="text-center text-slate-500 mb-8 font-medium">
+          <p className="text-center text-slate-500 mb-8 font-semibold text-xs uppercase tracking-wider">
             {resetMode ? 'আপনার মোবাইল নম্বর বা ইমেইল দিন' : (isLogin ? 'আপনার তথ্য দিয়ে লগইন করুন' : 'নিচে আপনার সঠিক তথ্য প্রদান করুন')}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm font-medium border border-red-100">
+              <div className="bg-rose-50 text-rose-600 p-3.5 rounded-xl text-xs font-bold border border-rose-100/50 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
                 {error}
               </div>
             )}
             {success && (
-              <div className="bg-green-50 text-green-600 p-3 rounded-xl text-sm font-medium border border-green-100">
+              <div className="bg-emerald-50 text-emerald-600 p-3.5 rounded-xl text-xs font-bold border border-emerald-100/50 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                 {success}
               </div>
             )}
@@ -519,14 +525,14 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 disabled:opacity-70 font-bold tracking-wide"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 active:scale-[0.99] disabled:opacity-75 tracking-wide text-sm cursor-pointer"
             >
               {loading ? (
-                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
                   {resetMode ? 'পাসওয়ার্ড রিসেট করুন' : (isLogin ? 'লগইন করুন' : 'সাইন আপ করুন')}
-                  <ArrowRight size={20} />
+                  <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
                 </>
               )}
             </button>

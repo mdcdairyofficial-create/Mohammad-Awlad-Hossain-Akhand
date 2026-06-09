@@ -87,7 +87,7 @@ export const Header = ({
             flex items-center gap-3 p-1.5 pr-3 rounded-2xl transition-all duration-300
             ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-50 hover:bg-slate-100'}
           `}>
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-200 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold shadow-lg shadow-indigo-500/20 overflow-hidden">
               {profilePic ? (
                 <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
               ) : (
@@ -96,7 +96,7 @@ export const Header = ({
             </div>
             <div className="hidden sm:block text-left">
               <p className={`text-xs font-black truncate max-w-[100px] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{userName}</p>
-              <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">{userType}</p>
+              <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest">{userType}</p>
             </div>
             <ChevronDown size={14} className="text-slate-400 group-hover:rotate-180 transition-transform duration-300" />
           </button>

@@ -93,16 +93,16 @@ export const Sidebar = ({
                       if (window.innerWidth < 1024) onClose();
                     }}
                     className={`
-                      w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 group
+                      w-full flex items-center justify-between px-4.5 py-3 rounded-xl transition-all duration-300 group cursor-pointer
                       ${activeTab === item.id 
-                        ? 'bg-indigo-800 text-white shadow-xl shadow-indigo-200 translate-x-1' 
-                        : `text-slate-900 dark:text-slate-300 hover:translate-x-1 ${theme === 'dark' ? 'hover:bg-slate-800 hover:text-slate-200' : 'hover:bg-slate-100 hover:text-indigo-900'} ${item.id === 'my_points' ? 'ring-2 ring-indigo-400 ring-offset-2' : ''}`
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-indigo-500/20 translate-x-1 font-black' 
+                        : `text-slate-700 dark:text-slate-355 hover:translate-x-1 ${theme === 'dark' ? 'hover:bg-slate-800/80 hover:text-white' : 'hover:bg-slate-50 hover:text-blue-700'} ${item.id === 'my_points' ? 'ring-2 ring-indigo-400/80 ring-offset-2' : ''}`
                       }
                     `}
                   >
                     <div className="flex items-center gap-3">
-                      <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-slate-700 dark:text-slate-400 group-hover:scale-110 transition-transform'} />
-                      <span className="text-xs font-black uppercase tracking-tight">{item.label}</span>
+                      <item.icon size={18} className={activeTab === item.id ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:scale-110 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-transform'} />
+                      <span className="text-xs font-black tracking-tight">{item.label}</span>
                     </div>
                     {activeTab === item.id && (
                       <motion.div layoutId="activeTab" className="w-1.5 h-1.5 bg-white rounded-full shadow-sm" />

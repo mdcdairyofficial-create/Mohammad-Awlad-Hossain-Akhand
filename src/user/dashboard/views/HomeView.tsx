@@ -198,7 +198,7 @@ export const HomeView = ({
       )}
       
       {/* Welcome Section */}
-      <div className="relative overflow-hidden bg-indigo-600 rounded-3xl sm:rounded-[2.5rem] p-6 sm:p-8 lg:p-12 text-white shadow-2xl shadow-indigo-200">
+      <div className="relative overflow-hidden bg-gradient-to-r from-blue-700 via-indigo-600 to-indigo-700 rounded-3xl p-6 sm:p-8 lg:p-12 text-white shadow-xl shadow-indigo-500/10">
         <div className="relative z-10">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
             <motion.div
@@ -307,38 +307,38 @@ export const HomeView = ({
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
-          { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-teal-600', shadow: 'shadow-teal-100', action: () => setActiveTab('recharge') },
-          { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-indigo-600', shadow: 'shadow-indigo-100' },
-          { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-emerald-600', shadow: 'shadow-emerald-100' },
-          { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-amber-600', shadow: 'shadow-amber-100' },
+          { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab('recharge') },
+          { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-gradient-to-tr from-blue-600 to-indigo-600', shadow: 'shadow-indigo-500/5' },
+          { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-gradient-to-tr from-indigo-500 to-purple-600', shadow: 'shadow-indigo-500/5' },
+          { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-gradient-to-tr from-amber-500 to-orange-600', shadow: 'shadow-amber-500/5' },
           { label: t('upcoming_dates'), value: cases.filter(c => {
               if (!c.nextDate) return false;
               const d = new Date(c.nextDate);
               const today = new Date();
               today.setHours(0,0,0,0);
               return d >= today;
-            }).length, icon: Calendar, color: 'bg-emerald-600', shadow: 'shadow-emerald-100' },
+            }).length, icon: Calendar, color: 'bg-gradient-to-tr from-emerald-500 to-teal-600', shadow: 'shadow-emerald-500/5' },
           { label: t('today_cases'), value: cases.filter(c => {
               if (!c.nextDate) return false;
               const d = new Date(c.nextDate);
               const today = new Date();
               return d.toDateString() === today.toDateString();
-            }).length, icon: Zap, color: 'bg-amber-500', shadow: 'shadow-amber-100' },
-          { label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-rose-500', shadow: 'shadow-rose-100' },
+            }).length, icon: Zap, color: 'bg-gradient-to-tr from-amber-500 to-yellow-600', shadow: 'shadow-amber-500/5' },
+          { label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-gradient-to-tr from-rose-500 to-red-650', shadow: 'shadow-rose-500/5' },
         ].map((stat, idx) => (
           <motion.div
             key={idx}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 * idx }}
-            className={`bg-white p-6 rounded-3xl border border-slate-100 ${stat.shadow} shadow-lg hover:scale-105 transition-transform group cursor-pointer`}
+            transition={{ delay: 0.05 * idx }}
+            className={`bg-white dark:bg-slate-900 p-6 rounded-[20px] border border-slate-100/80 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/5 hover:border-indigo-100/50 dark:hover:border-slate-700 transition-all group cursor-pointer`}
             onClick={stat.action}
           >
-            <div className={`w-12 h-12 ${stat.color} text-white rounded-2xl flex items-center justify-center mb-4 shadow-lg group-hover:rotate-12 transition-transform`}>
-              <stat.icon size={24} />
+            <div className={`w-12 h-12 ${stat.color} text-white rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/10 group-hover:rotate-6 transition-transform duration-300`}>
+              <stat.icon size={22} />
             </div>
-            <p className="text-slate-500 font-bold text-xs uppercase tracking-wider mb-1">{stat.label}</p>
-            <h4 className="text-3xl font-black text-slate-900">{stat.value}</h4>
+            <p className="text-slate-400 dark:text-slate-500 font-extrabold text-[10px] uppercase tracking-wider mb-1.5">{stat.label}</p>
+            <h4 className="text-2.5xl font-black text-slate-800 dark:text-white tracking-tight">{stat.value}</h4>
           </motion.div>
         ))}
       </div>
