@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { fetchWithAuth } from '../../lib/api';
 
 export const AdBanner = ({ className = "", theme = "light", containerClassName = "", innerClassName = "", isPremium = false, adSlot = "general" }: { className?: string, theme?: string, containerClassName?: string, innerClassName?: string, isPremium?: boolean, adSlot?: string }) => {
   const [activeAds, setActiveAds] = useState<any[]>([]);
@@ -13,7 +14,7 @@ export const AdBanner = ({ className = "", theme = "light", containerClassName =
 
     const fetchAds = async () => {
       try {
-        const response = await fetch(`/api/ads?slot=${encodeURIComponent(adSlot)}`);
+        const response = await fetchWithAuth(`/api/ads?slot=${encodeURIComponent(adSlot)}`);
         if (response.ok) {
           const data = await response.json();
           // Logic: Max 2 ads per space per visit

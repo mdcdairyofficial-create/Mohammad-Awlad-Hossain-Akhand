@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Award, Gift, CheckCircle, AlertTriangle, Calendar, Users, RefreshCw, Landmark, HelpCircle, Trophy, Volume2, Star, Sparkles, AlertCircle, Play, ChevronRight, Share2, Lock, Search, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { db } from '../../../firebase';
+import { collection, getDocs, query, where, addDoc } from 'firebase/firestore';
 
 interface LotteryViewProps {
   language: 'bn' | 'en' | 'hi' | 'ur';
@@ -113,21 +115,65 @@ export const LotteryView = ({
   const isDiamondUser = currentPackage?.toLowerCase() === 'diamond';
 
   useEffect(() => {
-    let list = [...INITIAL_PARTICIPANTS];
-    if (isDiamondUser && userName && userMobile) {
-      const userCleaned = userMobile.trim();
-      if (!list.some(p => p.phone.trim().replace(/\D/g, '') === userCleaned.replace(/\D/g, ''))) {
-        list.unshift({
-          id: 'user_current',
-          name: userName,
-          district: 'ঢাকা বার',
-          phone: userMobile,
-          package: 'ডায়মন্ড',
-          expiryDate: expiryDate || '২০২৭-০৬-০৬'
+    const fetchRealData = async () => {
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        let firestoreDiamondUsers: Participant[] = [];
+        
+        usersSnap.forEach(doc => {
+          const data = doc.data();
+          if (data.subscription_package === 'diamond' || data.package === 'ডায়মন্ড') {
+            firestoreDiamondUsers.push({
+              id: doc.id,
+              name: data.name || 'অজ্ঞাত',
+              district: data.district || data.barCourtName || 'অজ্ঞাত বার',
+              phone: data.mobile || data.phone || '01XXX-XXXXXX',
+              package: 'ডায়মন্ড',
+              expiryDate: data.subscription_end_date || '২০২৭-০৬-০৬'
+            });
+          }
         });
+
+        let list = firestoreDiamondUsers.length >= 5 ? firestoreDiamondUsers : [...INITIAL_PARTICIPANTS];
+
+        if (isDiamondUser && userName && userMobile) {
+          const userCleaned = userMobile.trim();
+          if (!list.some(p => p.phone.trim().replace(/\D/g, '') === userCleaned.replace(/\D/g, ''))) {
+            list.unshift({
+              id: 'user_current',
+              name: userName,
+              district: 'আপনার জেলা',
+              phone: userMobile,
+              package: 'ডায়মন্ড',
+              expiryDate: expiryDate || '২০২৭-০৬-০৬'
+            });
+          }
+        }
+        setParticipants(list);
+
+        const winnersSnap = await getDocs(collection(db, 'lotteryWinners'));
+        const fbWinners: PastWinner[] = [];
+        winnersSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          fbWinners.push({
+            drawDate: d.drawDate,
+            rank: d.rank,
+            prizeAmount: d.prizeAmount,
+            name: d.name,
+            district: d.district,
+            phone: d.phone
+          });
+        });
+
+        if (fbWinners.length > 0) {
+          setPastWinners(fbWinners.sort((a, b) => b.drawDate.localeCompare(a.drawDate)));
+        }
+      } catch (err) {
+        console.error("Error fetching lottery data", err);
+        setParticipants([...INITIAL_PARTICIPANTS]);
       }
-    }
-    setParticipants(list);
+    };
+    fetchRealData();
   }, [isDiamondUser, userName, userMobile, expiryDate]);
   const currentYear = new Date().getFullYear();
 
@@ -325,6 +371,14 @@ export const LotteryView = ({
       }));
       setPastWinners(prev => [...newPastWinners, ...prev]);
       setDrawState('finished');
+
+      // Save to Firestore
+      newPastWinners.forEach(winner => {
+        addDoc(collection(db, 'lotteryWinners'), winner).catch(err => {
+          console.error("Failed to save winner to Firestore", err);
+        });
+      });
+
       return;
     }
 

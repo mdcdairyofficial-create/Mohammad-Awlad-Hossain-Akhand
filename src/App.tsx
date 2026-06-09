@@ -233,7 +233,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowSplash(false);
-    }, 1000);
+    }, 15000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -243,7 +243,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem("socialVerificationCompleted");
     setUser(null);
+    setSocialCompleted(false);
   };
 
   const handleUpdateProfile = (updatedProfile: Partial<UserProfile>) => {
@@ -270,7 +272,10 @@ export default function App() {
             />
           ) : !user ? (
             !socialCompleted ? (
-              <SocialGate onComplete={() => setSocialCompleted(true)} />
+              <SocialGate onComplete={() => {
+                localStorage.setItem("socialVerificationCompleted", "true");
+                setSocialCompleted(true);
+              }} />
             ) : (
               <Auth onAuthSuccess={handleAuthSuccess} />
             )

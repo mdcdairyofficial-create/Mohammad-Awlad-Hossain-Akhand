@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   Newspaper, 
@@ -7,46 +7,80 @@ import {
   Share2, 
   Bookmark, 
   ChevronRight, 
-  ExternalLink,
   Search
 } from 'lucide-react';
 import { AdBanner } from '../AdBanner';
+import { db } from '../../../firebase';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 
 interface NewsViewProps {
   language: 'bn' | 'en' | 'hi' | 'ur';
   t: (key: string) => string;
 }
 
+interface NewsItem {
+  id: string | number;
+  title: string;
+  category: string;
+  time: string;
+  image: string;
+  summary: string;
+}
+
+const STATIC_NEWS: NewsItem[] = [
+  {
+    id: 1,
+    title: "সুপ্রিম কোর্টের নতুন নির্দেশনা: ভার্চুয়াল শুনানি আরও সহজ হচ্ছে",
+    category: "আইন ও আদালত",
+    time: "২ ঘণ্টা আগে",
+    image: "https://picsum.photos/seed/court/800/400",
+    summary: "বিচারপ্রার্থীদের ভোগান্তি কমাতে এবং বিচার প্রক্রিয়া দ্রুততর করতে সুপ্রিম কোর্ট নতুন কিছু নির্দেশনা জারি করেছে। এর ফলে এখন থেকে জেলা আদালতগুলোতেও ভার্চুয়াল শুনানি আরও কার্যকরভাবে পরিচালিত হবে।"
+  },
+  {
+    id: 2,
+    title: "ডিজিটাল নিরাপত্তা আইনের পরিবর্তে আসছে সাইবার নিরাপত্তা আইন",
+    category: "জাতীয়",
+    time: "৫ ঘণ্টা আগে",
+    image: "https://picsum.photos/seed/cyber/800/400",
+    summary: "সরকার ডিজিটাল নিরাপত্তা আইন রহিত করে সাইবার নিরাপত্তা আইন ২০২৩ প্রবর্তনের সিদ্ধান্ত নিয়েছে। নতুন আইনে বেশ কিছু ধারায় পরিবর্তন আনা হয়েছে যা নিয়ে আইনজীবীদের মধ্যে মিশ্র প্রতিক্রিয়া দেখা দিয়েছে।"
+  },
+  {
+    id: 3,
+    title: "পারিবারিক আদালত অধ্যাদেশ সংশোধন: বাড়ছে মামলার পরিধি",
+    category: "আইন",
+    time: "১ দিন আগে",
+    image: "https://picsum.photos/seed/family/800/400",
+    summary: "পারিবারিক আদালত অধ্যাদেশ সংশোধনের মাধ্যমে এখন থেকে পারিবারিক বিরোধ নিষ্পত্তিতে আদালতের ক্ষমতা আরও বাড়ানো হয়েছে। বিশেষ করে দেনমোহর ও ভরণপোষণ সংক্রান্ত মামলায় দ্রুত রায় দেওয়ার বিধান রাখা হয়েছে।"
+  }
+];
+
 export const NewsView = ({
   language,
   t
 }: NewsViewProps) => {
-  const newsItems = [
-    {
-      id: 1,
-      title: "সুপ্রিম কোর্টের নতুন নির্দেশনা: ভার্চুয়াল শুনানি আরও সহজ হচ্ছে",
-      category: "আইন ও আদালত",
-      time: "২ ঘণ্টা আগে",
-      image: "https://picsum.photos/seed/court/800/400",
-      summary: "বিচারপ্রার্থীদের ভোগান্তি কমাতে এবং বিচার প্রক্রিয়া দ্রুততর করতে সুপ্রিম কোর্ট নতুন কিছু নির্দেশনা জারি করেছে। এর ফলে এখন থেকে জেলা আদালতগুলোতেও ভার্চুয়াল শুনানি আরও কার্যকরভাবে পরিচালিত হবে।"
-    },
-    {
-      id: 2,
-      title: "ডিজিটাল নিরাপত্তা আইনের পরিবর্তে আসছে সাইবার নিরাপত্তা আইন",
-      category: "জাতীয়",
-      time: "৫ ঘণ্টা আগে",
-      image: "https://picsum.photos/seed/cyber/800/400",
-      summary: "সরকার ডিজিটাল নিরাপত্তা আইন রহিত করে সাইবার নিরাপত্তা আইন ২০২৩ প্রবর্তনের সিদ্ধান্ত নিয়েছে। নতুন আইনে বেশ কিছু ধারায় পরিবর্তন আনা হয়েছে যা নিয়ে আইনজীবীদের মধ্যে মিশ্র প্রতিক্রিয়া দেখা দিয়েছে।"
-    },
-    {
-      id: 3,
-      title: "পারিবারিক আদালত অধ্যাদেশ সংশোধন: বাড়ছে মামলার পরিধি",
-      category: "আইন",
-      time: "১ দিন আগে",
-      image: "https://picsum.photos/seed/family/800/400",
-      summary: "পারিবারিক আদালত অধ্যাদেশ সংশোধনের মাধ্যমে এখন থেকে পারিবারিক বিরোধ নিষ্পত্তিতে আদালতের ক্ষমতা আরও বাড়ানো হয়েছে। বিশেষ করে দেনমোহর ও ভরণপোষণ সংক্রান্ত মামলায় দ্রুত রায় দেওয়ার বিধান রাখা হয়েছে।"
-    }
-  ];
+  const [newsItems, setNewsItems] = useState<NewsItem[]>(STATIC_NEWS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const q = query(collection(db, 'news'), orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const fetchedNews = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as NewsItem[];
+          setNewsItems(fetchedNews);
+        }
+      } catch (error) {
+        console.error("Error fetching news:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchNews();
+  }, []);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">

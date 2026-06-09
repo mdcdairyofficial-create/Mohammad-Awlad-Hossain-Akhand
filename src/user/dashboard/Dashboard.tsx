@@ -47,6 +47,7 @@ import {
   ShoppingCart,
   Eye,
   EyeOff,
+  Download,
   CheckCircle2,
   Smartphone,
   DollarSign,
@@ -131,9 +132,11 @@ import { ProfileView } from './views/ProfileView';
 import { ReligiousTextsView } from './views/ReligiousTextsView';
 import { InvoicesView } from './views/InvoicesView';
 import { LegalDraftsView } from './views/LegalDraftsView';
+import { LibraryView } from './views/LibraryView';
 import { SubscriptionView } from './views/SubscriptionView';
 import { LotteryView } from './views/LotteryView';
 import { NotificationsView } from './views/NotificationsView';
+import SocialView from './views/SocialView';
 
 import { ProfessionalIDCard } from './components/ProfessionalIDCard';
 import { AdFlexiplan } from './components/AdFlexiplan';
@@ -320,10 +323,28 @@ export default function Dashboard({
   const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social'>('dashboard');
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
-  const [cases, setCases] = useState<Case[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [cases, setCases] = useState<Case[]>(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) {
+        const cached = localStorage.getItem(`cases_cache_${uid}`);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) {
+        const cached = localStorage.getItem(`tasks_cache_${uid}`);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch (e) {}
+    return [];
+  });
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskTitle, setTaskTitle] = useState('');
@@ -770,11 +791,17 @@ export default function Dashboard({
 
     const unsubTasks = subscribeToTasks(uid, (data) => {
       setTasks(data);
+      if (data && data.length > 0) {
+        localStorage.setItem(`tasks_cache_${uid}`, JSON.stringify(data));
+      }
     });
 
     const unsubCases = subscribeToCases(uid, (data) => {
       setCases(data);
-    }, showAllCases ? undefined : todayStr);
+      if (data && data.length > 0) {
+        localStorage.setItem(`cases_cache_${uid}`, JSON.stringify(data));
+      }
+    }, undefined); // Always fetch all cases to cache locally and enable calendar offline support
 
     return () => {
       unsubNotifications();
@@ -782,7 +809,7 @@ export default function Dashboard({
       unsubTasks();
       unsubCases();
     };
-  }, [userId, isAuthReady, firebaseUid, showAllCases]);
+  }, [userId, isAuthReady, firebaseUid]);
 
   useEffect(() => {
     if (!cases || !tasks) return;
@@ -1220,6 +1247,15 @@ export default function Dashboard({
       })
     : cases;
 
+  const getRenderTodayStr = () => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+  const casesForDisplay = showAllCases ? visibleCases : visibleCases.filter(c => c.nextDate === getRenderTodayStr());
+
   const [lastDeletedCase, setLastDeletedCase] = useState<Case | null>(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
 
@@ -1306,6 +1342,10 @@ export default function Dashboard({
       items: [
         { id: 'lawyer_directory', label: currentViewMode === 'client' ? t('find_lawyer') : t('lawyer_directory'), icon: Users },
         { id: 'clerk_directory', label: currentViewMode === 'client' ? t('find_clerk') : t('clerk_directory'), icon: Users },
+        ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
+          { id: 'legal_drafts', label: language === 'bn' ? 'আইনি খসড়া ও ফরম' : 'Legal Drafts', icon: FileText },
+          { id: 'library', label: language === 'bn' ? 'লাইব্রেরি' : 'Library', icon: BookOpen },
+        ] : []),
         { id: 'medigen', label: t('medigen'), icon: Stethoscope },
       ]
     },
@@ -1327,6 +1367,7 @@ export default function Dashboard({
     {
       title: t('support_account'),
       items: [
+        { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
         { id: 'subscription', label: t('subscription'), icon: CreditCard },
         ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
@@ -2463,7 +2504,7 @@ export default function Dashboard({
                   <HomeView 
                     userName={userName}
                     userType={currentViewMode}
-                    cases={visibleCases}
+                    cases={casesForDisplay}
                     tasks={tasks}
                     language={language}
                     theme={theme}
@@ -2513,7 +2554,7 @@ export default function Dashboard({
               )}
               {activeTab === 'cases' && (
                 <CasesView 
-                  cases={visibleCases}
+                  cases={casesForDisplay}
                   caseSearchQuery={caseSearchQuery}
                   setCaseSearchQuery={setCaseSearchQuery}
                   caseFilter={caseFilter}
@@ -3755,6 +3796,35 @@ export default function Dashboard({
                         </table>
                       </div>
                     </div>
+
+                    {/* Logo Download Card */}
+                    <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+                      <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
+                        <Download className="text-indigo-600" />
+                        {language === 'bn' ? 'লোগো ডাউনলোড' : 'Download Logo'}
+                      </h3>
+                      <div className="flex flex-col sm:flex-row items-center gap-6">
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+                          <img src="/logo.png" alt="App Logo" className="h-20 w-auto object-contain" />
+                        </div>
+                        <div className="space-y-4 flex-1 text-center sm:text-left">
+                          <p className="text-sm font-medium text-slate-500">
+                            {language === 'bn' 
+                              ? 'আপনার ব্র্যান্ডিং ও প্রচারের উদ্দেশ্যে অ্যাপের অফিশিয়াল লোগোটি ডাউনলোড করতে পারেন।' 
+                              : 'You can download the official application logo for branding or promotional purposes.'}
+                          </p>
+                          <a 
+                            href="/logo.png" 
+                            download="MDC_Diary_Logo.png"
+                            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-md active:scale-95"
+                          >
+                            <Download size={18} />
+                            {language === 'bn' ? 'লোগো ডাউনলোড করুন' : 'Download Logo'}
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
               )}
 
@@ -4260,7 +4330,18 @@ export default function Dashboard({
 
               {activeTab === 'legal_drafts' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <LegalDraftsView language={language} />
+                  <LegalDraftsView 
+                    language={language}
+                    userPoints={userPoints || 0}
+                    onUpdateProfile={onUpdateProfile}
+                    userId={firebaseUid || userId?.toString() || ''}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'library' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <LibraryView language={language} />
                 </div>
               )}
 
@@ -4277,7 +4358,13 @@ export default function Dashboard({
                 </div>
               )}
 
-              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && activeTab !== 'lottery' && (
+              {activeTab === 'social' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <SocialView language={language} />
+                </div>
+              )}
+
+              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'library' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && activeTab !== 'lottery' && activeTab !== 'social' && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <AdBanner isPremium={isAdFree} />
                   <div className="bg-indigo-100 p-6 rounded-full mb-6 mt-8">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Users, Shield, CheckCircle, XCircle, FileText, CreditCard, LayoutDashboard, MessageSquare, Bell, Send, Clock, User as UserIcon, Search, TrendingUp, PieChart as PieChartIcon, BarChart as BarChartIcon, MapPin, ShieldAlert, Scale, ThumbsUp, ThumbsDown, Lock, ShieldCheck, Key, RefreshCw, Database, Activity, Play, ChevronDown, ChevronUp, RefreshCcw, Smartphone, Tablet, Monitor, Layout, Menu, Ruler, Terminal, Cpu, Zap, Check } from 'lucide-react';
+import { Users, Shield, CheckCircle, XCircle, FileText, CreditCard, LayoutDashboard, MessageSquare, Bell, Send, Clock, User as UserIcon, Search, TrendingUp, PieChart as PieChartIcon, BarChart as BarChartIcon, MapPin, ShieldAlert, Scale, ThumbsUp, ThumbsDown, Lock, ShieldCheck, Key, RefreshCw, Database, Activity, Play, ChevronDown, ChevronUp, RefreshCcw, Smartphone, Tablet, Monitor, Layout, Menu, Ruler, Terminal, Cpu, Zap, Check, ListChecks } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, AreaChart, Area, LineChart, Line } from 'recharts';
 import { sendGlobalNotification, subscribeToMessages, sendMessage } from '../services/user/featureService';
 import { clsx, type ClassValue } from 'clsx';
@@ -213,6 +213,16 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
   const [testStats, setTestStats] = useState({ passed: 0, failed: 0, total: 0, timeMs: 0 });
   const [simulatedLoadRps, setSimulatedLoadRps] = useState(1500);
   const [simulatedActiveUsers, setSimulatedActiveUsers] = useState(850);
+
+  const simulatedChartData = [
+    { time: '00:00', 'ল্যাটেন্সি (Latency)': 12, 'সিপিইউ (CPU)': 15 },
+    { time: '04:00', 'ল্যাটেন্সি (Latency)': 18, 'সিপিইউ (CPU)': 10 },
+    { time: '08:00', 'ল্যাটেন্সি (Latency)': 45, 'সিপিইউ (CPU)': 40 },
+    { time: '12:00', 'ল্যাটেন্সি (Latency)': 35, 'সিপিইউ (CPU)': 65 },
+    { time: '16:00', 'ল্যাটেন্সি (Latency)': 25, 'সিপিইউ (CPU)': 45 },
+    { time: '20:00', 'ল্যাটেন্সি (Latency)': 15, 'সিপিইউ (CPU)': 25 },
+    { time: '23:59', 'ল্যাটেন্সি (Latency)': 10, 'সিপিইউ (CPU)': 18 },
+  ];
   const [showDetailedReportModal, setShowDetailedReportModal] = useState(false);
 
   // Phase 12 Testing Logs definition
@@ -2258,55 +2268,60 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               </div>
 
                     </div>
-                      )}
-              </main>
+                          )}
 
-          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
-              <span className="font-bold text-slate-800">রেসপন্সিভ গ্রিড:</span> উইন্ডো রিসাইজ করলেও ফাটবে না।
-            </div>
-          </div>
+                          {/* VIEW: CASES PANEL */}
+                          {simulatedViewMode === 'cases' && (
+                            <div className="space-y-4">
+                              <p className="text-[10px] uppercase font-bold text-slate-400">লাইভ মামলা ট্র্যাকিং ভিউ</p>
+                              
+                              <div className={`grid gap-3 ${simulatedDevice !== 'mobile' ? 'grid-cols-5' : 'grid-cols-1'}`}>
+                                {/* Left/Top List Column */}
+                                <div className={`${simulatedDevice !== 'mobile' ? 'col-span-2' : ''} space-y-2`}>
+                                  {[1, 2, 3].map((i) => (
+                                    <div key={i} className="bg-white p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300 transition-colors cursor-pointer text-left">
+                                      <div className="flex justify-between items-start mb-1">
+                                        <span className="text-[10px] font-bold text-indigo-700">জমি বন্টন মামলা</span>
+                                        <span className="text-[8px] bg-emerald-100 text-emerald-800 px-1 py-0.5 rounded font-black">চলমান</span>
+                                      </div>
+                                      <p className="text-xs font-bold text-slate-800 line-clamp-1">মোঃ আব্দুল হক বনাম রাষ্ট্র এবং অন্যান্য</p>
+                                    </div>
+                                  ))}
+                                </div>
 
-          <pre className="overflow-x-auto text-emerald-400 font-bold leading-relaxed">
-{`/* ১. রেসপন্সিভ সাইডবার কোড স্ট্রাকচার */
-.sidebar-container {
-  display: fixed;
-  left: 0;
-  width: 16rem; /* Desktop width - 256px */
-  transition: transform 300ms ease-in-out;
-}`}
-</pre>
-
-<pre className="overflow-x-auto text-emerald-400 font-bold leading-relaxed">
-{`/* ২. ফ্লুইড উইজেট গ্রিড স্ট্রাকচার */
-.responsive-stats-grid {
-  display: grid;
-  grid-template-columns: repeat(1, minmax(0, 1fr)); /* মোবাইলে ১ কলাম */
-  gap: 1rem;
-}
-
-@media (min-width: 640px) {
-  .responsive-stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)); /* ট্যাবলেটে ২ কলাম */
-  }
-}
-
-@media (min-width: 1280px) {
-  .responsive-stats-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)); /* ডেস্কটপ ৩ কলাম */
-  }
-}`}
-</pre>
-                <p className="text-zinc-500 text-[10px] font-bold">
-                  * আমাদের ডোমেন ফ্লেক্স গ্রিডগুলোর সাথে পুরোপুরি কানেক্ট করা এবং সমস্ত ফাইল বা বডি রেন্ডারিং ভিউপোর্ট কন্ট্রোল করে।
-                </p>
-              </div>
-
-            </div>
-
-            
+                                {/* Right/Bottom Detail Column */}
+                                {simulatedDevice !== 'mobile' ? (
+                                  <div className="col-span-3 bg-white p-4 rounded-xl border border-slate-200 h-full flex flex-col justify-between">
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between border-b pb-2">
+                                        <h5 className="text-[11px] font-bold text-slate-800">মামলার গভীর বিবরণ ও অগ্রগতি</h5>
+                                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-black rounded">নথিভুক্ত</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-600 leading-relaxed">
+                                        মামলা নং খ-২৪/২০২৬ ঢাকার প্রথম দেওয়ানি সহকারী জজ আদালতে শুনানি ও সাক্ষী প্রমাণের জন্য প্রক্রিয়াধীন রয়েছে। নথিটি সম্পূর্ণরূপে স্ক্যান এবং ডিজিটাল সার্ভারে ক্লাউড সিঙ্কড করা হয়েছে।
+                                      </p>
+                                      <div className="grid grid-cols-2 gap-2 text-[9px] bg-slate-50 p-2 rounded-lg">
+                                        <div>
+                                          <span className="text-slate-400 font-bold block">পরবর্তী তারিখ:</span>
+                                          <span className="text-slate-800 font-extrabold">১৫ জুন, ২০২৬</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-400 font-bold block">দায়িত্বপ্রাপ্ত মুহুরী:</span>
+                                          <span className="text-slate-800 font-extrabold">মোঃ রফিকুল ইসলাম</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <button className="w-full py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-bold hover:bg-indigo-700">ডিজিটাল ওকালতনামা ডাউনলোড</button>
+                                  </div>
+                                ) : (
+                                  /* Mobile details prompt/hint banner */
+                                  <div className="bg-amber-50 p-2.5 rounded-xl border border-amber-100 flex items-center justify-between">
+                                    <p className="text-[9px] text-amber-800 font-bold">💡 মোবাইলে স্পেস বাঁচাতে বিশদ বিবরণ প্যানেলটি স্বয়ংক্রিয়ভাবে একটি বটম শিট মডালে স্থানান্তরিত হয়।</p>
+                                  </div>
+                                )}
                               </div>
                             </div>
+                          )}
 
                           {/* VIEW: RECHARGE GATEWAY */}
                           {simulatedViewMode === 'recharge' && (
@@ -2382,8 +2397,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               )}
                             </div>
                           )}
-
-                  </div>
+                  </main>
 
                         {/* Simulated Bottom Navigation Bar (ONLY Visible on Mobile viewport) */}
                         {simulatedDevice === 'mobile' && (
@@ -2408,6 +2422,14 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 
                       </div>
 
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+
+              {/* In-depth Responsive Grid & Breakpoint Specifications in fluent Bangla */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 
                 {/* Mobile Specs */}
@@ -2418,42 +2440,9 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                     </div>
                     <div>
                       <h4 className="text-base font-bold text-slate-800">১. মোবাইল অপ্টিমাইজেশন</h4>
-                      <p className="text-xs text-slate-400">সর্বোচ্চ ২/৪ কলাম, ৩৬০px থেকে ৪�                    </span>
-                          </div>
-
-                          <div className="p-4 bg-white rounded-xl border border-slate-100 space-y-2 mt-3 text-sm">
-                            <p className="text-slate-600"><span className="font-bold text-slate-800">আপিলের কারণ:</span> {app.appealReason}</p>
-                          </div>
-
-                          {isPending && (
-                            <div className="flex items-center justify-end gap-2 border-t border-slate-200/75 pt-3 mt-4">
-                              <button
-                                onClick={() => handleAppealAction(app.id, app.userId, app.userName, 'approve')}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                              >
-                                <ThumbsUp size={14} /> আপিল মঞ্জুর ও সক্রিয় (Approve)
-                              </button>
-                              <button
-                                onClick={() => handleAppealAction(app.id, app.userId, app.userName, 'reject')}
-                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                              >
-                                <ThumbsDown size={14} /> আপিল নাকচ (Reject)
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
-            <div className="p-3 bg-red-50 text-red-600 rounded-2xl">�ে উইন্ডো রিসাইজ করলেও ফাটবে না।</span>
-                    </li>
-                  </ul>
+                      <p className="text-xs text-slate-400">সর্বোচ্চ ১ কলাম, ৩২০px থেকে ৪৮০px পর্যন্ত সম্পূর্ণ রেসপন্সিভ ডিজাইন।</p>
+                    </div>
+                  </div>
                 </div>
 
               </div>
@@ -2647,8 +2636,43 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                             </div>
                             <span className="text-xs text-slate-400 font-mono">
                               {app.createdAt ? (app.createdAt.seconds ? new Date(app.createdAt.seconds * 1000).toLocaleString('bn-BD') : new Date(app.createdAt).toLocaleString('bn-BD')) : ''}
-                    {/* 5. In-depth Test Matrix Details Component in clean Bangla block */}
-                <div className="space-y-4">
+                            </span>
+                          </div>
+
+                          <div className="p-4 bg-white rounded-xl border border-slate-100 space-y-2 mt-3 text-sm">
+                            <p className="text-slate-600"><span className="font-bold text-slate-800">আপিলের কারণ:</span> {app.appealReason}</p>
+                          </div>
+
+                          {isPending && (
+                            <div className="flex items-center justify-end gap-2 border-t border-slate-200/75 pt-3 mt-4">
+                              <button
+                                onClick={() => handleAppealAction(app.id, app.userId, app.userName, 'approve')}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                              >
+                                <ThumbsUp size={14} /> আপিল মঞ্জুর ও সক্রিয় (Approve)
+                              </button>
+                              <button
+                                onClick={() => handleAppealAction(app.id, app.userId, app.userName, 'reject')}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                              >
+                                <ThumbsDown size={14} /> আপিল নাকচ (Reject)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'testing' && (
+            <>
+              <div className="space-y-8">
+              {/* 5. In-depth Test Matrix Details Component in clean Bangla block */}
+              <div className="space-y-4">
                   <h3 className="text-xl font-bold text-slate-900 border-l-4 border-indigo-600 pl-3">মুহুরী ডট কম সিস্টেম ভ্যালিডেশন মেট্রিক্স ওভারভিউ</h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2724,8 +2748,17 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 
                     </div>
                   </div>
+                </div>
 
-                </div>Name="text-xl font-black text-slate-800 tracking-tight mt-1">
+                {/* Testing Statistics Overivew */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                  <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-4">
+                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                      <ListChecks size={22} className="text-indigo-500" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400 font-black">মোট চেকলিস্ট</p>
+                      <p className="text-xl font-black text-slate-800 tracking-tight mt-1">
                         {testStats.total || 24} টি আইটেম
                       </p>
                     </div>
@@ -3041,7 +3074,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                         <ul className="text-xs text-slate-600 space-y-1 pl-4 list-disc font-bold">
                           <li>গড় ডাটাবেস কোয়েরি রেসপন্স টাইম ১৫ মিলিসেকেন্ডের নিচে নিয়ে আসার টিউনিং চেক।</li>
                           <li>লাইটহাউস পারফরম্যান্স ও ডাব্লুসিএজি (WCAG) এক্সেসিবিলিটি প্যারামিটার পরীক্ষা।</li>
-                          <li>অ্যাসেট অলস (Lazy) লোডিং এবং বান্ডেল সাইজ অপ্টিমাইন করে লোডিং স্পিড < ২ সেকেন্ড নিশ্চিতকরণ।</li>
+                          <li>অ্যাসেট অলস (Lazy) লোডিং এবং বান্ডেল সাইজ অপ্টিমাইন করে লোডিং স্পিড &lt; ২ সেকেন্ড নিশ্চিতকরণ।</li>
                         </ul>
                       </div>
 
@@ -3051,8 +3084,8 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                 </div>
 
               </div>
-            );
-          })()}
+            </>
+          )}
 
           {activeTab === 'clerk_trust' && (
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">

@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
 import admin from "firebase-admin";
-import { getFirestore as getAdminFirestore, FieldValue as AdminFieldValue } from "firebase-admin/firestore";
+import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 
 import { initializeApp as initializeClientApp } from "firebase/app";
 import { 
@@ -37,6 +37,8 @@ const FieldValue = {
   increment: (n: number) => increment(n),
   serverTimestamp: () => serverTimestamp()
 };
+
+const AdminFieldValue = FieldValue;
 
 function initializeFirebase() {
   try {
@@ -90,24 +92,7 @@ let _useDefaultDbFallback = false;
 
 // Helper to get Admin Firestore instance with correct database targeting
 const getAdminDb = (targetDb?: string) => {
-  try {
-    const app = admin.app();
-    const dbName = targetDb || (_useDefaultDbFallback ? "(default)" : _databaseId);
-    
-    // In firebase-admin v11+, getFirestore(app, databaseId) or getFirestore(databaseId) is the way.
-    // Explicitly passing the app instance can sometimes resolve credential ambiguity.
-    if (dbName && dbName !== "(default)" && dbName !== "") {
-      try {
-        return getAdminFirestore(app, dbName);
-      } catch (e) {
-        return getAdminFirestore(dbName);
-      }
-    }
-    return getAdminFirestore(app);
-  } catch (err) {
-    console.error("[Firebase] Error getting Admin Firestore instance:", err);
-    return getAdminFirestore();
-  }
+  return db;
 };
 const getDb = () => {
   if (!_clientDb) {
@@ -128,6 +113,7 @@ const db: any = {
           const docRef = doc(getDb(), path, docId);
           return {
             id: docRef.id,
+            ref: docRef, // Add this for runTransaction/batch compatibility
             get: async () => {
               const snap = await getDoc(docRef);
               return {
