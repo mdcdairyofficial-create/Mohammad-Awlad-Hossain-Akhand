@@ -31,10 +31,10 @@ export const subscribeToUser = (userId: string, callback: (userData: any) => voi
 export const updateProfile = async (userId: string, data: any) => {
   const ref = doc(db, 'users', userId);
   try {
-    await updateDoc(ref, {
+    await setDoc(ref, {
       ...data,
       updated_at: serverTimestamp()
-    });
+    }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
   }
@@ -78,9 +78,9 @@ export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
 
   if (caseData.user_id) {
     const userRef = doc(db, 'users', caseData.user_id.toString());
-    await updateDoc(userRef, {
+    await setDoc(userRef, {
       points: increment(10)
-    });
+    }, { merge: true });
   }
 
   return caseRef;

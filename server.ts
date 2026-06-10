@@ -405,6 +405,13 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+  // Create public/uploads directory if it doesn't exist
+  const localUploadsDir = path.join(process.cwd(), "public", "uploads");
+  if (!fs.existsSync(localUploadsDir)) {
+    fs.mkdirSync(localUploadsDir, { recursive: true });
+  }
+  app.use("/uploads", express.static(localUploadsDir));
+
   // Health check for Cloud Run
   app.get("/health", (req, res) => res.status(200).send("OK"));
   app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
@@ -1960,11 +1967,12 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const now = new Date().toISOString();
       const adsSnapshot = await db.collection("advertisements")
         .where("status", "==", "active")
-        .where("slot", "==", slot)
-        .where("end_date", ">", now)
         .get();
         
       let ads = adsSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      
+      // Filter by slot and end_date in-memory to avoid requiring a composite index
+      ads = ads.filter((ad: any) => ad.slot === slot && (!ad.end_date || ad.end_date > now));
       
       // Sort ads by queue rank
       ads.sort((a: any, b: any) => (a.queue_position || 999) - (b.queue_position || 999));
@@ -2075,6 +2083,78 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Failed to update profile picture" });
+    }
+  });
+
+  // --- FILE UPLOAD PROXY / FALLBACK API ---
+  app.post("/api/upload", express.json({ limit: "50mb" }), async (req, res) => {
+    try {
+      const { fileName, fileData, path: filePath, bucket: bucketName } = req.body;
+      if (!fileData) {
+        return res.status(400).json({ error: "No file data provided" });
+      }
+
+      // Convert base64 to buffer
+      const base64Data = fileData.replace(/^data:.*;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+      const fullPath = filePath ? filePath : (bucketName ? `${bucketName}/${fileName}` : fileName);
+
+      try {
+        let storageBucketName = "";
+        try {
+          const raw = fs.readFileSync("./firebase-applet-config.json", "utf8");
+          storageBucketName = JSON.parse(raw).storageBucket;
+        } catch (readErr) {
+          console.warn("Could not read storage bucket config:", readErr);
+        }
+
+        if (!storageBucketName) {
+          throw new Error("No bucket configuration found in config file");
+        }
+        
+        console.log(`[Upload Proxy] Attempting Firebase Admin storage upload to bucket ${storageBucketName}, path: ${fullPath}`);
+        const storageBucket = admin.storage().bucket(storageBucketName);
+        const fileRef = storageBucket.file(fullPath);
+
+        await fileRef.save(buffer, {
+          metadata: {
+            contentType: req.body.contentType || "application/octet-stream"
+          },
+          public: true
+        });
+
+        const encodedPath = encodeURIComponent(fullPath);
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storageBucketName}/o/${encodedPath}?alt=media`;
+        console.log(`[Upload Proxy] Server-side Firebase storage upload successful! URL: ${publicUrl}`);
+        return res.json({ success: true, url: publicUrl });
+
+      } catch (adminErr: any) {
+        console.warn("[Upload Proxy] Firebase Admin Storage upload failed, falling back to local file storage:", adminErr.message || adminErr);
+        
+        // Save to local file system
+        const localUploadsDir = path.join(process.cwd(), "public", "uploads");
+        if (!fs.existsSync(localUploadsDir)) {
+          fs.mkdirSync(localUploadsDir, { recursive: true });
+        }
+
+        // Keep a unique file name to avoid collisions
+        const safeFileName = fullPath.replace(/[\/\\?#%*:|"<>\s]/g, "_");
+        const localFilePath = path.join(localUploadsDir, safeFileName);
+        
+        fs.writeFileSync(localFilePath, buffer);
+        
+        const hostHeader = req.get("host") || "localhost:3000";
+        const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+        const scheme = isHttps ? "https" : "http";
+        const localUrl = `${scheme}://${hostHeader}/uploads/${safeFileName}`;
+        
+        console.log(`[Upload Proxy] Served locally: ${localUrl}`);
+        return res.json({ success: true, url: localUrl });
+      }
+
+    } catch (e: any) {
+      console.error("[Upload Proxy] Fail-safe error:", e);
+      res.status(500).json({ error: e.message || "Failed to process upload" });
     }
   });
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Timer, Award, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { auth, db } from '../../../firebase';
-import { collection, query, where, limit, getDocs, doc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs, doc, updateDoc, setDoc, increment, serverTimestamp } from 'firebase/firestore';
 
 import { Campaign } from '../types';
 
@@ -95,10 +95,10 @@ export const FullscreenAdViewer = ({ language, userType, onClose, onPointsEarned
     if (auth.currentUser) {
       try {
         const userRef = doc(db, 'users', auth.currentUser.uid);
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
           points: increment(points),
           updatedAt: serverTimestamp()
-        });
+        }, { merge: true });
         onPointsEarned(points);
       } catch (error) {
         console.error('Error updating points:', error);

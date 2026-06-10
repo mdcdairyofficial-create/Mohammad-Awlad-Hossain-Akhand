@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Menu, 
   Bell, 
@@ -38,6 +38,8 @@ export const Header = ({
   language,
   t
 }: HeaderProps) => {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
   return (
     <header className={`
       sticky top-0 z-40 h-20 px-6 lg:px-10 flex items-center justify-between transition-all duration-300
@@ -82,11 +84,17 @@ export const Header = ({
 
         <div className="h-8 w-px bg-slate-100 dark:bg-slate-800 hidden sm:block"></div>
 
-        <div className="relative group">
-          <button className={`
-            flex items-center gap-3 p-1.5 pr-3 rounded-2xl transition-all duration-300
-            ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-50 hover:bg-slate-100'}
-          `}>
+        <div 
+          className="relative group" 
+          onMouseLeave={() => setDropdownOpen(false)}
+        >
+          <button 
+            onClick={() => setDropdownOpen(prev => !prev)}
+            className={`
+              flex items-center gap-3 p-1.5 pr-3 rounded-2xl transition-all duration-300 cursor-pointer
+              ${theme === 'dark' ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-50 hover:bg-slate-100'}
+            `}
+          >
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-extrabold shadow-lg shadow-indigo-500/20 overflow-hidden">
               {profilePic ? (
                 <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
@@ -98,29 +106,44 @@ export const Header = ({
               <p className={`text-xs font-black truncate max-w-[100px] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{userName}</p>
               <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest">{userType}</p>
             </div>
-            <ChevronDown size={14} className="text-slate-400 group-hover:rotate-180 transition-transform duration-300" />
+            <ChevronDown size={14} className={`text-slate-400 group-hover:rotate-180 transition-transform duration-300 ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Dropdown Menu */}
           <div className={`
-            absolute top-full right-0 mt-3 w-56 p-2 rounded-3xl shadow-2xl border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-top-right scale-95 group-hover:scale-100
+            absolute top-full right-0 mt-3 w-56 p-2 rounded-3xl shadow-2xl border transition-all duration-300 transform origin-top-right scale-95
+            ${dropdownOpen 
+              ? 'opacity-100 visible scale-100 z-50' 
+              : 'opacity-0 invisible group-hover:opacity-100 group-hover:visible group-hover:scale-100'
+            }
             ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}
           `}>
             <button 
-              onClick={onProfileClick}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              onClick={() => {
+                setDropdownOpen(false);
+                onProfileClick();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             >
               <User size={18} />
               {t('profile')}
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+            <button 
+              onClick={() => {
+                setDropdownOpen(false);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            >
               <Settings size={18} />
               {t('settings')}
             </button>
             <div className="h-px bg-slate-100 dark:bg-slate-700 my-2 mx-4"></div>
             <button 
-              onClick={onLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors"
+              onClick={() => {
+                setDropdownOpen(false);
+                onLogout();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors cursor-pointer"
             >
               <LogOut size={18} />
               {t('logout')}

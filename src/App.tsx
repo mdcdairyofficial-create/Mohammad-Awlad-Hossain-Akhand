@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "./firebase";
 import { onSnapshot, doc } from "firebase/firestore";
 import SplashScreen from "./user/auth/SplashScreen";
@@ -242,7 +242,12 @@ export default function App() {
     setUser(profile);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Firebase signOut failed:", e);
+    }
     localStorage.removeItem("socialVerificationCompleted");
     setUser(null);
     setSocialCompleted(false);

@@ -71,7 +71,7 @@ import {
 import { GoogleGenAI } from "@google/genai";
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
-import { doc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Markdown from 'react-markdown';
 import { emergencyData } from '../../data/emergencyData';
 import CaseTimeline from '../cases/CaseTimeline';
@@ -623,7 +623,7 @@ export default function Dashboard({
           const docId = firebaseUid || String(userId);
           console.log(`Updating profile picture in Firestore for user ${userId} using docId ${docId}`);
           const userRef = doc(db, 'users', docId);
-          await updateDoc(userRef, { profile_picture: base64Data });
+          await setDoc(userRef, { profile_picture: base64Data }, { merge: true });
           console.log("Profile picture updated in Firestore");
         } catch (firestoreErr) {
           console.error("Failed to update profile picture in Firestore:", firestoreErr);
@@ -3511,13 +3511,13 @@ export default function Dashboard({
                                   
                                   // Also update Firestore to be sure
                                   const docId = firebaseUid || String(userId);
-                                  await updateDoc(doc(db, 'users', docId), {
+                                  await setDoc(doc(db, 'users', docId), {
                                     fullName: editName,
                                     mobile: editMobile,
                                     district: editDistrict,
                                     policeStation: editThana,
                                     updatedAt: new Date().toISOString()
-                                  });
+                                  }, { merge: true });
                                 }
                               } catch (e) {
                                 console.error("Error updating profile", e);

@@ -57,10 +57,10 @@ export const PointsView = ({ language, userPoints, onPointsUpdate }: PointsViewP
     try {
       const reward = 50; // Daily check-in reward
       const userRef = doc(db, 'users', auth.currentUser.uid);
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         points: increment(reward),
         lastCheckIn: serverTimestamp(),
-      });
+      }, { merge: true });
       onPointsUpdate(userPoints + reward);
       setCanCheckIn(false);
       alert(t(`অভিনন্দন! আপনি ${reward} ডেইলি বোনাস পয়েন্ট পেয়েছেন।`, `Congratulations! You earned ${reward} daily bonus points.`));
@@ -91,10 +91,10 @@ export const PointsView = ({ language, userPoints, onPointsUpdate }: PointsViewP
     }
     try {
       const userRef = doc(db, 'users', auth.currentUser!.uid);
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         points: increment(-reward.cost),
         [`unlockedRewards.${reward.id}`]: true,
-      });
+      }, { merge: true });
       onPointsUpdate(userPoints - reward.cost);
       alert(t('অভিনন্দন! আপনি স্পেশাল প্যাক আনলক করেছেন।', 'Congratulations! You unlocked the special pack.'));
     } catch (e) {
