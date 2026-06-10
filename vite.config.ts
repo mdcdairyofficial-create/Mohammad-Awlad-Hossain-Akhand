@@ -63,7 +63,7 @@ export default defineConfig(({mode}) => {
               }
             },
             {
-              urlPattern: /.*/i,
+              urlPattern: ({ url }) => !url.pathname.startsWith('/api'),
               handler: 'NetworkFirst',
               options: {
                 cacheName: 'others-cache',
