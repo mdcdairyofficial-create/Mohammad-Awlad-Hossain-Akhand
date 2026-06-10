@@ -1082,6 +1082,71 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  app.delete("/api/admin/users/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userRef = db.collection("users").doc(id);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
+        return res.status(404).json({ error: "ইউজার পাওয়া যায়নি।" });
+      }
+      const data = userSnap.data() as any;
+
+      console.log(`[Admin Delete] Initiating deletion for user: ${data.name || data.fullName || id}`);
+
+      // 1. Delete from Firebase Auth if firebase_uid exists
+      if (data.firebase_uid) {
+        try {
+          await admin.auth().deleteUser(data.firebase_uid);
+          console.log(`[Admin Delete] Successfully deleted Auth UID: ${data.firebase_uid}`);
+        } catch (authErr: any) {
+          console.warn(`[Admin Delete] Auth UID deletion warning/fails (might not exist):`, authErr.message);
+        }
+      }
+
+      // 2. Clear real email if present
+      if (data.email) {
+        try {
+          const authUser = await admin.auth().getUserByEmail(data.email);
+          if (authUser) {
+            await admin.auth().deleteUser(authUser.uid);
+            console.log(`[Admin Delete] Deleted auth alias by registered email: ${data.email}`);
+          }
+        } catch (e) {
+          // ignore error if not found
+        }
+      }
+
+      // 3. Clear simulated/local email (based on mobile) if present
+      if (data.mobile) {
+        try {
+          let cleanMobile = data.mobile.replace(/[^\d]/g, '');
+          if (cleanMobile.startsWith('880')) cleanMobile = cleanMobile.substring(3);
+          else if (cleanMobile.startsWith('91')) cleanMobile = cleanMobile.substring(2);
+          else if (cleanMobile.startsWith('92')) cleanMobile = cleanMobile.substring(2);
+          cleanMobile = cleanMobile.replace(/^0+/, '');
+
+          const localEmail = `${cleanMobile}@auth.local`;
+          const authUser = await admin.auth().getUserByEmail(localEmail);
+          if (authUser) {
+            await admin.auth().deleteUser(authUser.uid);
+            console.log(`[Admin Delete] Deleted auth alias by generated email: ${localEmail}`);
+          }
+        } catch (e) {
+          // ignore error if not found
+        }
+      }
+
+      // 4. Delete Firestore document
+      await userRef.delete();
+      console.log(`[Admin Delete] User firestore record deleted successfully: ${id}`);
+      res.json({ success: true, message: "ব্যবহারকারী সফলভাবে মুছে ফেলা হয়েছে।" });
+    } catch (error: any) {
+      console.error("[Admin Delete Error]", error);
+      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+    }
+  });
+
   app.post("/api/admin/recharge-approve", async (req, res) => {
     try {
       const { orderId, status } = req.body;
@@ -1276,7 +1341,19 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       let subscriptionDays = 1;
       let subscriptionPackage = 'free';
       
-      if (referredBy) {
+      const referenceLower = (referredBy || '').trim().toLowerCase().replace(/\s+/g, '');
+      const wantsSuperAdminRef = referenceLower === 'superadmin2026';
+
+      if (wantsSuperAdminRef) {
+        // Only one super admin can exist
+        const superAdminQuery = await usersRef.where("user_type", "==", "super_admin").limit(1).get();
+        if (!superAdminQuery.empty) {
+          return res.status(400).json({ error: "সিস্টেমে ইতিমধ্যে একজন সুপার এডমিন নিবন্ধিত আছেন। নতুন সুপার এডমিন তৈরি করা সম্ভব নয়।" });
+        }
+        finalUserType = 'super_admin';
+        subscriptionDays = 36500;
+        subscriptionPackage = 'diamond';
+      } else if (referredBy) {
         if (referredBy === '1012') {
           subscriptionDays = 30;
         } else if (referredBy === 'SUPERADMIN2026') {
@@ -1292,10 +1369,6 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         finalUserType = 'super_admin';
         subscriptionDays = 36500;
         subscriptionPackage = 'diamond';
-      }
-
-      if (referredBy === 'SUPERADMIN2026') {
-        finalUserType = 'super_admin';
       }
 
       const newUser = {
@@ -1387,6 +1460,141 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  app.post("/api/auth/sync-mobiles", authenticate, async (req: any, res) => {
+    try {
+      const { secondaryMobile, password } = req.body;
+      if (!secondaryMobile || !password) {
+        return res.status(400).json({ error: "মোবাইল নম্বর এবং পাসওয়ার্ড দেওয়া আবশ্যক।" });
+      }
+
+      const activeUserId = req.profile.id;
+      const activeUserMobile = req.profile.mobile;
+      const activeUserUid = req.profile.firebase_uid || req.user.uid;
+
+      // Normalize the entry
+      let cleanSecondary = secondaryMobile.replace(/[^\d]/g, '');
+      if (cleanSecondary.startsWith('880')) cleanSecondary = cleanSecondary.substring(3);
+      else if (cleanSecondary.startsWith('91')) cleanSecondary = cleanSecondary.substring(2);
+      else if (cleanSecondary.startsWith('92')) cleanSecondary = cleanSecondary.substring(2);
+      cleanSecondary = cleanSecondary.replace(/^0+/, '');
+
+      let cleanActive = activeUserMobile.replace(/[^\d]/g, '');
+      if (cleanActive.startsWith('880')) cleanActive = cleanActive.substring(3);
+      else if (cleanActive.startsWith('91')) cleanActive = cleanActive.substring(2);
+      else if (cleanActive.startsWith('92')) cleanActive = cleanActive.substring(2);
+      cleanActive = cleanActive.replace(/^0+/, '');
+
+      if (cleanSecondary === cleanActive) {
+        return res.status(400).json({ error: "আপনি আপনার নিজের প্রাথমিক মোবাইল নম্বর সিঙ্ক করতে পারবেন না।" });
+      }
+
+      // Find the secondary user in the Firestore database
+      const usersRef = db.collection("users");
+      let secQuery = await usersRef.where("mobile", "==", secondaryMobile).get();
+      if (secQuery.empty) {
+        secQuery = await usersRef.where("mobile", "==", `0${cleanSecondary}`).get();
+      }
+      if (secQuery.empty) {
+        secQuery = await usersRef.where("mobile", "==", `+880${cleanSecondary}`).get();
+      }
+
+      if (secQuery.empty) {
+        return res.status(404).json({ error: "এই মোবাইল নম্বর দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।" });
+      }
+
+      const secondaryDoc = secQuery.docs[0];
+      const secondaryData = secondaryDoc.data() as any;
+
+      if (secondaryDoc.id === activeUserId) {
+        return res.status(400).json({ error: "আপনি একই অ্যাকাউন্ট সিঙ্ক করার চেষ্টা করছেন।" });
+      }
+
+      // Check password of secondary account
+      if (secondaryData.password !== password) {
+        return res.status(401).json({ error: "ভুল পাসওয়ার্ড। দয়া করে সঠিক পাসওয়ার্ড দিন।" });
+      }
+
+      console.log(`[Sync-Mobiles] Merging ${secondaryData.mobile} into main account ${activeUserMobile}`);
+
+      const secondaryUid = secondaryData.firebase_uid;
+      const secondaryPoints = Number(secondaryData.points || 0);
+      const secondaryWallet = Number(secondaryData.wallet_balance || 0);
+
+      // Merge Points and Balance to primary user
+      const primaryDocRef = usersRef.doc(activeUserId);
+      const primarySnap = await primaryDocRef.get();
+      const primaryData = primarySnap.data() as any;
+
+      const currentPoints = Number(primaryData.points || 0);
+      const currentWallet = Number(primaryData.wallet_balance || 0);
+
+      const linkedMobilesList = Array.isArray(primaryData.linked_mobiles) ? [...primaryData.linked_mobiles] : [];
+      if (!linkedMobilesList.includes(secondaryData.mobile)) {
+        linkedMobilesList.push(secondaryData.mobile);
+      }
+      
+      // Also add any already integrated/linked mobiles from the secondary account
+      if (Array.isArray(secondaryData.linked_mobiles)) {
+        secondaryData.linked_mobiles.forEach((m: string) => {
+          if (!linkedMobilesList.includes(m)) {
+            linkedMobilesList.push(m);
+          }
+        });
+      }
+
+      // Update primary user document
+      await primaryDocRef.update({
+        points: currentPoints + secondaryPoints,
+        wallet_balance: currentWallet + secondaryWallet,
+        linked_mobiles: linkedMobilesList
+      });
+
+      // Re-associate Cases
+      if (secondaryUid) {
+        const casesRef = db.collection("cases");
+        const secondaryCases = await casesRef.where("user_id", "==", secondaryUid).get();
+        console.log(`[Sync-Mobiles] Re-associating ${secondaryCases.size} cases to main uid: ${activeUserUid}`);
+        
+        for (const caseDoc of secondaryCases.docs) {
+          await caseDoc.ref.update({
+            user_id: activeUserUid
+          });
+        }
+
+        // Re-associate recharge orders
+        const ordersRef = db.collection("recharge_orders");
+        const secondaryOrders = await ordersRef.where("user_id", "==", secondaryUid).get();
+        console.log(`[Sync-Mobiles] Re-associating ${secondaryOrders.size} recharge orders to main uid: ${activeUserUid}`);
+        for (const orderDoc of secondaryOrders.docs) {
+          await orderDoc.ref.update({
+            user_id: activeUserUid
+          });
+        }
+      }
+
+      // Delete the duplicate/secondary user from Firestore and Firebase Auth
+      await secondaryDoc.ref.delete();
+      if (secondaryUid) {
+        try {
+          await admin.auth().deleteUser(secondaryUid);
+          console.log(`[Sync-Mobiles] Deleted secondary Auth user: ${secondaryUid}`);
+        } catch (e: any) {
+          console.warn(`[Sync-Mobiles] Auth user deletion warning/info: ${e.message}`);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "সব মোবাইল নম্বর সফলভাবে আপনার মূল আইডিতে সিঙ্ক্রোনাইজ করা হয়েছে। পয়েন্ট এবং কারেন্ট ক্যাশব্যালেন্স যোগ করা হয়েছে।",
+        linkedMobiles: linkedMobilesList
+      });
+
+    } catch (error: any) {
+      console.error("[Sync-Mobiles Error]", error);
+      res.status(500).json({ error: "সিঙ্ক্রোনাইজেশন ব্যর্থ হয়েছে: " + error.message });
+    }
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { mobile, rawMobile, password } = req.body;
@@ -1412,6 +1620,53 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       
       const userDoc = query.docs[0];
       const user = userDoc.data() as any;
+
+      // Auto-heal/sync Firebase Auth user credentials if missing or out of sync
+      let firebaseEmail = user.email;
+      if (!firebaseEmail && user.mobile) {
+        let clean = user.mobile.replace(/[^\d]/g, ''); // strip '+' and others
+        if (clean.startsWith('880')) clean = clean.substring(3);
+        else if (clean.startsWith('91')) clean = clean.substring(2);
+        else if (clean.startsWith('92')) clean = clean.substring(2);
+        
+        clean = clean.replace(/^0+/, '');
+        firebaseEmail = `${clean}@auth.local`;
+      }
+
+      if (firebaseEmail) {
+        try {
+          console.log(`[Auto-Heal] Verifying/Healing Firebase Auth for email: ${firebaseEmail}`);
+          let authUser;
+          try {
+            authUser = await admin.auth().getUserByEmail(firebaseEmail);
+            console.log(`[Auto-Heal] Found in Firebase Auth: uid=${authUser.uid}. Syncing password...`);
+            // Synchronize the password in Firebase Auth in case of project migrations or resets
+            await admin.auth().updateUser(authUser.uid, {
+              password: password
+            });
+          } catch (err: any) {
+            if (err.code === 'auth/user-not-found') {
+              console.log(`[Auto-Heal] Creating missing Firebase Auth user for email: ${firebaseEmail}`);
+              authUser = await admin.auth().createUser({
+                email: firebaseEmail,
+                password: password,
+                displayName: user.fullName || user.name || undefined
+              });
+              console.log(`[Auto-Heal] Created missing Firebase Auth user: uid=${authUser.uid}`);
+            } else {
+              throw err;
+            }
+          }
+          
+          // Re-sync firebase_uid if it was missing or different from Auth
+          if (authUser && user.firebase_uid !== authUser.uid) {
+            console.log(`[Auto-Heal] Linking users collection doc ${userDoc.id} with firebase_uid ${authUser.uid}`);
+            await userDoc.ref.update({ firebase_uid: authUser.uid });
+          }
+        } catch (healErr) {
+          console.error("[Auto-Heal Error] Error healing Firebase Auth user:", healErr);
+        }
+      }
 
       res.json({ 
         success: true, 

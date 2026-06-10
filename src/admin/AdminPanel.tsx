@@ -688,6 +688,25 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
     }
   };
 
+  const deleteUser = async (targetUserId: number) => {
+    setProcessingId(targetUserId);
+    try {
+      const response = await adminFetch(`/api/admin/users/${targetUserId}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete user');
+      }
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+      alert('ইউজার ডিলিট করতে সমস্যা হয়েছে: ' + err.message);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const approveSubscription = async (requestId: number) => {
@@ -1351,7 +1370,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                         {user.subscription_end_date ? new Date(user.subscription_end_date).toLocaleDateString('bn-BD') : 'নেই'}
                       </td>
                       <td className="p-4 text-right">
-                        <div className="flex gap-2 justify-end">
+                        <div className="flex gap-2 justify-end items-center">
                           <select 
                             onChange={(e) => updateSubscription(user.id as any, e.target.value, 30)}
                             value={user.subscription_package || 'free'}
@@ -1362,6 +1381,17 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                             <option value="standard">স্ট্যান্ডার্ড (৩০ দিন)</option>
                             <option value="premium">প্রিমিয়াম (৩০ দিন)</option>
                           </select>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`${user.name} (${user.mobile}) কে কি আপনি সম্পূর্ণ মুছে ফেলতে চান? এর ফলে এই মোবাইল নম্বর দিয়ে নতুন করে আবার সাইন আপ করা সম্ভব হবে।`)) {
+                                deleteUser(user.id as any);
+                              }
+                            }}
+                            className="text-xs text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-md transition-colors font-medium"
+                            disabled={processingId === user.id}
+                          >
+                            মুছে ফেলুন
+                          </button>
                         </div>
                       </td>
                     </tr>

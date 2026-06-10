@@ -230,19 +230,58 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           userCred = await signInWithEmailAndPassword(auth, firebaseEmail, formData.password);
         } catch (err: any) {
           console.warn("[Auth] Primary login failed:", err.code, err.message);
-          // Fallback: try with a slightly different normalization if it was not an email
-          if (!isEmail) {
-            // Try removing country code but keeping the zero or vice-versa, depending on how they registered
-            const firebaseEmailWithZero = `${inputVal.replace(/[^\d+]/g, '').replace(/^\+880/, '0')}@auth.local`;
-            console.log(`[Auth] Trying fallback normalization: ${firebaseEmailWithZero}`);
+
+          // Auto-heal fallback: Try authenticating and healing through the backend
+          let isHealed = false;
+          try {
+            console.log(`[Auth] Attempting backend/auto-healing fallback validation...`);
+            const fallbackResponse = await fetchWithAuth('/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                mobile: fullMobile,
+                rawMobile: inputVal,
+                password: formData.password
+              })
+            });
+
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              if (fallbackData.success) {
+                console.log(`[Auth] Backend successfully verified credentials and auto-healed. Retrying Firebase Auth login...`);
+                isHealed = true;
+              }
+            } else {
+              const fallbackErrData = await fallbackResponse.json();
+              console.warn(`[Auth] Backend fallback returned error:`, fallbackErrData.error);
+            }
+          } catch (healErr) {
+            console.error(`[Auth] Backend verification and auto-healing failed:`, healErr);
+          }
+
+          if (isHealed) {
             try {
-              userCred = await signInWithEmailAndPassword(auth, firebaseEmailWithZero, formData.password);
-            } catch (fallbackErr: any) {
-              console.error("[Auth] Fallback login also failed:", fallbackErr.code);
-              throw fallbackErr;
+              userCred = await signInWithEmailAndPassword(auth, firebaseEmail, formData.password);
+              console.log(`[Auth] Post-healing login successful!`);
+            } catch (retryErr: any) {
+              console.error("[Auth] Firebase login failed even after healing:", retryErr.code);
+              throw retryErr;
             }
           } else {
-            throw err;
+            // Fallback: try with a slightly different normalization if it was not an email
+            if (!isEmail) {
+              // Try removing country code but keeping the zero or vice-versa, depending on how they registered
+              const firebaseEmailWithZero = `${inputVal.replace(/[^\d+]/g, '').replace(/^\+880/, '0')}@auth.local`;
+              console.log(`[Auth] Trying fallback normalization: ${firebaseEmailWithZero}`);
+              try {
+                userCred = await signInWithEmailAndPassword(auth, firebaseEmailWithZero, formData.password);
+              } catch (fallbackErr: any) {
+                console.error("[Auth] Fallback login also failed:", fallbackErr.code);
+                throw fallbackErr;
+              }
+            } else {
+              throw err;
+            }
           }
         }
         const fbUser = userCred.user;
@@ -463,6 +502,18 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
                   </div>
                 )}
+
+                <div className="relative">
+                  <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input
+                    type="text"
+                    name="referredBy"
+                    value={formData.referredBy}
+                    onChange={handleChange}
+                    placeholder="রেফারেল কোড বা রেফারেন্স (ঐচ্ছিক)"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  />
+                </div>
               </>
             )}
 
