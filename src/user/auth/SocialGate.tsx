@@ -68,7 +68,7 @@ export default function SocialGate({ onComplete }: SocialGateProps) {
         <div className="flex items-center gap-3">
           <Logo size="md" />
           <span className="font-black text-slate-800 dark:text-white tracking-tight hidden sm:inline-block">
-            MDC DIARY
+            MDC CASEBOOK
           </span>
         </div>
 
@@ -185,7 +185,7 @@ export default function SocialGate({ onComplete }: SocialGateProps) {
 
       {/* Modern Footer Credits */}
       <div className="max-w-6xl w-full mx-auto text-center mt-8 text-[11px] font-bold text-slate-400 dark:text-slate-600">
-        MDC DIARY &copy; 2026. All rights reserved.
+        MDC CASEBOOK &copy; 2026. All rights reserved.
       </div>
     </div>
   );

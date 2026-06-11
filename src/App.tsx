@@ -18,6 +18,8 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { OfflineNotice } from "./components/OfflineNotice";
 import type { UserRole } from "./types";
 
+import FacebookGate from "./user/auth/FacebookGate";
+
 interface UserProfile {
   id?: number;
   firebaseUid?: string;
@@ -65,6 +67,25 @@ export default function App() {
   const [youtubeCompleted, setYoutubeCompleted] = useState(() => {
     return localStorage.getItem("youtubeVerifiedCompleted") === "true";
   });
+  const [facebookCompleted, setFacebookCompleted] = useState(() => {
+    return localStorage.getItem("facebookVerifiedCompleted") === "true";
+  });
+
+  const [showFacebookGate, setShowFacebookGate] = useState(() => {
+    if (localStorage.getItem("facebookVerifiedCompleted") === "true")
+      return false;
+    const firstSession = localStorage.getItem("firstSessionDate");
+    const today = new Date().toDateString();
+
+    // First time login - set date but don't show Facebook gate
+    if (!firstSession) {
+      localStorage.setItem("firstSessionDate", today);
+      return false;
+    }
+
+    // Second time login (different day) -> show Facebook gate
+    return firstSession !== today;
+  });
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -78,23 +99,23 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setAuthReady(true);
-      
+
       // If we have a Firebase user but no local app user, attempt to sync/restore
       if (fbUser && !user) {
         console.log("[App] Firebase session found, restoring user profile...");
         try {
-          const response = await fetchWithAuth('/api/auth/firebase-sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+          const response = await fetchWithAuth("/api/auth/firebase-sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               firebaseUid: fbUser.uid,
               email: fbUser.email,
               mobile: fbUser.phoneNumber,
               fullName: fbUser.displayName,
-              profilePicture: fbUser.photoURL
-            })
+              profilePicture: fbUser.photoURL,
+            }),
           });
-          
+
           if (response.ok) {
             const data = await response.json();
             if (data.success) {
@@ -135,28 +156,106 @@ export default function App() {
           if (data) {
             let updated = false;
             const newProfile = { ...user };
-            
+
             // ... (rest of the profile update logic remains the same)
-            
+
             // (Re-stating logic for conciseness)
-            if (data.firebaseUid && data.firebaseUid !== user.firebaseUid) { newProfile.firebaseUid = data.firebaseUid; updated = true; }
-            if (data.userType && data.userType !== user.userType) { newProfile.userType = data.userType; updated = true; }
-            if (data.subscriptionEndDate !== user.subscriptionEndDate) { newProfile.subscriptionEndDate = data.subscriptionEndDate; updated = true; }
-            if (data.subscriptionPackage !== user.subscriptionPackage) { newProfile.subscriptionPackage = data.subscriptionPackage; updated = true; }
-            if (data.profilePicture !== user.profilePicture) { newProfile.profilePicture = data.profilePicture; updated = true; }
-            if (data.fullName && data.fullName !== user.fullName) { newProfile.fullName = data.fullName; updated = true; }
-            if (data.mobile && data.mobile !== user.mobile) { newProfile.mobile = data.mobile; updated = true; }
-            if (data.district && data.district !== user.district) { newProfile.district = data.district; updated = true; }
-            if (data.policeStation && data.policeStation !== user.policeStation) { newProfile.policeStation = data.policeStation; updated = true; }
-            if (data.aiQuestionsCount !== user.aiQuestionsCount) { newProfile.aiQuestionsCount = data.aiQuestionsCount; updated = true; }
-            if (data.lastAiResetDate !== user.lastAiResetDate) { newProfile.lastAiResetDate = data.lastAiResetDate; updated = true; }
-            if (data.display_data_mb && data.display_data_mb !== user.displayDataMb) { newProfile.displayDataMb = data.display_data_mb; updated = true; }
-            if (data.estimated_bill_taka && data.estimated_bill_taka !== user.estimatedBillTaka) { newProfile.estimatedBillTaka = data.estimated_bill_taka; updated = true; }
-            if (data.trustScore !== undefined && data.trustScore !== user.trustScore) { newProfile.trustScore = data.trustScore; updated = true; }
-            if (data.warningsCount !== undefined && data.warningsCount !== user.warningsCount) { newProfile.warningsCount = data.warningsCount; updated = true; }
-            if (data.redBallsCount !== undefined && data.redBallsCount !== user.redBallsCount) { newProfile.redBallsCount = data.redBallsCount; updated = true; }
-            if (data.isSuspended !== undefined && data.isSuspended !== user.isSuspended) { newProfile.isSuspended = data.isSuspended; updated = true; }
-            if (data.suspensionReason !== undefined && data.suspensionReason !== user.suspensionReason) { newProfile.suspensionReason = data.suspensionReason; updated = true; }
+            if (data.firebaseUid && data.firebaseUid !== user.firebaseUid) {
+              newProfile.firebaseUid = data.firebaseUid;
+              updated = true;
+            }
+            if (data.userType && data.userType !== user.userType) {
+              newProfile.userType = data.userType;
+              updated = true;
+            }
+            if (data.subscriptionEndDate !== user.subscriptionEndDate) {
+              newProfile.subscriptionEndDate = data.subscriptionEndDate;
+              updated = true;
+            }
+            if (data.subscriptionPackage !== user.subscriptionPackage) {
+              newProfile.subscriptionPackage = data.subscriptionPackage;
+              updated = true;
+            }
+            if (data.profilePicture !== user.profilePicture) {
+              newProfile.profilePicture = data.profilePicture;
+              updated = true;
+            }
+            if (data.fullName && data.fullName !== user.fullName) {
+              newProfile.fullName = data.fullName;
+              updated = true;
+            }
+            if (data.mobile && data.mobile !== user.mobile) {
+              newProfile.mobile = data.mobile;
+              updated = true;
+            }
+            if (data.district && data.district !== user.district) {
+              newProfile.district = data.district;
+              updated = true;
+            }
+            if (
+              data.policeStation &&
+              data.policeStation !== user.policeStation
+            ) {
+              newProfile.policeStation = data.policeStation;
+              updated = true;
+            }
+            if (data.aiQuestionsCount !== user.aiQuestionsCount) {
+              newProfile.aiQuestionsCount = data.aiQuestionsCount;
+              updated = true;
+            }
+            if (data.lastAiResetDate !== user.lastAiResetDate) {
+              newProfile.lastAiResetDate = data.lastAiResetDate;
+              updated = true;
+            }
+            if (
+              data.display_data_mb &&
+              data.display_data_mb !== user.displayDataMb
+            ) {
+              newProfile.displayDataMb = data.display_data_mb;
+              updated = true;
+            }
+            if (
+              data.estimated_bill_taka &&
+              data.estimated_bill_taka !== user.estimatedBillTaka
+            ) {
+              newProfile.estimatedBillTaka = data.estimated_bill_taka;
+              updated = true;
+            }
+            if (
+              data.trustScore !== undefined &&
+              data.trustScore !== user.trustScore
+            ) {
+              newProfile.trustScore = data.trustScore;
+              updated = true;
+            }
+            if (
+              data.warningsCount !== undefined &&
+              data.warningsCount !== user.warningsCount
+            ) {
+              newProfile.warningsCount = data.warningsCount;
+              updated = true;
+            }
+            if (
+              data.redBallsCount !== undefined &&
+              data.redBallsCount !== user.redBallsCount
+            ) {
+              newProfile.redBallsCount = data.redBallsCount;
+              updated = true;
+            }
+            if (
+              data.isSuspended !== undefined &&
+              data.isSuspended !== user.isSuspended
+            ) {
+              newProfile.isSuspended = data.isSuspended;
+              updated = true;
+            }
+            if (
+              data.suspensionReason !== undefined &&
+              data.suspensionReason !== user.suspensionReason
+            ) {
+              newProfile.suspensionReason = data.suspensionReason;
+              updated = true;
+            }
 
             if (updated) {
               setUser(newProfile);
@@ -177,60 +276,66 @@ export default function App() {
     }
   }, [user?.id, authReady]);
 
-
   useEffect(() => {
     if (!user || !user.firebaseUid) return;
-    
+
     // Real-time synchronization of user's core attributes (Trust style & suspension triggers)
-    const userDocRef = doc(db, 'users', user.firebaseUid);
-    const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setUser(prev => {
-          if (!prev) return null;
-          
-          let updated = false;
-          const newProfile = { ...prev };
-          
-          const fieldsToSync = {
-            fullName: data.name,
-            email: data.email,
-            mobile: data.mobile,
-            userType: data.user_type,
-            district: data.district,
-            country: data.country,
-            referralCode: data.referral_code,
-            subscriptionEndDate: data.subscription_end_date,
-            subscriptionPackage: data.subscription_package,
-            profilePicture: data.profile_picture,
-            aiQuestionsCount: data.ai_questions_count,
-            lastAiResetDate: data.last_ai_reset_date,
-            points: data.points,
-            trustScore: data.trust_score !== undefined ? data.trust_score : 100,
-            warningsCount: data.warnings_count !== undefined ? data.warnings_count : 0,
-            redBallsCount: data.red_balls_count !== undefined ? data.red_balls_count : 0,
-            isSuspended: data.is_suspended || false,
-            suspensionReason: data.suspension_reason || '',
-          };
-          
-          Object.entries(fieldsToSync).forEach(([key, value]) => {
-            if (value !== undefined && value !== (prev as any)[key]) {
-              (newProfile as any)[key] = value;
-              updated = true;
+    const userDocRef = doc(db, "users", user.firebaseUid);
+    const unsubscribe = onSnapshot(
+      userDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setUser((prev) => {
+            if (!prev) return null;
+
+            let updated = false;
+            const newProfile = { ...prev };
+
+            const fieldsToSync = {
+              fullName: data.name,
+              email: data.email,
+              mobile: data.mobile,
+              userType: data.user_type,
+              district: data.district,
+              country: data.country,
+              referralCode: data.referral_code,
+              subscriptionEndDate: data.subscription_end_date,
+              subscriptionPackage: data.subscription_package,
+              profilePicture: data.profile_picture,
+              aiQuestionsCount: data.ai_questions_count,
+              lastAiResetDate: data.last_ai_reset_date,
+              points: data.points,
+              trustScore:
+                data.trust_score !== undefined ? data.trust_score : 100,
+              warningsCount:
+                data.warnings_count !== undefined ? data.warnings_count : 0,
+              redBallsCount:
+                data.red_balls_count !== undefined ? data.red_balls_count : 0,
+              isSuspended: data.is_suspended || false,
+              suspensionReason: data.suspension_reason || "",
+            };
+
+            Object.entries(fieldsToSync).forEach(([key, value]) => {
+              if (value !== undefined && value !== (prev as any)[key]) {
+                (newProfile as any)[key] = value;
+                updated = true;
+              }
+            });
+
+            if (updated) {
+              localStorage.setItem("appUser", JSON.stringify(newProfile));
+              return newProfile;
             }
+            return prev;
           });
-          
-          if (updated) {
-            localStorage.setItem("appUser", JSON.stringify(newProfile));
-            return newProfile;
-          }
-          return prev;
-        });
-      }
-    }, (err) => {
-      console.error("[App] Users onSnapshot failed:", err);
-    });
-    
+        }
+      },
+      (err) => {
+        console.error("[App] Users onSnapshot failed:", err);
+      },
+    );
+
     return () => unsubscribe();
   }, [user?.firebaseUid]);
 
@@ -268,7 +373,7 @@ export default function App() {
     <ErrorBoundary>
       <div className="antialiased">
         <OfflineNotice />
-        
+
         {/* Main Content (Dashboard, Admin, Auth, etc.) - rendered immediately in background */}
         <div className="w-full min-h-screen">
           {window.location.pathname === "/admin" ? (
@@ -281,20 +386,40 @@ export default function App() {
             />
           ) : !user ? (
             !socialCompleted ? (
-              <SocialGate onComplete={() => {
-                localStorage.setItem("socialVerificationCompleted", "true");
-                setSocialCompleted(true);
-              }} />
+              <SocialGate
+                onComplete={() => {
+                  localStorage.setItem("socialVerificationCompleted", "true");
+                  setSocialCompleted(true);
+                }}
+              />
             ) : (
               <Auth onAuthSuccess={handleAuthSuccess} />
             )
           ) : !youtubeCompleted ? (
-            <YoutubeGate onComplete={() => {
-              localStorage.setItem("youtubeVerifiedCompleted", "true");
-              setYoutubeCompleted(true);
-              setShowSplash(true);
-              setTimeout(() => setShowSplash(false), 2500);
-            }} />
+            <YoutubeGate
+              onComplete={() => {
+                localStorage.setItem("youtubeVerifiedCompleted", "true");
+                setYoutubeCompleted(true);
+
+                // Only first day users need to see the splash screen right after YouTube
+                // Wait, Actually we want the Splash here. But for Facebook gate, if we show Splah here then facebook will re-render if it's the second day.
+                // So, let's just do it directly.
+                if (!showFacebookGate) {
+                  setShowSplash(true);
+                  setTimeout(() => setShowSplash(false), 2500);
+                }
+              }}
+            />
+          ) : showFacebookGate ? (
+            <FacebookGate
+              onComplete={() => {
+                localStorage.setItem("facebookVerifiedCompleted", "true");
+                setFacebookCompleted(true);
+                setShowFacebookGate(false);
+                setShowSplash(true);
+                setTimeout(() => setShowSplash(false), 2500);
+              }}
+            />
           ) : (
             <Dashboard
               userId={user.id}
@@ -325,7 +450,7 @@ export default function App() {
               warningsCount={user.warningsCount || 0}
               redBallsCount={user.redBallsCount || 0}
               isSuspended={user.isSuspended || false}
-              suspensionReason={user.suspensionReason || ''}
+              suspensionReason={user.suspensionReason || ""}
               onLogout={handleLogout}
               onUpdateProfile={handleUpdateProfile}
             />
@@ -334,9 +459,7 @@ export default function App() {
 
         {/* Improved Overlay Splash Screen (fades out beautifully with absolute safety) */}
         <AnimatePresence>
-          {showSplash && (
-            <SplashScreen key="splash" />
-          )}
+          {showSplash && <SplashScreen key="splash" />}
         </AnimatePresence>
 
         {/* Demo toggle for authentication - remove in production */}
@@ -346,11 +469,16 @@ export default function App() {
               onClick={() => {
                 localStorage.removeItem("youtubeVerifiedCompleted");
                 setYoutubeCompleted(false);
+                // Also reset facebook gates
+                localStorage.removeItem("facebookVerifiedCompleted");
+                localStorage.removeItem("firstSessionDate");
+                setFacebookCompleted(false);
+                setShowFacebookGate(true); // Treat as day 2 since they cleared it to test
               }}
               className="bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 shadow-sm"
-              title="Reset YouTube subscription screen so you can see it again"
+              title="Reset YouTube & Facebook subscription screen so you can see it again"
             >
-              Reset YouTube Gate
+              Reset UI Gates
             </button>
             <button
               onClick={() => {
