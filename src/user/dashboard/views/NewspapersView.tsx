@@ -39,7 +39,7 @@ export const NewspapersView = ({
       name: "প্রথম আলো",
       nameEn: "Prothom Alo",
       url: "https://www.prothomalo.com",
-      logo: "https://images.prothomalo.com/prothomalo-bangla%2F2022-10%2F4e1e8b2a-8b1e-4b1e-9b1e-9b1e9b1e9b1e%2FProthom_Alo_Logo.png?auto=format%2Ccompress&w=400",
+      logo: "https://icon.horse/icon/prothomalo.com",
       category: 'Bangla',
       isPopular: true
     },
@@ -48,7 +48,7 @@ export const NewspapersView = ({
       name: "দ্য ডেইলি স্টার",
       nameEn: "The Daily Star",
       url: "https://www.thedailystar.net",
-      logo: "https://www.thedailystar.net/sites/all/themes/dailystar/logo.png",
+      logo: "https://icon.horse/icon/thedailystar.net",
       category: 'English',
       isPopular: true
     },
@@ -57,7 +57,7 @@ export const NewspapersView = ({
       name: "ইত্তেফাক",
       nameEn: "Ittefaq",
       url: "https://www.ittefaq.com.bd",
-      logo: "https://www.ittefaq.com.bd/assets/images/logo.png",
+      logo: "https://icon.horse/icon/ittefaq.com.bd",
       category: 'Bangla',
       isPopular: true
     },
@@ -66,7 +66,7 @@ export const NewspapersView = ({
       name: "কালের কণ্ঠ",
       nameEn: "Kaler Kantho",
       url: "https://www.kalerkantho.com",
-      logo: "https://www.kalerkantho.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/kalerkantho.com",
       category: 'Bangla',
       isPopular: true
     },
@@ -75,7 +75,7 @@ export const NewspapersView = ({
       name: "যুগান্তর",
       nameEn: "Jugantor",
       url: "https://www.jugantor.com",
-      logo: "https://www.jugantor.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/jugantor.com",
       category: 'Bangla',
       isPopular: true
     },
@@ -84,7 +84,7 @@ export const NewspapersView = ({
       name: "সমকাল",
       nameEn: "Samakal",
       url: "https://samakal.com",
-      logo: "https://samakal.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/samakal.com",
       category: 'Bangla'
     },
     {
@@ -92,7 +92,7 @@ export const NewspapersView = ({
       name: "আমাদের সময়",
       nameEn: "Amader Shomoy",
       url: "https://www.dainikamadershomoy.com",
-      logo: "https://www.dainikamadershomoy.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/dainikamadershomoy.com",
       category: 'Bangla'
     },
     {
@@ -100,7 +100,7 @@ export const NewspapersView = ({
       name: "জনকণ্ঠ",
       nameEn: "Janakantha",
       url: "https://www.dailyjanakantha.com",
-      logo: "https://www.dailyjanakantha.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/dailyjanakantha.com",
       category: 'Bangla'
     },
     {
@@ -108,7 +108,7 @@ export const NewspapersView = ({
       name: "ইনকিলাব",
       nameEn: "Inqilab",
       url: "https://dailyinqilab.com",
-      logo: "https://dailyinqilab.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/dailyinqilab.com",
       category: 'Bangla'
     },
     {
@@ -116,7 +116,7 @@ export const NewspapersView = ({
       name: "ফিন্যান্সিয়াল এক্সপ্রেস",
       nameEn: "Financial Express",
       url: "https://thefinancialexpress.com.bd",
-      logo: "https://thefinancialexpress.com.bd/assets/images/logo.png",
+      logo: "https://icon.horse/icon/thefinancialexpress.com.bd",
       category: 'English'
     },
     {
@@ -124,7 +124,7 @@ export const NewspapersView = ({
       name: "ঢাকা ট্রিবিউন",
       nameEn: "Dhaka Tribune",
       url: "https://www.dhakatribune.com",
-      logo: "https://www.dhakatribune.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/dhakatribune.com",
       category: 'English'
     },
     {
@@ -132,7 +132,7 @@ export const NewspapersView = ({
       name: "বিডিনিউজ২৪",
       nameEn: "bdnews24.com",
       url: "https://bangla.bdnews24.com",
-      logo: "https://bangla.bdnews24.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/bangla.bdnews24.com",
       category: 'Bangla'
     },
     {
@@ -140,7 +140,7 @@ export const NewspapersView = ({
       name: "জাগো নিউজ",
       nameEn: "Jago News",
       url: "https://www.jagonews24.com",
-      logo: "https://www.jagonews24.com/templates/desktop/assets/images/logo.png",
+      logo: "https://icon.horse/icon/jagonews24.com",
       category: 'Bangla'
     },
     {
@@ -148,7 +148,7 @@ export const NewspapersView = ({
       name: "বাংলাদেশ প্রতিদিন",
       nameEn: "Bangladesh Pratidin",
       url: "https://www.bd-pratidin.com",
-      logo: "https://www.bd-pratidin.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/bd-pratidin.com",
       category: 'Bangla',
       isPopular: true
     },
@@ -157,7 +157,7 @@ export const NewspapersView = ({
       name: "ডেইলি সান",
       nameEn: "Daily Sun",
       url: "https://www.daily-sun.com",
-      logo: "https://www.daily-sun.com/assets/images/logo.png",
+      logo: "https://icon.horse/icon/daily-sun.com",
       category: 'English'
     }
   ];

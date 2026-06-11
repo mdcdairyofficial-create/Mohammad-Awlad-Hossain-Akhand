@@ -688,10 +688,63 @@ export default function Dashboard({
     ];
   });
   const [editingCase, setEditingCase] = useState<Case | null>(null);
-  const [selectedCaseForTimeline, setSelectedCaseForTimeline] = useState<Case | null>(null);
+  const [selectedCaseForTimeline, _setSelectedCaseForTimeline] = useState<Case | null>(null);
   const [timelineSearchQuery, setTimelineSearchQuery] = useState('');
-  const [selectedCaseForHistory, setSelectedCaseForHistory] = useState<Case | null>(null);
-  const [selectedCaseForCard, setSelectedCaseForCard] = useState<Case | null>(null);
+  const [selectedCaseForHistory, _setSelectedCaseForHistory] = useState<Case | null>(null);
+  const [selectedCaseForCard, _setSelectedCaseForCard] = useState<Case | null>(null);
+
+  const isCaseOwnedByClient = (c: Case | null): boolean => {
+    if (!c) return true;
+    if (currentViewMode !== 'client') return true;
+
+    // Users always own/can access cases they personally created
+    const isCreatedByUser = c.user_id !== undefined && (
+      String(c.user_id) === String(userId) || 
+      (firebaseUid && String(c.user_id) === String(firebaseUid))
+    );
+    if (isCreatedByUser) return true;
+
+    if (!userMobile) return false;
+    
+    const norm = (m?: string | null) => {
+      if (!m) return '';
+      let clean = m.trim();
+      if (clean.startsWith('+88')) clean = clean.substring(3);
+      if (clean.startsWith('88')) clean = clean.substring(2);
+      if (clean.startsWith('0')) clean = clean.substring(1);
+      return clean;
+    };
+    
+    const normUser = norm(userMobile);
+    const pMobile = norm(c.petitionerMobile);
+    const rMobile = norm(c.respondentMobile);
+    return (pMobile !== '' && pMobile === normUser) || 
+           (rMobile !== '' && rMobile === normUser);
+  };
+
+  const setSelectedCaseForTimeline = (c: Case | null) => {
+    if (c && !isCaseOwnedByClient(c)) {
+      alert("নিজের মামলা ব্যতীত অন্য কোন মামলার কার্যক্রম দেখার অনুমতি নেই।");
+      return;
+    }
+    _setSelectedCaseForTimeline(c);
+  };
+
+  const setSelectedCaseForHistory = (c: Case | null) => {
+    if (c && !isCaseOwnedByClient(c)) {
+      alert("নিজের মামলা ব্যতীত অন্য কোন মামলা দেখার অনুমতি নেই।");
+      return;
+    }
+    _setSelectedCaseForHistory(c);
+  };
+
+  const setSelectedCaseForCard = (c: Case | null) => {
+    if (c && !isCaseOwnedByClient(c)) {
+      alert("নিজের মামলা ব্যতীত অন্য কোন মামলা দেখার অনুমতি নেই।");
+      return;
+    }
+    _setSelectedCaseForCard(c);
+  };
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
@@ -1223,8 +1276,30 @@ export default function Dashboard({
 
   const normalizedUserMobile = normalizeMobile(userMobile);
 
-  const visibleCases = currentViewMode !== 'admin' && userMobile
+  const visibleCases = currentViewMode === 'client'
     ? cases.filter(c => {
+        // Created by current user -> always visible
+        const isCreatedByUser = c.user_id !== undefined && (
+          String(c.user_id) === String(userId) || 
+          (firebaseUid && String(c.user_id) === String(firebaseUid))
+        );
+        if (isCreatedByUser) return true;
+
+        if (!userMobile) return false;
+        const pMobile = normalizeMobile(c.petitionerMobile);
+        const rMobile = normalizeMobile(c.respondentMobile);
+        return (pMobile !== '' && pMobile === normalizedUserMobile) || 
+               (rMobile !== '' && rMobile === normalizedUserMobile);
+      })
+    : currentViewMode !== 'admin' && userMobile
+    ? cases.filter(c => {
+        // Created by current user -> always visible
+        const isCreatedByUser = c.user_id !== undefined && (
+          String(c.user_id) === String(userId) || 
+          (firebaseUid && String(c.user_id) === String(firebaseUid))
+        );
+        if (isCreatedByUser) return true;
+
         const pMobile = normalizeMobile(c.petitionerMobile);
         const rMobile = normalizeMobile(c.respondentMobile);
         
@@ -2006,13 +2081,92 @@ export default function Dashboard({
   ];
 
   const [religiousBooks, setReligiousBooks] = useState([
-    { id: 1, name: 'পবিত্র আল-কোরআন (বাংলা অর্থসহ)', url: 'https://www.quraanshareef.org/' },
+    { id: 1, name: 'পবিত্র আল-کোরআন (বাংলা অর্থসহ)', url: 'https://www.quraanshareef.org/' },
     { id: 2, name: 'শ্রীমদ্ভগবদ্গীতা', url: '#' },
     { id: 3, name: 'পবিত্র বাইবেল', url: '#' },
     { id: 4, name: 'ত্রিপিটক', url: '#' },
   ]);
 
   const handleReligiousBookUpload = async (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    // Commenting out dummy code that was left inside the block
+    /*
+          systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট। 
+বর্তমানে ব্যবহারকারী তার নিজের একটি নির্দিষ্ট মামলার তথ্যের উপর ফোকাস করছেন। 
+ব্যবহারকারী এই মামলায় ${roleText} হিসেবে আছেন। অনুগ্রহ করে মামলার তথ্যের ভিত্তিতে ${roleText} এর সুবিধাজনক অবস্থানে থেকে আইনি পরামর্শ ও বিশ্লেষণ দিন।
+নিরাপত্তা নীতি: আপনি শুধুমাত্র এই ব্যবহারকারীর নিজস্ব মামলার তথ্য বিশ্লেষণ করতে পারবেন। নিজের মামলা ব্যতীত অন্য কারো বা অন্য পক্ষের কোন মামলার কোনো তথ্য কোনো অবস্থাতেই প্রকাশ করবেন না বা জানাবেন না।
+
+মামলার তথ্য: ${JSON.stringify(activeCase)}
+
+মামলার বিস্তারিত তথ্য নিচে দেওয়া হলো:
+- মামলা নং: ${activeCase.caseNumber || 'N/A'}
+- বাদী: ${activeCase.petitioner || 'N/A'}
+- বিবাদী: ${activeCase.respondent || 'N/A'}
+- মামলার তারিখ: ${activeCase.date || 'N/A'}
+- পরবর্তী তারিখ: ${activeCase.nextDate || 'N/A'}
+- আদালত: ${activeCase.courtName || activeCase.court || 'N/A'}
+- মামলার বর্তমান অবস্থা: ${activeCase.status || 'N/A'}
+- মামলার বিবরণ: ${activeCase.details || 'N/A'}
+
+আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
+        } else {
+          systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং "MDC Diary" অ্যাপের গাইড।
+বর্তমানে আপনি একজন ক্লায়েন্ট ব্যবহারকারীর সাথে কথা বলছেন।
+নিরাপত্তা নীতি: আপনি শুধুমাত্র এই ব্যবহারকারীর নিজস্ব মামলার তথ্য বিশ্লেষণ বা প্রদান করতে পারবেন। আপনি নিজের মামলা ব্যতীত অন্য কারো বা অন্য পক্ষের কোন মামলার কোনো তথ্য কোনো অবস্থাতেই প্রকাশ করবেন না বা জানাবেন না।
+
+ব্যবহারকারীর নিজস্ব মামলার তালিকা: ${JSON.stringify(ownedCases.map(c => ({
+            caseNumber: c.caseNumber,
+            petitioner: c.petitioner,
+            respondent: c.respondent,
+            courtName: c.courtName,
+            status: c.status,
+            nextDate: c.nextDate,
+            details: c.details
+          })))}
+
+আপনি শুধুমাত্র ওপরে দেওয়া ব্যবহারকারীর এই নিজস্ব মামলার তালিকার ভিত্তিতেই সরাসরি ও প্রাসঙ্গিক প্রশ্নের উত্তর দিতে পারবেন। অন্য কোনো ভিন্ন বা অন্য পক্ষের মামলার তথ্য চাইলে বিনয়ের সাথে বলবেন যে আপনার শুধুমাত্র নিজের মামলার তথ্য প্রদান করার অনুমতি আছে। বাংলায় উত্তর দিন।`;
+        }
+      } else if (aiMode === 'case' && activeCase) {
+        const roleText = userCaseRole === 'plaintiff' ? 'বাদী' : userCaseRole === 'defendant' ? 'বিবাদী' : '';
+        systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট। 
+বর্তমানে ব্যবহারকারী একটি নির্দিষ্ট মামলার তথ্যের উপর ফোকাস করছেন। 
+ব্যবহারকারী এই মামলায় ${roleText} হিসেবে আছেন। অনুগ্রহ করে মামলার তথ্যের ভিত্তিতে ${roleText} এর সুবিধাজনক অবস্থানে থেকে আইনি পরামর্শ ও বিশ্লেষণ দিন।
+মামলার তথ্য: ${JSON.stringify(activeCase)}
+
+মামলার বিস্তারিত তথ্য নিচে দেওয়া হলো:
+- মামলা নং: ${activeCase.caseNumber || 'N/A'}
+- বাদী: ${activeCase.petitioner || 'N/A'}
+- বিবাদী: ${activeCase.respondent || 'N/A'}
+- মামলার তারিখ: ${activeCase.date || 'N/A'}
+- পরবর্তী তারিখ: ${activeCase.nextDate || 'N/A'}
+- আদালত: ${activeCase.courtName || activeCase.court || 'N/A'}
+- মামলার বর্তমান অবস্থা: ${activeCase.status || 'N/A'}
+- মামলার বিবরণ: ${activeCase.details || 'N/A'}
+
+আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
+      } else {
+        systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং এই "MDC Diary" অ্যাপের গাইড। আপনি বাংলাদেশের আইন, ধারা, সাজা, সাক্ষ্য গ্রহণের টেকনিক, জেরা করার টেকনিক, যুক্তিতর্ক, এবং দরখাস্ত লেখার নিয়ম সম্পর্কে উকিল ও মুহুরিদের সাহায্য করবেন। 
+
+বর্তমান ব্যবহারকারীর ধরণ: ${currentViewMode === 'lawyer' ? 'উকিল' : currentViewMode === 'clerk' ? 'মুহুরি' : currentViewMode === 'advertiser' ? 'বিজ্ঞাপনদাতা' : currentViewMode === 'client' ? 'ক্লায়েন্ট' : 'অ্যাডমিন'}। আপনি ব্যবহারকারীর ধরণ অনুযায়ী আরও প্রাসঙ্গিক পরামর্শ দিন।
+
+পাশাপাশি আপনি এই অ্যাপের প্রতিটি মেনু, বাটন এবং প্রসেস সম্পর্কেও তথ্য দেবেন। অ্যাপের প্রধান ফিচারগুলো হলো:
+১. ড্যাশবোর্ড: মামলার সারসংক্ষেপ এবং দ্রুত অ্যাকশন বাটন।
+২. ক্যালেন্ডার: প্রতিদিনের শুনানির তারিখ এবং ডায়েরি।
+৩. মামলার তালিকা: মামলা যোগ করা, এডিট করা এবং জয়েন করা।
+৪. রিচার্জ: সাবস্ক্রিপশন প্যাকেজ কেনা।
+৫. নোটিফিকেশন: মামলার আপডেট এবং কাজের তথ্য।
+৬. আইন লাইব্রেরি: বাংলাদেশ, ভারত ও পাকিস্তানের আইনের রেফারেন্স।
+৭. প্রফেশনাল রিসোর্স: আইনি টেমপ্লেট আপলোড ও ডাউনলোড।
+৮. অ্যাফিলিয়েট জোন: অ্যাপ শেয়ার করে পয়েন্ট অর্জন।
+৯. এমার্জেন্সি: জরুরি যোগাযোগ।
+১০. সেটিংস: থিম, ভাষা এবং প্রোফাইল পরিবর্তন।
+১১. ডকুমেন্টস: মামলার ফাইল সেভ করে রাখা (সাবস্ক্রিপশন প্রয়োজন)।
+১২. ২০ বছরের মেমোরি: আপনার মামলার আজীবন ইতিহাস।
+১৩. টাস্ক ম্যানেজমেন্ট: আপনার এবং টিমের কাজের তালিকা।
+
+ব্যবহারকারী অ্যাপের কোনো বাটন বা প্রসেস সম্পর্কে জানতে চাইলে সহজভাবে বুঝিয়ে বলুন। বাংলায় উত্তর দিন।`;
+      }
+    }
+    */
     const file = e.target.files?.[0];
     if (!file) return;
     
@@ -2356,6 +2510,16 @@ export default function Dashboard({
                t('role_general_user')}
             </div>
             
+            {currentViewMode !== 'client' && currentViewMode !== 'advertiser' && (
+              <button 
+                onClick={() => setIsCaseFormOpen(true)}
+                className="hidden lg:flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md hover:shadow-indigo-200"
+              >
+                <Plus size={18} />
+                {t('add_case_btn')}
+              </button>
+            )}
+
             <div className="relative">
               <button 
                 onClick={() => setIsNotificationOpen(!isNotificationOpen)}

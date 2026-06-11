@@ -234,7 +234,7 @@ export const CaseCardPro = ({
               </div>
               <p className="text-slate-500 font-medium text-sm flex items-center gap-1.5">
                 <Building2 size={14} className="text-slate-400" />
-                {caseData.courtName}
+                {caseData.courtNumber ? caseData.courtNumber + ' ' : ''}{caseData.courtName}
               </p>
             </div>
           </div>

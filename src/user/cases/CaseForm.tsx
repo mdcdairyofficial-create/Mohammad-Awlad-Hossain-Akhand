@@ -677,17 +677,34 @@ export default function CaseForm({
                       </div>
                       <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{t('court_name')}</label>
-                        <select
-                          name="courtName"
-                          value={formData.courtName}
-                          onChange={handleChange}
-                          className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                        >
-                          <option value="">{t('court_placeholder')}</option>
-                          {getCourtsForDistrict(formData.district || userDistrict).map(court => (
-                            <option key={court} value={court}>{court}</option>
-                          ))}
-                        </select>
+                        <div className="flex gap-2">
+                          <select
+                            name="courtName"
+                            value={formData.courtName}
+                            onChange={handleChange}
+                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                          >
+                            <option value="">{t('court_placeholder')}</option>
+                            {getCourtsForDistrict(formData.district || userDistrict).map(court => (
+                              <option key={court} value={court}>{court}</option>
+                            ))}
+                          </select>
+                          {formData.courtName && (
+                            <select
+                              name="courtNumber"
+                              value={formData.courtNumber || ''}
+                              onChange={handleChange}
+                              className="w-1/3 px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                            >
+                              <option value="">সংখ্যা</option>
+                              <option value="১ম">১ম</option>
+                              <option value="২য়">২য়</option>
+                              <option value="৩য়">৩য়</option>
+                              <option value="৪র্থ">৪র্থ</option>
+                              <option value="৫ম">৫ম</option>
+                            </select>
+                          )}
+                        </div>
                       </div>
                     </div>
                     
@@ -968,20 +985,37 @@ export default function CaseForm({
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">৩. {t('court')}</label>
-                    <select
-                      name="courtName"
-                      value={formData.courtName}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                    >
-                      <option value="">{t('select_court')}</option>
-                      {userDistrict && getCourtsForDistrict(userDistrict, userCountry).map(court => (
-                        <option key={court} value={court}>{court}</option>
-                      ))}
-                      <option value="High Court">{t('high_court')}</option>
-                      <option value="Supreme Court">{t('supreme_court')}</option>
-                      <option value="Other">Other</option>
-                    </select>
+                    <div className="flex gap-2">
+                      <select
+                        name="courtName"
+                        value={formData.courtName}
+                        onChange={handleChange}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                      >
+                        <option value="">{t('select_court')}</option>
+                        {userDistrict && getCourtsForDistrict(userDistrict, userCountry).map(court => (
+                          <option key={court} value={court}>{court}</option>
+                        ))}
+                        <option value="High Court">{t('high_court')}</option>
+                        <option value="Supreme Court">{t('supreme_court')}</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {formData.courtName && (
+                        <select
+                          name="courtNumber"
+                          value={formData.courtNumber || ''}
+                          onChange={handleChange}
+                          className="w-1/3 px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                        >
+                          <option value="">সংখ্যা</option>
+                          <option value="১ম">১ম</option>
+                          <option value="২য়">২য়</option>
+                          <option value="৩য়">৩য়</option>
+                          <option value="৪র্থ">৪র্থ</option>
+                          <option value="৫ম">৫ম</option>
+                        </select>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">৪. {language === 'bn' ? 'আগের তারিখ (মেইন)' : 'Previous Date'}</label>

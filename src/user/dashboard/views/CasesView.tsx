@@ -217,7 +217,8 @@ export const CasesView = ({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden group flex flex-col"
+                onClick={() => onViewCard(c)}
+                className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl hover:border-slate-300 cursor-pointer transition-all duration-500 overflow-hidden group flex flex-col"
               >
                 {/* Card Header */}
                 <div className={`p-6 ${c.caseType === 'Civil' ? 'bg-blue-600' : 'bg-rose-600'} text-white relative overflow-hidden`}>
@@ -230,7 +231,7 @@ export const CasesView = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => onViewCard(c)}
+                        onClick={(e) => { e.stopPropagation(); onViewCard(c); }}
                         className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
                         title={t('case_card_pro')}
                       >
@@ -238,7 +239,7 @@ export const CasesView = ({
                       </button>
                       {!isClient && (
                         <button 
-                          onClick={() => onEditCase(c)}
+                          onClick={(e) => { e.stopPropagation(); onEditCase(c); }}
                           className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
                           title={t('edit_case')}
                         >
@@ -260,7 +261,7 @@ export const CasesView = ({
                       </div>
                       <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('court_label')}</p>
-                        <p className="text-sm font-bold text-slate-700 leading-tight">{c.courtName}</p>
+                        <p className="text-sm font-bold text-slate-700 leading-tight">{c.courtNumber ? c.courtNumber + ' ' : ''}{c.courtName}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-4">
@@ -290,14 +291,14 @@ export const CasesView = ({
                   {/* Quick Actions */}
                   <div className="pt-6 border-t border-slate-50 flex items-center justify-between gap-3">
                     <button 
-                      onClick={() => onViewHistory(c)}
+                      onClick={(e) => { e.stopPropagation(); onViewHistory(c); }}
                       className="flex-1 py-3 bg-slate-50 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
                     >
                       <History size={14} /> {t('case_history_title')}
                     </button>
                     {!isClient && (
                       <button 
-                        onClick={() => onDeleteCase(c.id)}
+                        onClick={(e) => { e.stopPropagation(); onDeleteCase(c.id); }}
                         className="p-3 text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
                       >
                         <Trash2 size={18} />
@@ -323,7 +324,11 @@ export const CasesView = ({
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filteredCases.map((c) => (
-                <tr key={c.id} className="hover:bg-slate-50/50 transition-colors group">
+                <tr 
+                  key={c.id} 
+                  onClick={() => onViewCard(c)}
+                  className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                >
                   <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -336,7 +341,7 @@ export const CasesView = ({
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <p className="text-sm font-bold text-slate-600">{c.courtName}</p>
+                    <p className="text-sm font-bold text-slate-600">{c.courtNumber ? c.courtNumber + ' ' : ''}{c.courtName}</p>
                   </td>
                   <td className="px-8 py-5">
                     <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>
@@ -353,15 +358,15 @@ export const CasesView = ({
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => onViewCard(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('case_card_pro')}>
+                      <button onClick={(e) => { e.stopPropagation(); onViewCard(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('case_card_pro')}>
                         <CreditCard size={18} />
                       </button>
                       {!isClient && (
                         <>
-                          <button onClick={() => onEditCase(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
+                          <button onClick={(e) => { e.stopPropagation(); onEditCase(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
                             <Edit2 size={18} />
                           </button>
-                          <button onClick={() => onDeleteCase(c.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" title={t('delete_case')}>
+                          <button onClick={(e) => { e.stopPropagation(); onDeleteCase(c.id); }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" title={t('delete_case')}>
                             <Trash2 size={18} />
                           </button>
                         </>

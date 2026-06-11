@@ -15,6 +15,7 @@ export interface Case {
   rawCaseNumber?: string;
   court?: string;
   courtName: string;
+  courtNumber?: string;
   nextDate: string;
   status: string;
   caseType: string;

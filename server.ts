@@ -1371,6 +1371,19 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         subscriptionPackage = 'diamond';
       }
 
+      let initialPoints = 0;
+      if (referredBy) {
+        const referrerSnap = await usersRef.where("referral_code", "==", referredBy).limit(1).get();
+        if (!referrerSnap.empty) {
+          initialPoints = 100;
+          const referrerDoc = referrerSnap.docs[0];
+          // Give 100 points to referrer for successful join
+          await referrerDoc.ref.update({
+            points: FieldValue.increment(100)
+          });
+        }
+      }
+
       const newUser = {
         firebase_uid: firebaseUid || null,
         name: fullName,
@@ -1387,25 +1400,13 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         subscription_package: subscriptionPackage,
         subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
         createdAt: new Date().toISOString(),
-        points: 0,
+        points: initialPoints,
         ai_questions_count: 0,
         wallet_balance: 0
       };
       console.log("[DEBUG] Registration newUser:", JSON.stringify(newUser));
 
       const docRef = await usersRef.add(newUser);
-
-      // Special Logic for Referral points
-      if (referredBy) {
-        const referrerSnap = await usersRef.where("referral_code", "==", referredBy).limit(1).get();
-        if (!referrerSnap.empty) {
-          const referrerDoc = referrerSnap.docs[0];
-          // Give 100 points to referrer for successful join
-          await referrerDoc.ref.update({
-            points: FieldValue.increment(100)
-          });
-        }
-      }
 
       const userDoc = await docRef.get();
       const userData = userDoc.data() as any;
@@ -1418,6 +1419,99 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           fullName: userData.fullName || userData.name, 
           userType: userData.userType || userData.user_type 
         } 
+      });
+    } catch (error: any) {
+      console.error(error);
+      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+    }
+  });
+
+  app.post("/api/auth/google", async (req, res) => {
+    try {
+      const { firebaseUid, fullName, email, profilePicture, userType, country, district, referredBy } = req.body;
+      if (!firebaseUid) {
+        return res.status(400).json({ error: "No firebaseUID provided" });
+      }
+
+      const usersRef = db.collection("users");
+      const eQuery = await usersRef.where("email", "==", email).limit(1).get();
+      if (!eQuery.empty) {
+        // User exists, update with firebaseUid if not present
+        const userDoc = eQuery.docs[0];
+        const userData = userDoc.data() as any;
+        if (!userData.firebase_uid) {
+           await userDoc.ref.update({ firebase_uid: firebaseUid });
+        }
+        return res.json({
+          success: true,
+          user: {
+            id: userDoc.id,
+            ...userData,
+            firebaseUid: firebaseUid,
+            fullName: userData.fullName || userData.name,
+            userType: userData.userType || userData.user_type
+          }
+        });
+      }
+
+      // User does not exist, create new one
+      const namePart = (fullName || 'USER').replace(/\s+/g, '').substring(0, 4).toUpperCase();
+      const referralCode = namePart + Math.floor(Math.random() * 10000);
+      let finalUserType = userType || 'client';
+
+      let subscriptionDays = 1;
+      let subscriptionPackage = 'free';
+
+      if (email === 'mdcdairy.official@gmail.com') {
+        finalUserType = 'super_admin';
+        subscriptionDays = 36500;
+        subscriptionPackage = 'diamond';
+      }
+
+      let initialPoints = 0;
+      if (referredBy) {
+        const referrerSnap = await usersRef.where("referral_code", "==", referredBy).limit(1).get();
+        if (!referrerSnap.empty) {
+          initialPoints = 100;
+          const referrerDoc = referrerSnap.docs[0];
+          await referrerDoc.ref.update({
+            points: FieldValue.increment(100)
+          });
+        }
+      }
+
+      const newUser = {
+        firebase_uid: firebaseUid,
+        name: fullName || 'Google User',
+        email: email || null,
+        mobile: null,
+        user_type: finalUserType,
+        district: district || 'ঢাকা',
+        country: country || 'Bangladesh',
+        referral_code: referralCode,
+        referred_by: referredBy || null,
+        profile_picture: profilePicture || null,
+        is_approved: true,
+        subscription_package: subscriptionPackage,
+        subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date().toISOString(),
+        points: initialPoints,
+        ai_questions_count: 0,
+        wallet_balance: 0
+      };
+
+      const docRef = await usersRef.add(newUser);
+      const userDoc = await docRef.get();
+      const userData = userDoc.data() as any;
+
+      res.json({
+        success: true,
+        user: {
+          id: userDoc.id,
+          ...userData,
+          fullName: userData.fullName || userData.name,
+          userType: userData.userType || userData.user_type
+        }
       });
     } catch (error: any) {
       console.error(error);
@@ -1453,9 +1547,55 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
   app.get("/api/admin/affiliate-referrals", async (req, res) => {
     try {
-      // Logic for affiliate signups can be added here if needed
-      res.json({ success: true, referrals: [] });
+      const usersRef = db.collection("users");
+      const usersSnapshot = await usersRef.get();
+      
+      const allUsers = usersSnapshot.docs.map(doc => {
+        const udata = doc.data() as any;
+        return {
+          id: doc.id,
+          ...udata,
+          name: udata.name || udata.fullName,
+          user_type: udata.user_type || udata.userType,
+          referral_code: udata.referral_code || udata.referralCode,
+          referred_by: udata.referred_by || udata.referredBy
+        };
+      });
+
+      const referrals: any[] = [];
+      let counter = 1;
+
+      for (const u of allUsers) {
+        const refBy = u.referred_by;
+        if (refBy && typeof refBy === 'string' && refBy.trim() !== '') {
+          // Find if there is a matching referrer with this referral_code
+          const referrer = allUsers.find(referrerUser => {
+            const code = referrerUser.referral_code;
+            return code && typeof code === 'string' && code.trim().toLowerCase() === refBy.trim().toLowerCase();
+          });
+
+          referrals.push({
+            id: counter++,
+            referrer_id: refBy,
+            referrer_name: referrer ? (referrer.name || 'N/A') : 'সরাসরি/অন্যান্য',
+            new_user_id: u.id,
+            new_user_name: u.name || 'ব্যবহারকারী',
+            new_user_mobile: u.mobile || 'Unknown',
+            user_type: u.user_type || 'client',
+            district: u.district || 'N/A',
+            thana: u.thana || 'N/A',
+            status: 'completed',
+            created_at: u.createdAt || u.created_at || new Date().toISOString()
+          });
+        }
+      }
+
+      // Sort by creation time desc (newest referral first)
+      referrals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      res.json({ success: true, referrals });
     } catch (error: any) {
+      console.error("[ERROR] api/admin/affiliate-referrals error:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -2413,6 +2553,11 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  // API catch-all to prevent Vite from returning index.html for 404 API calls
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API Route Not Found: ${req.method} ${req.originalUrl}` });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2427,6 +2572,16 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  // Global error handler to ensure JSON responses on errors instead of HTML
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Global API Error:", err);
+    if (req.originalUrl.startsWith('/api/')) {
+      res.status(500).json({ error: "Internal Server Error. Please contact support." });
+    } else {
+      next(err);
+    }
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log("Server running on http://localhost:" + PORT);

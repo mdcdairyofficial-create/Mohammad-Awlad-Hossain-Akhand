@@ -416,7 +416,7 @@ export const CalendarView = ({
                     <div className="absolute inset-0 rounded-2xl bg-rose-500/10 animate-pulse border-2 border-rose-500/30" />
                   )}
                   <div className="flex justify-start w-full relative z-10">
-                    <span className={`text-xl sm:text-2xl font-black ${isSelected || isToday ? 'text-white' : isHoliday ? 'text-rose-600' : 'text-slate-700'}`}>
+                    <span className={`text-2xl sm:text-3xl leading-none font-black ${isSelected || isToday ? 'text-white' : isHoliday ? 'text-rose-600' : 'text-slate-700'}`}>
                       {day}
                     </span>
                   </div>

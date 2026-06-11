@@ -88,7 +88,8 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           email: user.email,
           profilePicture: user.photoURL,
           userType: userType,
-          country: 'Bangladesh'
+          country: 'Bangladesh',
+          referredBy: formData.referredBy
         })
       });
 
@@ -157,7 +158,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           await sendPasswordResetEmail(auth, firebaseEmail);
           setSuccess("পাসওয়ার্ড রিসেট লিংক ইমেইলে পাঠানো হয়েছে (অথবা ভার্চুয়াল সিস্টেমে লগইন করুন)।");
         } catch (e: any) {
-          console.error("[Auth] Reset error:", e);
+          console.warn("[Auth] Reset error:", e);
           throw new Error("এই নম্বর বা ইমেইলটি আমাদের সিস্টেমে পাওয়া যায়নি।");
         }
         setLoading(false);
@@ -256,7 +257,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               console.warn(`[Auth] Backend fallback returned error:`, fallbackErrData.error);
             }
           } catch (healErr) {
-            console.error(`[Auth] Backend verification and auto-healing failed:`, healErr);
+            console.warn(`[Auth] Backend verification and auto-healing failed:`, healErr);
           }
 
           if (isHealed) {
@@ -264,7 +265,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               userCred = await signInWithEmailAndPassword(auth, firebaseEmail, formData.password);
               console.log(`[Auth] Post-healing login successful!`);
             } catch (retryErr: any) {
-              console.error("[Auth] Firebase login failed even after healing:", retryErr.code);
+              console.warn("[Auth] Firebase login failed even after healing:", retryErr.code);
               throw retryErr;
             }
           } else {
@@ -276,7 +277,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               try {
                 userCred = await signInWithEmailAndPassword(auth, firebaseEmailWithZero, formData.password);
               } catch (fallbackErr: any) {
-                console.error("[Auth] Fallback login also failed:", fallbackErr.code);
+                console.warn("[Auth] Fallback login also failed:", fallbackErr.code);
                 throw fallbackErr;
               }
             } else {
@@ -308,7 +309,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         onAuthSuccess(data.user);
       }
     } catch (err: any) {
-      console.error("Auth Error:", err);
+      console.warn("Auth Error:", err.message);
       
       // Update form state: clear password fields on error
       setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));

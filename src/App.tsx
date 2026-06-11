@@ -233,7 +233,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowSplash(false);
-    }, 15000);
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, []);
@@ -264,10 +264,10 @@ export default function App() {
     <ErrorBoundary>
       <div className="antialiased">
         <OfflineNotice />
-        <AnimatePresence mode="wait">
-          {showSplash ? (
-            <SplashScreen key="splash" />
-          ) : window.location.pathname === "/admin" ? (
+        
+        {/* Main Content (Dashboard, Admin, Auth, etc.) - rendered immediately in background */}
+        <div className="w-full min-h-screen">
+          {window.location.pathname === "/admin" ? (
             <AdminDashboard
               currentUser={{
                 role: user?.userType === "admin" ? "admin" : "client",
@@ -318,6 +318,13 @@ export default function App() {
               onLogout={handleLogout}
               onUpdateProfile={handleUpdateProfile}
             />
+          )}
+        </div>
+
+        {/* Improved Overlay Splash Screen (fades out beautifully with absolute safety) */}
+        <AnimatePresence>
+          {showSplash && (
+            <SplashScreen key="splash" />
           )}
         </AnimatePresence>
 
