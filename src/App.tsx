@@ -10,6 +10,7 @@ import { auth, db } from "./firebase";
 import { onSnapshot, doc } from "firebase/firestore";
 import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
+import YoutubeGate from "./user/auth/YoutubeGate";
 import SocialGate from "./user/auth/SocialGate";
 import Dashboard from "./user/dashboard/Dashboard";
 import AdminDashboard from "./admin/AdminDashboard";
@@ -60,6 +61,9 @@ export default function App() {
   });
   const [socialCompleted, setSocialCompleted] = useState(() => {
     return localStorage.getItem("socialVerificationCompleted") === "true";
+  });
+  const [youtubeCompleted, setYoutubeCompleted] = useState(() => {
+    return localStorage.getItem("youtubeVerifiedCompleted") === "true";
   });
 
   useEffect(() => {
@@ -284,6 +288,13 @@ export default function App() {
             ) : (
               <Auth onAuthSuccess={handleAuthSuccess} />
             )
+          ) : !youtubeCompleted ? (
+            <YoutubeGate onComplete={() => {
+              localStorage.setItem("youtubeVerifiedCompleted", "true");
+              setYoutubeCompleted(true);
+              setShowSplash(true);
+              setTimeout(() => setShowSplash(false), 2500);
+            }} />
           ) : (
             <Dashboard
               userId={user.id}
@@ -330,28 +341,40 @@ export default function App() {
 
         {/* Demo toggle for authentication - remove in production */}
         {!showSplash && (
-          <button
-            onClick={() => {
-              if (user) handleLogout();
-              else {
-                const oneYearFromNow = new Date();
-                oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-                handleAuthSuccess({
-                  id: 1,
-                  fullName: "ব্যবহারকারী",
-                  userType: "lawyer",
-                  mobile: "01700000000",
-                  district: "ঢাকা",
-                  country: "Bangladesh",
-                  subscriptionEndDate: oneYearFromNow.toISOString(),
-                  subscriptionPackage: "diamond",
-                });
-              }
-            }}
-            className="fixed bottom-24 right-4 bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 z-50 opacity-0 hover:opacity-100 transition-opacity"
-          >
-            {user ? "লগ আউট" : "লগ ইন"}
-          </button>
+          <div className="fixed bottom-24 right-4 z-[9999] opacity-0 hover:opacity-100 transition-opacity flex flex-col gap-2 items-end">
+            <button
+              onClick={() => {
+                localStorage.removeItem("youtubeVerifiedCompleted");
+                setYoutubeCompleted(false);
+              }}
+              className="bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 shadow-sm"
+              title="Reset YouTube subscription screen so you can see it again"
+            >
+              Reset YouTube Gate
+            </button>
+            <button
+              onClick={() => {
+                if (user) handleLogout();
+                else {
+                  const oneYearFromNow = new Date();
+                  oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                  handleAuthSuccess({
+                    id: 1,
+                    fullName: "ব্যবহারকারী",
+                    userType: "lawyer",
+                    mobile: "01700000000",
+                    district: "ঢাকা",
+                    country: "Bangladesh",
+                    subscriptionEndDate: oneYearFromNow.toISOString(),
+                    subscriptionPackage: "diamond",
+                  });
+                }
+              }}
+              className="bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 shadow-sm"
+            >
+              {user ? "লগ আউট" : "লগ ইন"}
+            </button>
+          </div>
         )}
       </div>
     </ErrorBoundary>

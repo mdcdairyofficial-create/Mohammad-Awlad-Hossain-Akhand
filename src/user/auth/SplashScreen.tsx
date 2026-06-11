@@ -74,52 +74,50 @@ export default function SplashScreen() {
 
   return (
     <>
-      {/* Mobile Splash (Dark background) */}
+      {/* Mobile Splash */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: { duration: 0.4, ease: "easeInOut" } }}
         style={{ willChange: "opacity" }}
-        className="fixed inset-0 flex flex-col items-center justify-between bg-[#020617] h-screen w-screen overflow-hidden z-[9999] md:hidden py-12"
+        className="fixed inset-0 flex flex-col items-center justify-end bg-[#020617] h-screen w-screen overflow-hidden z-[9999] md:hidden"
       >
-        <div className="flex-1 flex items-center justify-center w-full px-6 max-h-[65vh]">
+        <div className="absolute inset-0 z-0 flex items-center justify-center">
           <motion.img
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.5 }}
             src="/mobile-splash-screen.png"
             alt="Mobile Splash Screen"
-            className="w-full h-full max-h-[60vh] max-w-[380px] object-contain pointer-events-none select-none transition-all duration-300"
+            className="w-full h-full object-cover pointer-events-none select-none"
           />
         </div>
         
-        {/* Dynamic Loading Area (Perfect blend-mask covering the static PNG loader) */}
-        <div className="w-full flex justify-center bg-[#020617] z-10 py-6">
+        <div className="relative z-10 w-full flex justify-center bg-transparent py-10 pb-16">
           {loadingContent}
         </div>
       </motion.div>
 
-      {/* Desktop Splash (Dark background blending with desktop image) */}
+      {/* Desktop Splash */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, transition: { duration: 0.4, ease: "easeInOut" } }}
         style={{ willChange: "opacity" }}
-        className="fixed inset-0 hidden md:flex flex-col items-center justify-between bg-[#020617] h-screen w-screen overflow-hidden z-[9999] py-16"
+        className="fixed inset-0 hidden md:flex flex-col items-center justify-end bg-[#020617] h-screen w-screen overflow-hidden z-[9999]"
       >
-        <div className="flex-1 flex items-center justify-center w-full px-12 max-h-[70vh]">
+        <div className="absolute inset-0 z-0 flex items-center justify-center">
           <motion.img
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.6 }}
-            src="/desktop-splash.png"
+            src="/website sp;ash scerrn.png"
             alt="Desktop Splash Screen"
-            className="w-full h-full max-h-[65vh] max-w-[800px] object-contain pointer-events-none select-none transition-all duration-300"
+            className="w-full h-full object-cover pointer-events-none select-none"
           />
         </div>
 
-        {/* Dynamic Loading Area for Desktop */}
-        <div className="w-full flex justify-center bg-[#020617] z-10 py-6">
+        <div className="relative z-10 w-full flex justify-center bg-transparent py-12 pb-16">
           {loadingContent}
         </div>
       </motion.div>
