@@ -19,6 +19,7 @@ import { OfflineNotice } from "./components/OfflineNotice";
 import type { UserRole } from "./types";
 
 import FacebookGate from "./user/auth/FacebookGate";
+import TelegramGate from "./user/auth/TelegramGate";
 
 interface UserProfile {
   id?: number;
@@ -70,21 +71,16 @@ export default function App() {
   const [facebookCompleted, setFacebookCompleted] = useState(() => {
     return localStorage.getItem("facebookVerifiedCompleted") === "true";
   });
+  const [telegramCompleted, setTelegramCompleted] = useState(() => {
+    return localStorage.getItem("telegramVerifiedCompleted") === "true";
+  });
 
   const [showFacebookGate, setShowFacebookGate] = useState(() => {
-    if (localStorage.getItem("facebookVerifiedCompleted") === "true")
-      return false;
-    const firstSession = localStorage.getItem("firstSessionDate");
-    const today = new Date().toDateString();
+    return localStorage.getItem("facebookVerifiedCompleted") !== "true";
+  });
 
-    // First time login - set date but don't show Facebook gate
-    if (!firstSession) {
-      localStorage.setItem("firstSessionDate", today);
-      return false;
-    }
-
-    // Second time login (different day) -> show Facebook gate
-    return firstSession !== today;
+  const [showTelegramGate, setShowTelegramGate] = useState(() => {
+    return localStorage.getItem("telegramVerifiedCompleted") !== "true";
   });
 
   useEffect(() => {
@@ -404,7 +400,7 @@ export default function App() {
                 // Only first day users need to see the splash screen right after YouTube
                 // Wait, Actually we want the Splash here. But for Facebook gate, if we show Splah here then facebook will re-render if it's the second day.
                 // So, let's just do it directly.
-                if (!showFacebookGate) {
+                if (!showFacebookGate && !showTelegramGate) {
                   setShowSplash(true);
                   setTimeout(() => setShowSplash(false), 2500);
                 }
@@ -416,6 +412,18 @@ export default function App() {
                 localStorage.setItem("facebookVerifiedCompleted", "true");
                 setFacebookCompleted(true);
                 setShowFacebookGate(false);
+                if (!showTelegramGate) {
+                  setShowSplash(true);
+                  setTimeout(() => setShowSplash(false), 2500);
+                }
+              }}
+            />
+          ) : showTelegramGate ? (
+            <TelegramGate
+              onComplete={() => {
+                localStorage.setItem("telegramVerifiedCompleted", "true");
+                setTelegramCompleted(true);
+                setShowTelegramGate(false);
                 setShowSplash(true);
                 setTimeout(() => setShowSplash(false), 2500);
               }}
@@ -469,14 +477,20 @@ export default function App() {
               onClick={() => {
                 localStorage.removeItem("youtubeVerifiedCompleted");
                 setYoutubeCompleted(false);
-                // Also reset facebook gates
+                // Also reset facebook and telegram gates
                 localStorage.removeItem("facebookVerifiedCompleted");
                 localStorage.removeItem("firstSessionDate");
                 setFacebookCompleted(false);
+                
+                localStorage.removeItem("telegramVerifiedCompleted");
+                localStorage.removeItem("secondSessionDate");
+                setTelegramCompleted(false);
+                
                 setShowFacebookGate(true); // Treat as day 2 since they cleared it to test
+                setShowTelegramGate(false);
               }}
               className="bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 shadow-sm"
-              title="Reset YouTube & Facebook subscription screen so you can see it again"
+              title="Reset UI Gates so you can see them again"
             >
               Reset UI Gates
             </button>

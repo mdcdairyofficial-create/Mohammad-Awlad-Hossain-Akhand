@@ -78,8 +78,8 @@ export default function SocialView({ language }: SocialViewProps) {
           </h2>
           <p className="text-slate-300 text-base md:text-lg font-medium leading-relaxed mb-6">
             {language === 'bn'
-              ? 'এমডিসি ডায়েরির পরিবারে যুক্ত থাকুন। আমাদের সকল আপডেট, আইনি সংবাদ, বিশেষ অফার এবং সহায়তা পেতে এখনই নিচের সামাজিক প্ল্যাটফর্মগুলোতে যোগ দিন।'
-              : 'Stay connected with the MDC Diary family. Join our community channels to receive updates, legal draft guides, exclusive offers, and dedicated peer support.'}
+              ? 'এমডিসি কেসবুক পরিবারে যুক্ত থাকুন। আমাদের সকল আপডেট, আইনি সংবাদ, বিশেষ অফার এবং সহায়তা পেতে এখনই নিচের সামাজিক প্ল্যাটফর্মগুলোতে যোগ দিন।'
+              : 'Stay connected with the MDC Casebook family. Join our community channels to receive updates, legal draft guides, exclusive offers, and dedicated peer support.'}
           </p>
 
           <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-400">

@@ -212,7 +212,7 @@ export const ProfessionalIDCard = ({
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-black text-amber-400 uppercase tracking-[0.2em]">{isBn ? 'যাচাই করতে স্ক্যান করুন' : 'Scan to Verify'}</p>
-                <p className="text-[9px] font-bold text-white/40">{isBn ? 'এমডিসি ডায়েরি ডিজিটাল ভেরিফিকেশন' : 'MDC Diary Digital Verification'}</p>
+                <p className="text-[9px] font-bold text-white/40">{isBn ? 'এমডিসি কেসবুক ডিজিটাল ভেরিফিকেশন' : 'MDC Casebook Digital Verification'}</p>
               </div>
             </div>
 
@@ -245,8 +245,8 @@ export const ProfessionalIDCard = ({
               <div className="space-y-1">
                 <p className="text-[8px] font-medium text-white/30 px-6 uppercase tracking-wider leading-tight">
                   {isBn 
-                    ? 'এই কার্ডটি শুধুমাত্র এমডিসি ডায়েরি পোর্টালে ভেরিফাইড সদস্যদের জন্য। এটি কোনো সরকারি কার্ড নয়।' 
-                    : 'This card is only for verified members of MDC Diary portal. This is not a government ID.'
+                    ? 'এই কার্ডটি শুধুমাত্র এমডিসি কেসবুক পোর্টালে ভেরিফাইড সদস্যদের জন্য। এটি কোনো সরকারি কার্ড নয়।' 
+                    : 'This card is only for verified members of MDC Casebook portal. This is not a government ID.'
                   }
                 </p>
               </div>

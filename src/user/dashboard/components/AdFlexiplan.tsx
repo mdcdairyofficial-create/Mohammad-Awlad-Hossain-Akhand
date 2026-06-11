@@ -188,7 +188,7 @@ const PaymentModal = ({
                   <h4 className="font-black text-lg md:text-2xl text-indigo-900 dark:text-white uppercase tracking-tight">{t('ব্যাংক ডিটেইলস', 'BANK ACCOUNT DETAILS')}</h4>
                   <div className="space-y-1.5 md:space-y-2 text-sm md:text-xl font-bold">
                     <p className="flex justify-between"><span>{t('ব্যাংক নাম:', 'Bank Name:')}</span> <span className="text-indigo-600">Dutch-Bangla Bank</span></p>
-                    <p className="flex justify-between"><span>{t('হিসাব নাম:', 'Account Name:')}</span> <span className="text-indigo-600">MDC DIARY LTD</span></p>
+                    <p className="flex justify-between"><span>{t('হিসাব নাম:', 'Account Name:')}</span> <span className="text-indigo-600">MDC CASEBOOK LTD</span></p>
                     <p className="flex justify-between"><span>{t('হিসাব নম্বর:', 'Account No:')}</span> <span className="text-indigo-600 font-mono">123.456.7890</span></p>
                   </div>
                 </div>

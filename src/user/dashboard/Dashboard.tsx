@@ -2109,7 +2109,7 @@ export default function Dashboard({
 
 আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
         } else {
-          systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং "MDC Diary" অ্যাপের গাইড।
+          systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং "MDC Casebook" অ্যাপের গাইড।
 বর্তমানে আপনি একজন ক্লায়েন্ট ব্যবহারকারীর সাথে কথা বলছেন।
 নিরাপত্তা নীতি: আপনি শুধুমাত্র এই ব্যবহারকারীর নিজস্ব মামলার তথ্য বিশ্লেষণ বা প্রদান করতে পারবেন। আপনি নিজের মামলা ব্যতীত অন্য কারো বা অন্য পক্ষের কোন মামলার কোনো তথ্য কোনো অবস্থাতেই প্রকাশ করবেন না বা জানাবেন না।
 
@@ -3899,7 +3899,7 @@ export default function Dashboard({
                             onClick={() => {
                               if (referralCode) {
                                 const link = `${window.location.origin}/register?ref=${referralCode}`;
-                                const text = `Join MDC Diary and manage cases easily: ${link}`;
+                                const text = `Join MDC Casebook and manage cases easily: ${link}`;
                                 window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
                               } else {
                                 alert(t('register_for_referral'));
