@@ -69,7 +69,6 @@ import {
   ShieldAlert,
   RefreshCw
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
 import { doc, updateDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -1170,26 +1169,18 @@ export default function Dashboard({
     setIsQueryingMemoryAI(true);
 
     try {
-      // Use the key from import.meta.env if available, otherwise fallback
-      const genAI: any = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const response = await fetchWithAuth('/api/ai/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: currentQuery, memories })
+      });
       
-      // Context from memories
-      const context = Array.isArray(memories) ? memories.map(m => `[${new Date(m.created_at).toLocaleDateString()}] ${m.content}`).join('\n') : '';
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      const prompt = `
-        You are an AI assistant for a legal professional. 
-        The user is asking about their case history and memories stored over the last 20 years.
-        Here is the context of their stored memories:
-        ${context}
-
-        User Question: ${currentQuery}
-        
-        Please provide a helpful response in Bengali. If the information is not in the memories, politely say you don't have that specific information but can help with what is available.
-      `;
-
-      const result = await model.generateContent(prompt);
-      const resultText = result.response.text();
+      const data = await response.json();
+      const resultText = data.text;
       
       const aiMsg: ChatMessage = { role: 'model', text: resultText || t('no_answer_found') };
       setMemoryChatMessages(prev => [...prev, aiMsg]);
@@ -1409,7 +1400,9 @@ export default function Dashboard({
         ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
           { id: 'invoices', label: t('invoices'), icon: CreditCard },
         ] : []),
-        { id: 'tasks', label: t('task_management'), icon: CheckCircle2 },
+        ...(currentViewMode !== 'client' ? [
+          { id: 'tasks', label: t('task_management'), icon: CheckCircle2 },
+        ] : []),
         { id: 'case_timeline', label: t('case_timeline'), icon: History },
         { id: 'notifications', label: t('notifications'), icon: Bell },
       ]
@@ -1446,7 +1439,9 @@ export default function Dashboard({
       items: [
         { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        { id: 'subscription', label: t('subscription'), icon: CreditCard },
+        ...(currentViewMode !== 'client' ? [
+          { id: 'subscription', label: t('subscription'), icon: CreditCard },
+        ] : []),
         ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
           { id: 'lottery', label: language === 'bn' ? 'সাপ্তাহিক লটারি 🎁' : 'Weekly Lottery 🎁', icon: Award }
         ] : []),
@@ -2083,7 +2078,7 @@ export default function Dashboard({
   const [religiousBooks, setReligiousBooks] = useState([
     { id: 1, name: 'পবিত্র আল-کোরআন (বাংলা অর্থসহ)', url: 'https://www.quraanshareef.org/' },
     { id: 2, name: 'শ্রীমদ্ভগবদ্গীতা', url: '#' },
-    { id: 3, name: 'পবিত্র বাইবেল', url: '#' },
+    { id: 3, name: 'পবিত্র বাইবেল', url: 'https://drive.google.com/file/d/11SFw2IGvkfjw7iQYr69oTm1Dvx_JiuMZ/preview' },
     { id: 4, name: 'ত্রিপিটক', url: '#' },
   ]);
 
@@ -2109,33 +2104,72 @@ export default function Dashboard({
 
 আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
         } else {
-          systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং "MDC Casebook" অ্যাপের গাইড।
-বর্তমানে আপনি একজন ক্লায়েন্ট ব্যবহারকারীর সাথে কথা বলছেন।
-নিরাপত্তা নীতি: আপনি শুধুমাত্র এই ব্যবহারকারীর নিজস্ব মামলার তথ্য বিশ্লেষণ বা প্রদান করতে পারবেন। আপনি নিজের মামলা ব্যতীত অন্য কারো বা অন্য পক্ষের কোন মামলার কোনো তথ্য কোনো অবস্থাতেই প্রকাশ করবেন না বা জানাবেন না।
+          systemInstruction = `আপনি একজন বাংল    try {
+      const contents = newMessages.map(m => ({
+        role: m.role,
+        parts: [{ text: m.text }]
+      }));
 
-ব্যবহারকারীর নিজস্ব মামলার তালিকা: ${JSON.stringify(ownedCases.map(c => ({
-            caseNumber: c.caseNumber,
-            petitioner: c.petitioner,
-            respondent: c.respondent,
-            courtName: c.courtName,
-            status: c.status,
-            nextDate: c.nextDate,
-            details: c.details
-          })))}
-
-আপনি শুধুমাত্র ওপরে দেওয়া ব্যবহারকারীর এই নিজস্ব মামলার তালিকার ভিত্তিতেই সরাসরি ও প্রাসঙ্গিক প্রশ্নের উত্তর দিতে পারবেন। অন্য কোনো ভিন্ন বা অন্য পক্ষের মামলার তথ্য চাইলে বিনয়ের সাথে বলবেন যে আপনার শুধুমাত্র নিজের মামলার তথ্য প্রদান করার অনুমতি আছে। বাংলায় উত্তর দিন।`;
-        }
-      } else if (aiMode === 'case' && activeCase) {
+      let systemInstruction = '';
+      if (aiMode === 'case' && activeCase) {
         const roleText = userCaseRole === 'plaintiff' ? 'বাদী' : userCaseRole === 'defendant' ? 'বিবাদী' : '';
         systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট। 
 বর্তমানে ব্যবহারকারী একটি নির্দিষ্ট মামলার তথ্যের উপর ফোকাস করছেন। 
 ব্যবহারকারী এই মামলায় ${roleText} হিসেবে আছেন। অনুগ্রহ করে মামলার তথ্যের ভিত্তিতে ${roleText} এর সুবিধাজনক অবস্থানে থেকে আইনি পরামর্শ ও বিশ্লেষণ দিন।
 মামলার তথ্য: ${JSON.stringify(activeCase)}
-
+ 
 মামলার বিস্তারিত তথ্য নিচে দেওয়া হলো:
 - মামলা নং: ${activeCase.caseNumber || 'N/A'}
 - বাদী: ${activeCase.petitioner || 'N/A'}
 - বিবাদী: ${activeCase.respondent || 'N/A'}
+- মামলার তারিখ: ${activeCase.date || 'N/A'}
+- পরবর্তী তারিখ: ${activeCase.nextDate || 'N/A'}
+- আদালত: ${activeCase.courtName || activeCase.court || 'N/A'}
+- মামলার বর্তমান অবস্থা: ${activeCase.status || 'N/A'}
+- মামলার বিবরণ: ${activeCase.details || 'N/A'}
+ 
+আপনি এই মামলার তথ্যের ওপর ভিত্তি করে ব্যবহারকারীর প্রশ্নের উত্তর দিন এবং প্রয়োজনীয় আইনি পরামর্শ প্রদান করুন। বাংলায় উত্তর দিন।`;
+      } else {
+        systemInstruction = `আপনি একজন বাংলাদেশী লিগ্যাল অ্যাসিস্ট্যান্ট এবং এই "MDC Diary" অ্যাপের গাইড। আপনি বাংলাদেশের আইন, ধারা, সাজা, সাক্ষ্য গ্রহণের টেকনিক, জেরা করার টেকনিক, যুক্তিতর্ক, এবং দরখাস্ত লেখার নিয়ম সম্পর্কে উকিল ও মুহুরিদের সাহায্য করবেন। 
+ 
+বর্তমান ব্যবহারকারীর ধরণ: ${currentViewMode === 'lawyer' ? 'উকিল' : currentViewMode === 'clerk' ? 'মুহুরি' : currentViewMode === 'advertiser' ? 'বিজ্ঞাপনদাতা' : currentViewMode === 'client' ? 'ক্লায়েন্ট' : 'অ্যাডমিন'}। আপনি ব্যবহারকারীর ধরণ অনুযায়ী আরও প্রাসঙ্গিক পরামর্শ দিন।
+ 
+পাশাপাশি আপনি এই অ্যাপের প্রতিটি মেনু, বাটন এবং প্রসেস সম্পর্কেও তথ্য দেবেন। অ্যাপের প্রধান ফিচারগুলো হলো:
+১. ড্যাশবোর্ড: মামলার সারসংক্ষেপ এবং দ্রুত অ্যাকশন বাটন।
+২. ক্যালেন্ডার: প্রতিদিনের শুনানির তারিখ এবং ডায়েরি।
+৩. মামলার তালিকা: মামলা যোগ করা, এডিট করা এবং জয়েন করা।
+৪. রিচার্জ: সাবস্ক্রিপশন প্যাকেজ কেনা।
+৫. নোটিফিকেশন: মামলার আপডেট এবং কাজের তথ্য।
+৬. আইন লাইব্রেরি: বাংলাদেশ, ভারত ও পাকিস্তানের আইনের রেফারেন্স।
+৭. প্রফেশনাল রিসোর্স: আইনি টেমপ্লেট আপলোড ও ডাউনলোড।
+৮. অ্যাফিলিয়েট জোন: অ্যাপ শেয়ার করে পয়েন্ট অর্জন।
+৯. এমার্জেন্সি: জরুরি যোগাযোগ।
+১০. সেটিংস: থিম, ভাষা এবং প্রোফাইল পরিবর্তন।
+১১. ডকুমেন্টস: মামলার ফাইল সেভ করে রাখা (সাবস্ক্রিপশন প্রয়োজন)।
+১২. ২০ বছরের মেমোরি: আপনার মামলার আজীবন ইতিহাস।
+১৩. টাস্ক ম্যানেজমেন্ট: আপনার এবং টিমের কাজের তালিকা।
+ 
+ব্যবহারকারী অ্যাপের কোনো বাটন বা প্রসেস সম্পর্কে জানতে চাইলে সহজভাবে বুঝিয়ে বলুন। বাংলায় উত্তর দিন।`;
+      }
+
+      const response = await fetchWithAuth('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents, systemInstruction })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const responseText = data.text || '';
+
+      if (aiMode === 'case') {
+        setAiCaseMessages([...newMessages, { role: 'model', text: responseText }]);
+      } else {
+        setAiMessages([...newMessages, { role: 'model', text: responseText }]);
+      }�দী: ${activeCase.respondent || 'N/A'}
 - মামলার তারিখ: ${activeCase.date || 'N/A'}
 - পরবর্তী তারিখ: ${activeCase.nextDate || 'N/A'}
 - আদালত: ${activeCase.courtName || activeCase.court || 'N/A'}
@@ -2244,8 +2278,6 @@ export default function Dashboard({
     }
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
       const contents = newMessages.map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
@@ -2293,18 +2325,24 @@ export default function Dashboard({
 ব্যবহারকারী অ্যাপের কোনো বাটন বা প্রসেস সম্পর্কে জানতে চাইলে সহজভাবে বুঝিয়ে বলুন। বাংলায় উত্তর দিন।`;
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: contents,
-        config: {
-          systemInstruction: systemInstruction,
-        }
+      const chatResponse = await fetchWithAuth('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents, systemInstruction })
       });
 
+      if (!chatResponse.ok) {
+        const errText = await chatResponse.text();
+        throw new Error(errText || `Server error: ${chatResponse.status}`);
+      }
+
+      const chatData = await chatResponse.json();
+      const aiResponseText = chatData.text || '';
+
       if (aiMode === 'case') {
-        setAiCaseMessages([...newMessages, { role: 'model', text: response.text || '' }]);
+        setAiCaseMessages([...newMessages, { role: 'model', text: aiResponseText }]);
       } else {
-        setAiMessages([...newMessages, { role: 'model', text: response.text || '' }]);
+        setAiMessages([...newMessages, { role: 'model', text: aiResponseText }]);
       }
       
       // Increment AI usage in background
@@ -4432,7 +4470,10 @@ export default function Dashboard({
                   <div className="flex-1">
                     <MediGen 
                       points={userPoints}
-                      onPointsUpdate={(newPoints) => setUserPoints(newPoints)}
+                      onPointsUpdate={(newPoints) => {
+                        setUserPoints(newPoints);
+                        onUpdateProfile?.({ points: newPoints });
+                      }}
                     />
                   </div>
                 </div>
@@ -4574,14 +4615,16 @@ export default function Dashboard({
           <Calendar size={24} />
           <span className="text-[10px] font-bold uppercase">{t('calendar')}</span>
         </button>
-        <div className="relative -top-8">
-          <button 
-            onClick={() => setIsCaseFormOpen(true)}
-            className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-200 border-4 border-white"
-          >
-            <Plus size={28} />
-          </button>
-        </div>
+        {currentViewMode !== 'client' && currentViewMode !== 'advertiser' && (
+          <div className="relative -top-8">
+            <button 
+              onClick={() => setIsCaseFormOpen(true)}
+              className="w-14 h-14 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-200 border-4 border-white"
+            >
+              <Plus size={28} />
+            </button>
+          </div>
+        )}
         <button onClick={() => handleTabChange('cases')} className={`flex flex-col items-center gap-1 ${activeTab === 'cases' ? 'text-indigo-600' : 'text-slate-400'}`}>
           <FileText size={24} />
           <span className="text-[10px] font-bold uppercase">{t('cases')}</span>

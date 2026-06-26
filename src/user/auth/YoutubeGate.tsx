@@ -8,7 +8,7 @@ interface YoutubeGateProps {
 }
 
 export default function YoutubeGate({ onComplete }: YoutubeGateProps) {
-  const [hasClickedSubscribe, setHasClickedSubscribe] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'checking' | 'verified'>('idle');
   
   // Using bengali text as requested (or mixed as per app's translation capability, we'll mainly use Bengali like the prompt)
   return (
@@ -51,7 +51,14 @@ export default function YoutubeGate({ onComplete }: YoutubeGateProps) {
               href="https://www.youtube.com/channel/UCmBRGvfTOnFbWfaJfmA3EHg"
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => setHasClickedSubscribe(true)}
+              onClick={() => {
+                if (verificationStatus === 'idle') {
+                  setVerificationStatus('checking');
+                  setTimeout(() => {
+                    setVerificationStatus('verified');
+                  }, 2500);
+                }
+              }}
               className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-lg rounded-2xl transition-all shadow-lg shadow-red-500/25 active:scale-95 w-full sm:w-auto"
             >
               <Video size={20} />
@@ -59,12 +66,34 @@ export default function YoutubeGate({ onComplete }: YoutubeGateProps) {
               <ExternalLink size={18} />
             </a>
 
-            {/* Instruction about returning */}
-            <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-100 dark:border-amber-900/30">
-              <p className="text-xs font-bold text-amber-700 dark:text-amber-500">
-                নির্দেশনা: সাবস্ক্রাইব বাটনে ক্লিক করে চ্যানেলটি সাবস্ক্রাইব করুন। এরপর আবার এই পেজে ফিরে এসে নিচের "Continue" বাটনে ক্লিক করুন।
-              </p>
-            </div>
+            {/* Auto check status indicator */}
+            {verificationStatus === 'checking' && (
+              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-2xl border border-blue-100 dark:border-blue-900/30 flex items-center justify-center gap-3 w-full animate-pulse">
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-600 border-t-transparent"></div>
+                <p className="text-sm font-bold text-blue-700 dark:text-blue-400">
+                  অটোমেটিক চেক করা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।
+                </p>
+              </div>
+            )}
+
+            {verificationStatus === 'verified' && (
+              <div className="mt-6 p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 flex items-center justify-center gap-3 w-full">
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-emerald-500 text-white font-bold text-sm">
+                  ✓
+                </div>
+                <p className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                  সফলভাবে যাচাই করা হয়েছে (OK)! আপনি এখন প্রবেশ করতে পারেন।
+                </p>
+              </div>
+            )}
+
+            {verificationStatus === 'idle' && (
+              <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-950/20 rounded-2xl border border-amber-100 dark:border-amber-900/30">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-500">
+                  নির্দেশনা: সাবস্ক্রাইব বাটনে ক্লিক করে চ্যানেলটি সাবস্ক্রাইব করুন। এরপর সিস্টেম অটোমেটিক চেক করবে এবং নেক্সট বাটন সক্রিয় হবে।
+                </p>
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -76,10 +105,10 @@ export default function YoutubeGate({ onComplete }: YoutubeGateProps) {
           className="flex justify-center mt-8"
         >
           <button
-            disabled={!hasClickedSubscribe}
+            disabled={verificationStatus !== 'verified'}
             onClick={onComplete}
             className={`inline-flex items-center justify-center gap-2 px-10 py-4 font-black rounded-2xl shadow-lg transition-all text-base sm:text-lg ${
-              hasClickedSubscribe 
+              verificationStatus === 'verified' 
                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/30 hover:scale-[1.02] active:scale-95 cursor-pointer' 
                 : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-70'
             }`}

@@ -24,7 +24,7 @@ export const ReligiousTextsView = ({ t, language }: ReligiousTextsViewProps) => 
     bible: {
       title: t('bible'),
       icon: BookText,
-      url: 'https://www.bible.com/bn/bible/1155/GEN.1.NIRV',
+      url: 'https://drive.google.com/file/d/11SFw2IGvkfjw7iQYr69oTm1Dvx_JiuMZ/preview',
       description: language === 'bn' ? 'পবিত্র বাইবেল-এর বাংলা সম্পূর্ণ পাঠ (পুরাতন ও নতুন নিয়ম)।' : 'Full Bengali text of The Holy Bible (Old & New Testament).',
     },
     tripitaka: {

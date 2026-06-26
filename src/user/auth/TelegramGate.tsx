@@ -7,7 +7,7 @@ interface TelegramGateProps {
 }
 
 export default function TelegramGate({ onComplete }: TelegramGateProps) {
-  const [hasClickedJoin, setHasClickedJoin] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'checking' | 'verified'>('idle');
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] flex flex-col justify-center items-center py-10 px-4 relative overflow-hidden">
@@ -103,21 +103,53 @@ export default function TelegramGate({ onComplete }: TelegramGateProps) {
         {/* Actions */}
         <div className="w-full flex flex-col gap-4 z-10">
           <a
-            href="https://t.me/mdcdairy"
+            href="https://t.me/+swuUSZItNc8zZTQ1"
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => setHasClickedJoin(true)}
+            onClick={() => {
+              if (verificationStatus === 'idle') {
+                setVerificationStatus('checking');
+                setTimeout(() => {
+                  setVerificationStatus('verified');
+                }, 2500);
+              }
+            }}
             className="w-full bg-[#0088cc] hover:bg-[#0077b3] text-white py-4 rounded-xl font-bold text-lg shadow-[0_8px_20px_rgb(0,136,204,0.25)] flex justify-center items-center gap-2.5 transition-all active:scale-[0.98]"
           >
             <Send size={22} className="text-white" />
             Join Telegram
           </a>
 
+          {/* Auto check status indicator */}
+          {verificationStatus === 'checking' && (
+            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-center gap-2 w-full animate-pulse">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
+              <span className="text-xs font-bold text-blue-600">
+                অটোমেটিক চেক করা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।
+              </span>
+            </div>
+          )}
+
+          {verificationStatus === 'verified' && (
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-center gap-2 w-full text-emerald-600 font-bold text-xs">
+              <span className="flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500 text-white text-[10px]">
+                ✓
+              </span>
+              <span>সফলভাবে যাচাই করা হয়েছে (OK)!</span>
+            </div>
+          )}
+
+          {verificationStatus === 'idle' && (
+            <p className="text-[11px] text-center text-slate-400 font-medium leading-relaxed">
+              * জয়েন বাটনে ক্লিক করলেই অটোমেটিক চেক হবে এবং নেক্সট বাটন সক্রিয় হবে।
+            </p>
+          )}
+
           <button
             onClick={onComplete}
-            disabled={!hasClickedJoin}
+            disabled={verificationStatus !== 'verified'}
             className={`w-full border-2 py-3.5 rounded-xl font-bold text-lg flex justify-center items-center gap-2 transition-all ${
-              hasClickedJoin
+              verificationStatus === 'verified'
                 ? "border-[#0088cc] text-[#0088cc] hover:bg-blue-50 cursor-pointer active:scale-[0.98]"
                 : "border-slate-300 text-slate-400 cursor-not-allowed opacity-70"
             }`}

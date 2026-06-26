@@ -17,7 +17,9 @@ import {
   ChevronRight,
   Target,
   Trophy,
-  CheckCircle2
+  CheckCircle2,
+  RotateCw,
+  Sparkles
 } from 'lucide-react';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
 import { fetchWithAuth } from '../../lib/api';
@@ -50,6 +52,64 @@ export default function AffiliateZone({ userType, userId, referralCode, t = (k) 
   const [uploadedProofs, setUploadedProofs] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [checkingLinkId, setCheckingLinkId] = useState<string | null>(null);
+
+  const handleCheck = async (linkId: string) => {
+    // Check if clicked
+    const clicks = clickCounts[linkId] || 0;
+    if (clicks === 0) {
+      alert(language === 'bn' 
+        ? 'আপনি এখনও এই লিংকটি ভিজিট করেননি। অনুগ্রহ করে প্রথমে লিংকে ক্লিক করে সাইন আপ করুন।' 
+        : 'You have not visited this link yet. Please click the link to visit and sign up first.');
+      return;
+    }
+
+    setCheckingLinkId(linkId);
+    try {
+      const response = await fetchWithAuth('/api/affiliate/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ link_id: linkId })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to verify signup');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Mark as uploaded/proved so status updates in UI
+        const nextProofs = { ...uploadedProofs, [linkId]: true };
+        setUploadedProofs(nextProofs);
+        localStorage.setItem(`aff_proofs_${userId}`, JSON.stringify(nextProofs));
+        
+        alert(data.message || (language === 'bn' ? 'সফল হয়েছে! সাইন আপ ভেরিফাইড।' : 'Success! Signup verified.'));
+        
+        if (typeof onUpdateProfile === 'function') {
+          onUpdateProfile({ points: 100, subscription_package: 'special' });
+        }
+      } else {
+        alert(data.error || (language === 'bn' ? 'সাইন আপ খুঁজে পাওয়া যায়নি।' : 'Signup not found.'));
+      }
+    } catch (error) {
+      console.error('Error checking affiliate signup:', error);
+      alert(language === 'bn' 
+        ? 'ভেরিফিকেশনে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।' 
+        : 'Verification failed. Please try again.');
+    } finally {
+      setCheckingLinkId(null);
+    }
+  };
+
+  const categoryTitles: Record<string, { bn: string; en: string }> = {
+    shopping: { bn: 'শপিং ও ই-কমার্স', en: 'Shopping & E-Commerce' },
+    food: { bn: 'খাবার ও রেস্টুরেন্ট', en: 'Food & Restaurant' },
+    learning: { bn: 'শিক্ষা ও অনলাইন কোর্স', en: 'Learning & Courses' },
+    hosting: { bn: 'ডোমেন ও হোস্টিং', en: 'Domain & Hosting' },
+    finance: { bn: 'লেনদেন ও ফাইন্যান্স', en: 'Finance & Payments' },
+    digital_tools: { bn: 'ডিজিটাল টুলস', en: 'Digital Tools' }
+  };
 
   useEffect(() => {
     // Load click counts from localStorage on mount
@@ -195,7 +255,28 @@ export default function AffiliateZone({ userType, userId, referralCode, t = (k) 
         { id: 'shopify', name: 'Shopify', url: 'https://www.shopify.com/' },
       ]
     }
-  ];
+  ].map(cat => ({
+    ...cat,
+    links: cat.links.filter(link => {
+      try {
+        const urlObj = new URL(link.url);
+        const search = urlObj.search.toLowerCase();
+        return search.includes('ref=') || 
+               search.includes('aff=') || 
+               search.includes('referral=') || 
+               search.includes('promo=') || 
+               search.includes('tag=') || 
+               search.includes('clickid=') || 
+               search.includes('affiliate=');
+      } catch (e) {
+        return false;
+      }
+    })
+  })).filter(cat => cat.links.length > 0);
+
+  const filteredCategories = activeCategory === 'all'
+    ? categories
+    : categories.filter(cat => cat.id === activeCategory);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -214,68 +295,125 @@ export default function AffiliateZone({ userType, userId, referralCode, t = (k) 
         </div>
       </div>
 
+      {/* Category Tabs Menu */}
+      <div className="bg-slate-50 p-2 rounded-3xl border border-slate-100 flex gap-2 overflow-x-auto scrollbar-none shadow-inner">
+        <button
+          onClick={() => setActiveCategory('all')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+            activeCategory === 'all'
+              ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100'
+              : 'bg-white text-slate-600 hover:bg-slate-100/50 border border-slate-100'
+          }`}
+        >
+          {language === 'bn' ? 'সব ক্যাটাগরি' : 'All Categories'}
+        </button>
+        {categories.map((cat) => {
+          const title = categoryTitles[cat.id]
+            ? (language === 'bn' ? categoryTitles[cat.id].bn : categoryTitles[cat.id].en)
+            : cat.title;
+          return (
+            <button
+              key={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                activeCategory === cat.id
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100'
+                  : 'bg-white text-slate-600 hover:bg-slate-100/50 border border-slate-100'
+              }`}
+            >
+              <span className={activeCategory === cat.id ? 'text-white' : ''}>{cat.icon}</span>
+              <span>{title}</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {categories.map((category) => (
-          <div key={category.id} className="bg-white rounded-[2rem] shadow-xl shadow-slate-100/50 border border-slate-100 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
-              <div className="p-3 bg-white rounded-2xl shadow-sm">
-                {category.icon}
-              </div>
-              <h3 className="font-black text-slate-900 uppercase tracking-wider text-sm">{category.id}</h3>
-            </div>
-            <div className="p-4 space-y-2">
-              {category.links.map((link) => (
-                <div key={link.id} className="group p-3 hover:bg-indigo-50/50 rounded-2xl transition-all">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => handleLinkClick(link.id, link.url)}
-                      className="flex-1 text-left"
-                    >
-                      <h4 className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors uppercase">{link.name}</h4>
-                      {clickCounts[link.id] > 0 && (
-                        <span className="text-[9px] font-black text-indigo-400 uppercase">{clickCounts[link.id]} {t('clicks')}</span>
-                      )}
-                    </button>
-                    <ExternalLink size={14} className="text-slate-400" />
+        {filteredCategories.map((category) => {
+          const title = categoryTitles[category.id]
+            ? (language === 'bn' ? categoryTitles[category.id].bn : categoryTitles[category.id].en)
+            : category.title;
+          return (
+            <div key={category.id} className="bg-white rounded-[2rem] shadow-xl shadow-slate-100/50 border border-slate-100 overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-4">
+                  <div className="p-3 bg-white rounded-2xl shadow-sm">
+                    {category.icon}
                   </div>
-                  
-                  <div className="mt-4 pt-4 border-t border-slate-100">
-                    {link.id === 'martnix' && (
-                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 mb-3">
-                        <p className="text-[10px] font-bold text-emerald-700 leading-tight">
-                          {['lawyer', 'clerk'].includes(userType || '') 
-                            ? 'সাইন আপ করলে ১মাস ডায়ামন্ড সাবস্ক্রিপশন ফ্রি' 
-                            : 'সাইন আপ করলেই ১০০ পয়েন্ট ফ্রি (১০টি AI প্রশ্ন)!'}
-                        </p>
-                      </div>
-                    )}
-                    
-                    <button
-                      onClick={() => {
-                        setSelectedLinkId(link.id);
-                        fileInputRef.current?.click();
-                      }}
-                      disabled={uploadingLinkId === link.id || uploadedProofs[link.id]}
-                      className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                        uploadedProofs[link.id]
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100'
-                      }`}
-                    >
-                      {uploadingLinkId === link.id ? (
-                        <span className="animate-pulse">আপলোড হচ্ছে...</span>
-                      ) : uploadedProofs[link.id] ? (
-                        <><CheckCircle2 size={14} />প্রমাণ জমা হয়েছে</>
-                      ) : (
-                        <><Upload size={14} />স্ক্রিনশট জমা দিন</>
-                      )}
-                    </button>
-                  </div>
+                  <h3 className="font-black text-slate-900 tracking-wider text-sm">{title}</h3>
                 </div>
-              ))}
+                <div className="p-4 space-y-2">
+                  {category.links.map((link) => (
+                    <div key={link.id} className="group p-3 hover:bg-indigo-50/50 rounded-2xl transition-all">
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => handleLinkClick(link.id, link.url)}
+                          className="flex-1 text-left"
+                        >
+                          <h4 className="text-sm font-bold text-slate-700 group-hover:text-indigo-600 transition-colors uppercase">{link.name}</h4>
+                          {clickCounts[link.id] > 0 && (
+                            <span className="text-[9px] font-black text-indigo-400 uppercase">{clickCounts[link.id]} {t('clicks')}</span>
+                          )}
+                        </button>
+                        <ExternalLink size={14} className="text-slate-400" />
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t border-slate-100">
+                        {link.id === 'martnix' && (
+                          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 mb-3">
+                            <p className="text-[10px] font-bold text-emerald-700 leading-tight">
+                              {['lawyer', 'clerk'].includes(userType || '') 
+                                ? 'সাইন আপ করলে ১মাস ডায়ামন্ড সাবস্ক্রিপশন ফ্রি' 
+                                : 'সাইন আপ করলেই ১০০ পয়েন্ট ফ্রি (১০টি AI প্রশ্ন)!'}
+                            </p>
+                          </div>
+                        )}
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => {
+                              setSelectedLinkId(link.id);
+                              fileInputRef.current?.click();
+                            }}
+                            disabled={uploadingLinkId === link.id || uploadedProofs[link.id]}
+                            className={`w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                              uploadedProofs[link.id]
+                                ? 'bg-emerald-100 text-emerald-700 col-span-2'
+                                : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100'
+                            }`}
+                          >
+                            {uploadingLinkId === link.id ? (
+                              <span className="animate-pulse">আপলোড...</span>
+                            ) : uploadedProofs[link.id] ? (
+                              <><CheckCircle2 size={12} />প্রমাণিত হয়েছে</>
+                            ) : (
+                              <><Upload size={12} />প্রমাণ দিন</>
+                            )}
+                          </button>
+
+                          {!uploadedProofs[link.id] && (
+                            <button
+                              onClick={() => handleCheck(link.id)}
+                              disabled={checkingLinkId === link.id}
+                              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-100 border border-transparent"
+                            >
+                              {checkingLinkId === link.id ? (
+                                <RotateCw size={12} className="animate-spin" />
+                              ) : (
+                                <Sparkles size={12} />
+                              )}
+                              <span>চেক করুন</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6 flex items-start gap-4 text-amber-800">

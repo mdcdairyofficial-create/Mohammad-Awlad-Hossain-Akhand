@@ -11,7 +11,6 @@ import { onSnapshot, doc } from "firebase/firestore";
 import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
 import YoutubeGate from "./user/auth/YoutubeGate";
-import SocialGate from "./user/auth/SocialGate";
 import Dashboard from "./user/dashboard/Dashboard";
 import AdminDashboard from "./admin/AdminDashboard";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -56,14 +55,11 @@ interface UserProfile {
 import { fetchWithAuth } from "./lib/api";
 
 export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(() => {
     const savedUser = localStorage.getItem("appUser");
     return savedUser ? JSON.parse(savedUser) : null;
-  });
-  const [socialCompleted, setSocialCompleted] = useState(() => {
-    return localStorage.getItem("socialVerificationCompleted") === "true";
   });
   const [youtubeCompleted, setYoutubeCompleted] = useState(() => {
     return localStorage.getItem("youtubeVerifiedCompleted") === "true";
@@ -96,31 +92,41 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setAuthReady(true);
 
-      // If we have a Firebase user but no local app user, attempt to sync/restore
-      if (fbUser && !user) {
-        console.log("[App] Firebase session found, restoring user profile...");
-        try {
-          const response = await fetchWithAuth("/api/auth/firebase-sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              firebaseUid: fbUser.uid,
-              email: fbUser.email,
-              mobile: fbUser.phoneNumber,
-              fullName: fbUser.displayName,
-              profilePicture: fbUser.photoURL,
-            }),
-          });
+      if (fbUser) {
+        // If we have a Firebase user but no local app user, attempt to sync/restore
+        if (!user) {
+          console.log("[App] Firebase session found, restoring user profile...");
+          try {
+            const response = await fetchWithAuth("/api/auth/firebase-sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                firebaseUid: fbUser.uid,
+                email: fbUser.email,
+                mobile: fbUser.phoneNumber,
+                fullName: fbUser.displayName,
+                profilePicture: fbUser.photoURL,
+              }),
+            });
 
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              console.log("[App] Session restored successfully");
-              setUser(data.user);
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success) {
+                console.log("[App] Session restored successfully");
+                setUser(data.user);
+              }
             }
+          } catch (err) {
+            console.error("[App] Failed to restore session:", err);
           }
-        } catch (err) {
-          console.error("[App] Failed to restore session:", err);
+        }
+      } else {
+        // If there is no active Firebase session, but we have a client state with firebaseUid,
+        // it means their firebase session has expired/logged out. Clear local user.
+        if (user && user.firebaseUid) {
+          console.log("[App] No active Firebase session, logging out local user...");
+          localStorage.removeItem("appUser");
+          setUser(null);
         }
       }
     });
@@ -136,14 +142,23 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
-    if (user?.id && authReady) {
+    // Only fetch profile from the backend if they have an active Firebase session.
+    // If user.firebaseUid is missing, they are in developer/bypass mode, so we skip backend sync.
+    if (user?.id && user?.firebaseUid && authReady) {
+      if (!auth.currentUser) {
+        console.warn("[App] authReady is true but auth.currentUser is null. Skipping profile fetch.");
+        return;
+      }
+
       const fetchProfile = async (retryCount = 0) => {
         if (!navigator.onLine) return;
 
         try {
           const res = await fetchWithAuth(`/api/users/${user.id}`);
-          if (res.status === 404) {
-            handleLogout();
+          if (res.status === 401 || res.status === 404) {
+            console.warn(`[App] Profile fetch returned ${res.status}. Logging out local user...`);
+            localStorage.removeItem("appUser");
+            setUser(null);
             return;
           }
           if (!res.ok) throw new Error(`Status: ${res.status}`);
@@ -336,12 +351,13 @@ export default function App() {
   }, [user?.firebaseUid]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 2500);
-
-    return () => clearTimeout(timer);
-  }, []);
+    if (showSplash) {
+      const timer = setTimeout(() => {
+        setShowSplash(false);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [showSplash]);
 
   const handleAuthSuccess = (profile: UserProfile) => {
     setUser(profile);
@@ -353,9 +369,7 @@ export default function App() {
     } catch (e) {
       console.error("Firebase signOut failed:", e);
     }
-    localStorage.removeItem("socialVerificationCompleted");
     setUser(null);
-    setSocialCompleted(false);
   };
 
   const handleUpdateProfile = (updatedProfile: Partial<UserProfile>) => {
@@ -381,29 +395,12 @@ export default function App() {
               }}
             />
           ) : !user ? (
-            !socialCompleted ? (
-              <SocialGate
-                onComplete={() => {
-                  localStorage.setItem("socialVerificationCompleted", "true");
-                  setSocialCompleted(true);
-                }}
-              />
-            ) : (
-              <Auth onAuthSuccess={handleAuthSuccess} />
-            )
+            <Auth onAuthSuccess={handleAuthSuccess} />
           ) : !youtubeCompleted ? (
             <YoutubeGate
               onComplete={() => {
                 localStorage.setItem("youtubeVerifiedCompleted", "true");
                 setYoutubeCompleted(true);
-
-                // Only first day users need to see the splash screen right after YouTube
-                // Wait, Actually we want the Splash here. But for Facebook gate, if we show Splah here then facebook will re-render if it's the second day.
-                // So, let's just do it directly.
-                if (!showFacebookGate && !showTelegramGate) {
-                  setShowSplash(true);
-                  setTimeout(() => setShowSplash(false), 2500);
-                }
               }}
             />
           ) : showFacebookGate ? (
@@ -412,10 +409,6 @@ export default function App() {
                 localStorage.setItem("facebookVerifiedCompleted", "true");
                 setFacebookCompleted(true);
                 setShowFacebookGate(false);
-                if (!showTelegramGate) {
-                  setShowSplash(true);
-                  setTimeout(() => setShowSplash(false), 2500);
-                }
               }}
             />
           ) : showTelegramGate ? (
@@ -425,7 +418,6 @@ export default function App() {
                 setTelegramCompleted(true);
                 setShowTelegramGate(false);
                 setShowSplash(true);
-                setTimeout(() => setShowSplash(false), 2500);
               }}
             />
           ) : (
@@ -472,7 +464,8 @@ export default function App() {
 
         {/* Demo toggle for authentication - remove in production */}
         {!showSplash && (
-          <div className="fixed bottom-24 right-4 z-[9999] opacity-0 hover:opacity-100 transition-opacity flex flex-col gap-2 items-end">
+          <div className="fixed bottom-4 left-4 z-[9999] flex flex-col gap-2 items-start bg-white p-4 rounded-xl shadow-2xl border-2 border-indigo-200">
+            <span className="text-xs font-bold text-indigo-600 mb-1">Developer Tools</span>
             <button
               onClick={() => {
                 localStorage.removeItem("youtubeVerifiedCompleted");
@@ -481,15 +474,15 @@ export default function App() {
                 localStorage.removeItem("facebookVerifiedCompleted");
                 localStorage.removeItem("firstSessionDate");
                 setFacebookCompleted(false);
-                
+
                 localStorage.removeItem("telegramVerifiedCompleted");
                 localStorage.removeItem("secondSessionDate");
                 setTelegramCompleted(false);
-                
+
                 setShowFacebookGate(true); // Treat as day 2 since they cleared it to test
-                setShowTelegramGate(false);
+                setShowTelegramGate(true);
               }}
-              className="bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 shadow-sm"
+              className="bg-red-50 hover:bg-red-100 border border-red-200 text-xs px-4 py-2 rounded text-red-600 shadow-sm font-semibold transition-colors"
               title="Reset UI Gates so you can see them again"
             >
               Reset UI Gates
@@ -512,9 +505,9 @@ export default function App() {
                   });
                 }
               }}
-              className="bg-white/80 backdrop-blur-sm border border-slate-200 text-[10px] px-2 py-1 rounded-md text-slate-400 shadow-sm"
+              className="bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs px-4 py-2 rounded text-blue-600 shadow-sm font-semibold transition-colors w-full text-left"
             >
-              {user ? "লগ আউট" : "লগ ইন"}
+              {user ? "লগ আউট (Dev)" : "লগ ইন (Dev)"}
             </button>
           </div>
         )}

@@ -324,7 +324,7 @@ export const HomeView = ({
               const today = new Date();
               return d.toDateString() === today.toDateString();
             }).length, icon: Zap, color: 'bg-gradient-to-tr from-amber-500 to-yellow-600', shadow: 'shadow-amber-500/5' },
-          { label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-gradient-to-tr from-rose-500 to-red-650', shadow: 'shadow-rose-500/5' },
+          ...(userType !== 'client' ? [{ label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-gradient-to-tr from-rose-500 to-red-650', shadow: 'shadow-rose-500/5' }] : []),
         ].map((stat, idx) => (
           <motion.div
             key={idx}

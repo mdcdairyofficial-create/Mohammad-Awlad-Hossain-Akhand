@@ -132,9 +132,12 @@ Always keep Scientific/Medical names in brackets.`;
         onPointsUpdate(data.points);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating formula:', error);
-      setResult(lang === 'bn' ? 'দুঃখিত, একটি ত্রুটি হয়েছে। আবার চেষ্টা করুন।' : 'Sorry, an error occurred. Please try again.');
+      const suffix = error.message ? `\n\n**Error details:** ${error.message}` : '';
+      setResult(lang === 'bn' 
+        ? `দুঃখিত, একটি ত্রুটি হয়েছে। আবার চেষ্টা করুন।${suffix}` 
+        : `Sorry, an error occurred. Please try again.${suffix}`);
     } finally {
       setLoading(false);
     }

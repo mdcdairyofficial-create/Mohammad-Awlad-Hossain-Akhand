@@ -155,5 +155,9 @@ service cloud.firestore {
     match /archive_cases/{caseId} {
       allow list, read, create, update, delete: if isSignedIn() || request.auth == null || isAdmin();
     }
+
+    match /points_history/{historyId} {
+      allow list, read, create, update, delete: if isSignedIn() || request.auth == null || isAdmin();
+    }
   }
 }
