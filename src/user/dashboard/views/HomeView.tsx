@@ -218,69 +218,71 @@ export const HomeView = ({
             </motion.div>
 
             {/* Efficiency Dashboard for User */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] shadow-inner"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 bg-amber-400 rounded-lg text-amber-900">
-                    <Zap size={16} fill="currentColor" />
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">সিস্টেম এফিসিয়েন্সি</span>
-                </div>
-                <div className="text-[10px] font-black bg-emerald-500 px-2 py-0.5 rounded-full text-white">LIVE</div>
-              </div>
-
-              <div className="space-y-4">
-                {isPremium && (
-                  <div className="bg-white/20 backdrop-blur-md border border-white/30 p-3 rounded-2xl flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-amber-400 rounded-xl text-amber-900 shrink-0">
-                      <Award size={20} fill="currentColor" />
+            {userType !== 'client' && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] shadow-inner"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-amber-400 rounded-lg text-amber-900">
+                      <Zap size={16} fill="currentColor" />
                     </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase text-indigo-100 leading-none mb-1">লটারি স্ট্যাটাস</p>
-                      <p className="text-sm font-bold text-white">সাপ্তাহিক প্রতিটি লটারির জন্য এলিজিবেল</p>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">সিস্টেম এফিসিয়েন্সি</span>
+                  </div>
+                  <div className="text-[10px] font-black bg-emerald-500 px-2 py-0.5 rounded-full text-white">LIVE</div>
+                </div>
+
+                <div className="space-y-4">
+                  {isPremium && (
+                    <div className="bg-white/20 backdrop-blur-md border border-white/30 p-3 rounded-2xl flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-amber-400 rounded-xl text-amber-900 shrink-0">
+                        <Award size={20} fill="currentColor" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase text-indigo-100 leading-none mb-1">লটারি স্ট্যাটাস</p>
+                        <p className="text-sm font-bold text-white">সাপ্তাহিক প্রতিটি লটারির জন্য এলিজিবেল</p>
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="flex justify-between text-xs font-bold mb-1">
+                      <span>{language === 'bn' ? 'ডেটা সাশ্রয়' : 'Data Saving'}</span>
+                      <span className="text-amber-300">৯৫%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-400 w-[95%] rounded-full shadow-[0_0_10px_rgba(251,191,36,0.5)]"></div>
                     </div>
                   </div>
-                )}
-                <div>
-                  <div className="flex justify-between text-xs font-bold mb-1">
-                    <span>{language === 'bn' ? 'ডেটা সাশ্রয়' : 'Data Saving'}</span>
-                    <span className="text-amber-300">৯৫%</span>
-                  </div>
-                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400 w-[95%] rounded-full shadow-[0_0_10px_rgba(251,191,36,0.5)]"></div>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
-                    <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'ডেটা রিড' : 'DATA READ'}</p>
-                    <p className="text-lg font-black">{showAllCases ? 'HIGH' : 'LOW'}</p>
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'ডেটা রিড' : 'DATA READ'}</p>
+                      <p className="text-lg font-black">{showAllCases ? 'HIGH' : 'LOW'}</p>
+                    </div>
+                    <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
+                      <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'সেশন কস্ট' : 'SESSION COST'}</p>
+                      <p className="text-lg font-black">৳{estimatedBillTaka.toFixed(2)}</p>
+                    </div>
                   </div>
-                  <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
-                    <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'সেশন কস্ট' : 'SESSION COST'}</p>
-                    <p className="text-lg font-black">৳{estimatedBillTaka.toFixed(2)}</p>
-                  </div>
-                </div>
 
-                <button
-                  onClick={onToggleShowAll}
-                  className={`w-full py-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
-                    showAllCases 
-                      ? 'bg-white text-indigo-600 hover:bg-slate-100' 
-                      : 'bg-indigo-500 text-white hover:bg-indigo-400 shadow-lg shadow-indigo-900/40'
-                  }`}
-                >
-                  {showAllCases 
-                    ? (language === 'bn' ? 'অপ্টিমাইজ মুড অন করুন' : 'Turn On Optimized Mode')
-                    : (language === 'bn' ? 'সব মামলা লোড করুন' : 'Load All Cases')
-                  }
-                </button>
-              </div>
-            </motion.div>
+                  <button
+                    onClick={onToggleShowAll}
+                    className={`w-full py-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+                      showAllCases 
+                        ? 'bg-white text-indigo-600 hover:bg-slate-100' 
+                        : 'bg-indigo-500 text-white hover:bg-indigo-400 shadow-lg shadow-indigo-900/40'
+                    }`}
+                  >
+                    {showAllCases 
+                      ? (language === 'bn' ? 'অপ্টিমাইজ মুড অন করুন' : 'Turn On Optimized Mode')
+                      : (language === 'bn' ? 'সব মামলা লোড করুন' : 'Load All Cases')
+                    }
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </div>
           
           <div className="flex flex-wrap gap-4 mt-8 justify-center sm:justify-start">
@@ -309,15 +311,17 @@ export const HomeView = ({
         {[
           { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab('recharge') },
           { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-gradient-to-tr from-blue-600 to-indigo-600', shadow: 'shadow-indigo-500/5' },
-          { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-gradient-to-tr from-indigo-500 to-purple-600', shadow: 'shadow-indigo-500/5' },
-          { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-gradient-to-tr from-amber-500 to-orange-600', shadow: 'shadow-amber-500/5' },
-          { label: t('upcoming_dates'), value: cases.filter(c => {
-              if (!c.nextDate) return false;
-              const d = new Date(c.nextDate);
-              const today = new Date();
-              today.setHours(0,0,0,0);
-              return d >= today;
-            }).length, icon: Calendar, color: 'bg-gradient-to-tr from-emerald-500 to-teal-600', shadow: 'shadow-emerald-500/5' },
+          ...(userType !== 'client' ? [
+            { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-gradient-to-tr from-indigo-500 to-purple-600', shadow: 'shadow-indigo-500/5' },
+            { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-gradient-to-tr from-amber-500 to-orange-600', shadow: 'shadow-amber-500/5' },
+            { label: t('upcoming_dates'), value: cases.filter(c => {
+                if (!c.nextDate) return false;
+                const d = new Date(c.nextDate);
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                return d >= today;
+              }).length, icon: Calendar, color: 'bg-gradient-to-tr from-emerald-500 to-teal-600', shadow: 'shadow-emerald-500/5' }
+          ] : []),
           { label: t('today_cases'), value: cases.filter(c => {
               if (!c.nextDate) return false;
               const d = new Date(c.nextDate);

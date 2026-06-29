@@ -3,6 +3,8 @@ import { fetchWithAuth } from '../../lib/api';
 
 export const AdBanner = ({ className = "", theme = "light", containerClassName = "", innerClassName = "", isPremium = false, adSlot = "general" }: { className?: string, theme?: string, containerClassName?: string, innerClassName?: string, isPremium?: boolean, adSlot?: string }) => {
   const [activeAds, setActiveAds] = useState<any[]>([]);
+  const [allAds, setAllAds] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,8 +19,9 @@ export const AdBanner = ({ className = "", theme = "light", containerClassName =
         const response = await fetchWithAuth(`/api/ads?slot=${encodeURIComponent(adSlot)}`);
         if (response.ok) {
           const data = await response.json();
-          // Logic: Max 2 ads per space per visit
-          setActiveAds(data.ads?.slice(0, 2) || []);
+          const ads = data.ads || [];
+          setAllAds(ads);
+          setActiveAds(ads.slice(0, 2));
         }
       } catch (err) {
         console.error("Ad fetch error:", err);
@@ -29,6 +32,26 @@ export const AdBanner = ({ className = "", theme = "light", containerClassName =
     
     fetchAds();
   }, [adSlot, isPremium]);
+
+  useEffect(() => {
+    if (allAds.length <= 2) {
+      setActiveAds(allAds);
+      return;
+    }
+
+    // Rotates the active visible ads sequentially (serial-based rotation) every 4 seconds
+    const interval = setInterval(() => {
+      setCurrentIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % allAds.length;
+        const firstAd = allAds[nextIndex];
+        const secondAd = allAds[(nextIndex + 1) % allAds.length];
+        setActiveAds([firstAd, secondAd]);
+        return nextIndex;
+      });
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [allAds]);
 
   const hasElectionAd = activeAds.some(ad => ad.type === 'Election');
 

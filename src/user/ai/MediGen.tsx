@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Stethoscope, Building2, Globe, Languages, Printer, ExternalLink, Loader2, Copy, Award } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { AdBanner } from '../dashboard/AdBanner';
 import { fetchWithAuth } from '../../lib/api';
-import { auth } from '../../firebase';
+import { auth, db } from '../../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 type Language = 'en' | 'bn';
 
@@ -16,6 +17,22 @@ export default function MediGen({ points = 0, onPointsUpdate }: MediGenProps) {
   const [lang, setLang] = useState<Language>('bn'); 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string>('');
+  const [yellowBalls, setYellowBalls] = useState<number | null>(null);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setYellowBalls(data.yellow_balls_count || 0);
+      }
+    }, (error) => {
+      console.error("Real-time snapshot error in MediGen:", error);
+    });
+    return () => unsubscribe();
+  }, []);
   const [references, setReferences] = useState<{ uri: string; title: string }[]>([]);
 
   const [patientName, setPatientName] = useState('');
@@ -118,7 +135,9 @@ Always keep Scientific/Medical names in brackets.`;
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 400) {
-            setResult(lang === 'bn' ? '### আপনার পর্যাপ্ত পয়েন্ট নেই।\nদয়া করে রিচার্জ করুন।' : '### Insufficient points.\nPlease recharge.');
+            setResult(lang === 'bn' 
+              ? '### আপনার পর্যাপ্ত হলুদ বল নেই।\nমেডিজেন এর সুবিধা ব্যবহার করতে ১ টি হলুদ বল 🟡 খরচ হবে। অনুগ্রহ করে বিজ্ঞাপন দেখে বা টাকা কনভার্ট করে হলুদ বল সংগ্রহ করুন।' 
+              : '### Insufficient yellow balls.\nUsing MediGen requires 1 Yellow Ball 🟡. Please watch ads or convert balance to get yellow balls.');
             return;
         }
         throw new Error(errorData.error || `Failed to generate formula: ${response.statusText}`);
@@ -128,8 +147,8 @@ Always keep Scientific/Medical names in brackets.`;
       setResult(data.text || '');
       setReferences(data.references || []);
       
-      if (data.points !== undefined && onPointsUpdate) {
-        onPointsUpdate(data.points);
+      if (data.yellowBallsCount !== undefined && onPointsUpdate) {
+        onPointsUpdate(data.yellowBallsCount);
       }
 
     } catch (error: any) {
@@ -161,7 +180,7 @@ Always keep Scientific/Medical names in brackets.`;
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-xs font-bold">
             <Award size={14} />
-            <span>{points} {lang === 'bn' ? 'পয়েন্ট' : 'Points'}</span>
+            <span>{yellowBalls !== null ? yellowBalls : points} {lang === 'bn' ? 'হলুদ বল 🟡' : 'Yellow Balls 🟡'}</span>
           </div>
           <button 
             onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}

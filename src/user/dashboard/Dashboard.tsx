@@ -276,6 +276,7 @@ interface DashboardProps {
   redBallsCount?: number;
   isSuspended?: boolean;
   suspensionReason?: string;
+  isAdvertiser?: boolean;
   onLogout: () => void;
   onUpdateProfile?: (updatedProfile: any) => void;
 }
@@ -310,6 +311,7 @@ export default function Dashboard({
   redBallsCount = 0,
   isSuspended = false,
   suspensionReason = '',
+  isAdvertiser = false,
   onLogout, 
   onUpdateProfile 
 }: DashboardProps) {
@@ -1375,7 +1377,7 @@ export default function Dashboard({
       title: t('support_account'),
       items: [
         { id: 'notifications', label: t('notifications'), icon: Bell },
-        { id: 'my_points', label: language === 'bn' ? 'আমার পয়েন্ট' : 'My Points', icon: Award },
+        { id: 'my_points', label: language === 'bn' ? 'বল গেম ও ওয়ালেট 🔴' : 'Ball Game & Wallet 🔴', icon: Award },
       ]
     },
     {
@@ -1429,7 +1431,7 @@ export default function Dashboard({
       title: t('income_offers'),
       items: [
         { id: 'affiliate_zone', label: t('affiliate_zone'), icon: ShoppingCart },
-        { id: 'my_points', label: language === 'bn' ? `আমার পয়েন্ট (${userPoints})` : `My Points (${userPoints})`, icon: Award },
+        { id: 'my_points', label: language === 'bn' ? 'বল গেম ও ওয়ালেট 🔴' : 'Ball Game & Wallet 🔴', icon: Award },
         { id: 'news', label: t('news'), icon: Newspaper },
         { id: 'media', label: t('media'), icon: MonitorPlay },
       ]
@@ -2528,6 +2530,27 @@ export default function Dashboard({
                 </select>
               </div>
             )}
+            {/* Multi-role/Advertiser View Mode Selector */}
+            {!(userType === 'admin' || userType === 'super_admin' || userType === 'country_manager') && isAdvertiser && (
+              <div className="flex items-center gap-2 mr-2 bg-amber-50 p-1 rounded-lg border border-amber-200 shadow-sm">
+                <Shield size={14} className="text-amber-600 ml-1" />
+                <select
+                  value={currentViewMode}
+                  onChange={(e) => {
+                    setCurrentViewMode(e.target.value as any);
+                    setActiveTab('dashboard'); // Reset active tab on switch
+                  }}
+                  className="text-[10px] bg-transparent border-none outline-none font-black text-amber-800 px-1 cursor-pointer uppercase"
+                >
+                  {userType !== 'advertiser' && (
+                    <option value={userType}>
+                      {userType === 'lawyer' ? t('role_lawyer') : userType === 'clerk' ? t('role_clerk') : t('role_client')}
+                    </option>
+                  )}
+                  <option value="advertiser">{t('role_advertiser')}</option>
+                </select>
+              </div>
+            )}
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ${
               currentViewMode === 'lawyer' ? 'bg-blue-100 text-blue-700' : 
               currentViewMode === 'clerk' ? 'bg-indigo-100 text-indigo-700' : 
@@ -2870,6 +2893,7 @@ export default function Dashboard({
                 <PointsView 
                   language={language} 
                   userPoints={userPoints} 
+                  userType={currentViewMode}
                   onPointsUpdate={(pts) => {
                     setUserPoints(pts);
                     onUpdateProfile?.({ points: pts });

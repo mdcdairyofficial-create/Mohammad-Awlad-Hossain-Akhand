@@ -41,6 +41,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [resetMode, setResetMode] = useState(false);
   const [userType, setUserType] = useState<UserRole>('lawyer');
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    sessionStorage.setItem("registrationUserType", userType);
+  }, [userType]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -172,8 +176,24 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         
         // 1. Firebase Auth Registration
         console.log(`[Auth] Registering with: ${firebaseEmail}`);
-        const userCred = await createUserWithEmailAndPassword(auth, firebaseEmail, formData.password);
-        const fbUser = userCred.user;
+        let fbUser: any;
+        try {
+          const userCred = await createUserWithEmailAndPassword(auth, firebaseEmail, formData.password);
+          fbUser = userCred.user;
+        } catch (fbErr: any) {
+          if (fbErr.code === 'auth/email-already-in-use') {
+            console.log(`[Auth] Email/mobile already in use. Verifying password and registering dual-role...`);
+            try {
+              const userCred = await signInWithEmailAndPassword(auth, firebaseEmail, formData.password);
+              fbUser = userCred.user;
+            } catch (signInErr: any) {
+              console.warn(`[Auth] Password verification failed for existing account:`, signInErr);
+              throw new Error("এই মোবাইল/ইমেইল দিয়ে ইতিমধ্যে অ্যাকাউন্ট খোলা আছে। অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।");
+            }
+          } else {
+            throw fbErr;
+          }
+        }
 
         // 2. Server Profile Registration (SQLite)
         console.log(`[Auth] Syncing registration to server for UID: ${fbUser.uid}`);
@@ -197,8 +217,8 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
 
-        // 3. Firestore Backup
-        const userToSaveFirestore = {
+        // 3. Firestore Backup (using merge to preserve existing cases, points, and wallet balance)
+        const userToSaveFirestore: any = {
           firebase_uid: data.user.firebase_uid,
           name: data.user.fullName,
           email: data.user.email,
@@ -209,14 +229,14 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           country: data.user.country,
           referral_code: data.user.referralCode || '',
           referred_by: data.user.referredBy || '',
-          is_approved: false,
-          wallet_balance: 0,
-          points: 0,
-          ai_questions_count: 0,
-          createdAt: new Date().toISOString()
         };
+        if (data.user.isAdvertiser !== undefined) {
+          userToSaveFirestore.isAdvertiser = data.user.isAdvertiser;
+          userToSaveFirestore.is_advertiser = data.user.isAdvertiser;
+        }
+
         try {
-          await setDoc(doc(db, 'users', fbUser.uid), userToSaveFirestore);
+          await setDoc(doc(db, 'users', fbUser.uid), userToSaveFirestore, { merge: true });
         } catch (e) {
           handleFirestoreError(e, OperationType.WRITE, `users/${fbUser.uid}`);
         }
@@ -409,7 +429,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               />
             </div>
 
-            {!resetMode && (
+            {!resetMode && !isLogin && (
               <>
                 <div className="bg-slate-50 p-2 rounded-2xl flex flex-wrap gap-2 mb-2 border border-slate-200">
                   {([ 'lawyer', 'clerk', 'client', 'bar_association', 'advertiser'] as UserRole[]).map((type) => (

@@ -354,7 +354,22 @@ const authenticate = async (req: any, res: any, next: any) => {
         const snapshot = await db.collection("users").where("firebase_uid", "==", decodedToken.uid).limit(1).get();
         if (!snapshot.empty) {
           const userDoc = snapshot.docs[0];
-          req.profile = { id: userDoc.id, ...userDoc.data() };
+          const userData = userDoc.data() as any;
+          const isSuperAdmin = (decodedToken.email && decodedToken.email.toLowerCase() === 'mdcdairy.official@gmail.com') ||
+                               (userData.email && userData.email.toLowerCase() === 'mdcdairy.official@gmail.com');
+          if (isSuperAdmin && userData.user_type !== 'super_admin') {
+            await userDoc.ref.update({
+              user_type: 'super_admin',
+              userType: 'super_admin',
+              subscription_package: 'premium',
+              subscription_end_date: new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString(),
+              subscriptionEndDate: new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString()
+            });
+            const freshDoc = await userDoc.ref.get();
+            req.profile = { id: userDoc.id, ...freshDoc.data() };
+          } else {
+            req.profile = { id: userDoc.id, ...userData };
+          }
           
           // Track operations for billing
           const userId = userDoc.id;
@@ -511,17 +526,16 @@ async function startServer() {
   });
 
 
-  // MediGen AI Endpoint with Points System
+  // MediGen AI Endpoint with Yellow Ball System
   app.post("/api/medigen", authenticate, async (req: any, res) => {
     try {
       const userId = req.profile?.id;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      const costPerRequest = 10;
       const adminDb = getAdminDb();
 
       // Firestore transaction with Admin SDK to bypass security rules
-      let userPoints = 0;
+      let userYellowBalls = 0;
       await adminDb.runTransaction(async (transaction: any) => {
         const userRef = adminDb.collection("users").doc(userId);
         const userDoc = await transaction.get(userRef);
@@ -536,17 +550,28 @@ async function startServer() {
         const isBypassed = userType === 'super_admin' || userType === 'admin' || (subscriptionPackage && subscriptionPackage !== 'free' && subscriptionPackage !== 'none');
 
         if (isBypassed) {
-          userPoints = userData.points || 0;
+          userYellowBalls = userData.yellow_balls_count || 0;
           return;
         }
 
-        if ((userData.points || 0) < costPerRequest) {
-          throw new Error("INSUFFICIENT_POINTS");
+        const currentYellow = Number(userData.yellow_balls_count || 0);
+        if (currentYellow < 1) {
+          throw new Error("INSUFFICIENT_YELLOW_BALLS");
         }
 
-        userPoints = (userData.points || 0) - costPerRequest;
+        userYellowBalls = currentYellow - 1;
         transaction.update(userRef, {
-          points: userPoints
+          yellow_balls_count: userYellowBalls
+        });
+
+        // Add transaction entry to points_history
+        const historyRef = adminDb.collection("points_history").doc();
+        transaction.set(historyRef, {
+          user_id: userId,
+          type: "medigen_use",
+          amount: 1,
+          description: "মেডিজেন এর সুবিধা ব্যবহার করতে ১ টি হলুদ বল খরচ হয়েছে।",
+          created_at: FieldValue.serverTimestamp()
         });
       });
 
@@ -599,10 +624,10 @@ async function startServer() {
         responseText = "I could not generate a response at this time. Please try again with a different description.";
       }
 
-      res.json({ success: true, text: responseText, points: userPoints, references });
+      res.json({ success: true, text: responseText, yellowBallsCount: userYellowBalls, references });
     } catch (error: any) {
-      if (error.message === "INSUFFICIENT_POINTS") {
-        return res.status(400).json({ error: "পর্যাপ্ত পয়েন্ট নেই।" });
+      if (error.message === "INSUFFICIENT_YELLOW_BALLS") {
+        return res.status(400).json({ error: "পর্যাপ্ত হলুদ বল নেই।" });
       }
       console.error("[MediGen Error]", error);
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
@@ -1401,8 +1426,10 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           await db.collection("users").doc(order.user_id).update({ subscription_end_date: newEndDate.toISOString() });
         } else {
           // Add to wallet balance
+          const isWalletDeposit = (order.package_type || '') === 'Wallet Deposit';
+          const incrementAmount = isWalletDeposit ? Number(order.amount) : Number(order.cashback || 0);
           await db.collection("users").doc(order.user_id).update({
-            wallet_balance: FieldValue.increment(order.cashback || 0)
+            wallet_balance: FieldValue.increment(incrementAmount)
           });
         }
       } else {
@@ -1431,15 +1458,60 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       let userDoc: any = query.empty ? null : query.docs[0];
       
       // SUPER ADMIN BOOTSTRAP: mdcdairy.official@gmail.com
-      const isSuperAdminEmail = email === 'mdcdairy.official@gmail.com';
+      let finalEmail = email;
+      if (!finalEmail && firebaseUid) {
+        try {
+          const userRecord = await admin.auth().getUser(firebaseUid);
+          finalEmail = userRecord.email;
+        } catch (e) {
+          console.error("Failed to fetch user email from firebase auth:", e);
+        }
+      }
+      const isSuperAdminEmail = (finalEmail && finalEmail.toLowerCase() === 'mdcdairy.official@gmail.com') || (email && email.toLowerCase() === 'mdcdairy.official@gmail.com');
 
       if (!userDoc) {
         // Find existing user by mobile or email
+        let lookupMobiles: string[] = [];
         if (mobile) {
-          const mQuery = await usersRef.where("mobile", "==", mobile).limit(1).get();
-          if (!mQuery.empty) userDoc = mQuery.docs[0];
+          lookupMobiles.push(mobile);
+          const clean = mobile.replace(/[^\d]/g, '');
+          if (clean.length >= 10) {
+            const last10 = clean.substring(clean.length - 10);
+            lookupMobiles.push(last10);
+            lookupMobiles.push(`0${last10}`);
+            lookupMobiles.push(`+880${last10}`);
+            lookupMobiles.push(`+91${last10}`);
+            lookupMobiles.push(`+92${last10}`);
+          }
         }
-        if (!userDoc && email) {
+        if (email && email.endsWith("@auth.local")) {
+          const rawNum = email.split("@")[0];
+          lookupMobiles.push(rawNum);
+          const clean = rawNum.replace(/[^\d]/g, '');
+          if (clean.length >= 10) {
+            const last10 = clean.substring(clean.length - 10);
+            lookupMobiles.push(last10);
+            lookupMobiles.push(`0${last10}`);
+            lookupMobiles.push(`+880${last10}`);
+            lookupMobiles.push(`+91${last10}`);
+            lookupMobiles.push(`+92${last10}`);
+          }
+        }
+
+        // Deduplicate
+        lookupMobiles = Array.from(new Set(lookupMobiles)).filter(Boolean);
+
+        for (const mob of lookupMobiles) {
+          if (!userDoc) {
+            const mQuery = await usersRef.where("mobile", "==", mob).limit(1).get();
+            if (!mQuery.empty) {
+              userDoc = mQuery.docs[0];
+              break;
+            }
+          }
+        }
+
+        if (!userDoc && email && !email.endsWith("@auth.local")) {
           const eQuery = await usersRef.where("email", "==", email).limit(1).get();
           if (!eQuery.empty) userDoc = eQuery.docs[0];
         }
@@ -1447,10 +1519,17 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         if (userDoc) {
           // Link existing user to firebase_uid
           const updates: any = { firebase_uid: firebaseUid };
-          if (userType) updates.user_type = userType;
+          const currentData = userDoc.data() as any;
+          // Only assign initial user_type if missing in database
+          if (userType && !currentData.user_type && !currentData.userType) {
+            updates.user_type = userType;
+            updates.userType = userType;
+          }
           if (isSuperAdminEmail) {
             updates.user_type = 'super_admin';
+            updates.userType = 'super_admin';
             updates.subscription_end_date = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString();
+            updates.subscriptionEndDate = updates.subscription_end_date;
           }
           await userDoc.ref.update(updates);
           const fresh = await userDoc.ref.get();
@@ -1467,18 +1546,28 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
             subscriptionDays = 36500;
           }
 
+          const subscriptionEnd = new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString();
+
           const newUser = {
             firebase_uid: firebaseUid,
+            name: fullName || 'ব্যবহারকারী',
             fullName: fullName || 'ব্যবহারকারী',
             email: email || null,
             mobile: mobile || null,
+            user_type: finalUserType,
             userType: finalUserType,
             district: district || 'ঢাকা',
             country: country || 'Bangladesh',
+            referral_code: referralCode,
             referralCode: referralCode,
+            profile_picture: profilePicture || null,
             profilePicture: profilePicture || null,
-            is_approved: 1,
-            subscriptionEndDate: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
+            is_approved: true,
+            subscription_package: 'free',
+            subscriptionPackage: 'free',
+            subscription_end_date: subscriptionEnd,
+            subscriptionEndDate: subscriptionEnd,
+            createdAt: new Date().toISOString(),
             created_at: FieldValue.serverTimestamp(),
             points: 100,
             wallet_balance: 0
@@ -1492,14 +1581,17 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           }
         }
       } else {
-        // User exists by firebase_uid, check if promotion needed
+        // User exists by firebase_uid, check if promotion or role-assignment needed
         const data = userDoc.data() as any;
         const updates: any = {};
         if (isSuperAdminEmail && data.user_type !== 'super_admin') {
           updates.user_type = 'super_admin';
+          updates.userType = 'super_admin';
           updates.subscription_end_date = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString();
-        } else if (userType && data.user_type !== userType) {
+          updates.subscriptionEndDate = updates.subscription_end_date;
+        } else if (userType && !data.user_type && !data.userType) {
           updates.user_type = userType;
+          updates.userType = userType;
         }
         
         if (Object.keys(updates).length > 0) {
@@ -1548,9 +1640,44 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       if (existingQuery && !existingQuery.empty) {
         const userDoc = existingQuery.docs[0];
         const userData = userDoc.data() as any;
-        if (firebaseUid && !userData.firebase_uid) {
-           await userDoc.ref.update({ firebase_uid: firebaseUid });
-           return res.json({ success: true, user: { id: userDoc.id, ...userData, firebase_uid: firebaseUid, fullName: userData.name, userType: userData.user_type } });
+        if (firebaseUid) {
+           const updates: any = {};
+           if (!userData.firebase_uid) updates.firebase_uid = firebaseUid;
+           
+           if (userType === 'advertiser') {
+             updates.is_advertiser = true;
+             updates.isAdvertiser = true;
+             // If user doesn't have a professional/client role yet, or their current role is advertiser, make it advertiser
+             if (!userData.user_type || userData.user_type === 'advertiser') {
+               updates.user_type = 'advertiser';
+               updates.userType = 'advertiser';
+             }
+           } else {
+             // If they are registering for a professional/client role, but they were previously an advertiser
+             if (userData.user_type === 'advertiser') {
+               updates.is_advertiser = true;
+               updates.isAdvertiser = true;
+             }
+             updates.user_type = userType;
+             updates.userType = userType;
+           }
+
+           if (Object.keys(updates).length > 0) {
+             await userDoc.ref.update(updates);
+           }
+           const updatedDoc = await userDoc.ref.get();
+           const updatedData = updatedDoc.data() as any;
+           return res.json({ 
+             success: true, 
+             user: { 
+               id: userDoc.id, 
+               ...updatedData, 
+               firebase_uid: firebaseUid,
+               firebaseUid: firebaseUid, 
+               fullName: updatedData.fullName || updatedData.name, 
+               userType: updatedData.userType || updatedData.user_type 
+             } 
+           });
         }
         return res.status(400).json({ error: "অ্যাকাউন্ট ইতিমধ্যে বিদ্যমান।" });
       }
@@ -1661,17 +1788,27 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         // User exists, update with firebaseUid if not present
         const userDoc = eQuery.docs[0];
         const userData = userDoc.data() as any;
+        const updates: any = {};
         if (!userData.firebase_uid) {
-           await userDoc.ref.update({ firebase_uid: firebaseUid });
+           updates.firebase_uid = firebaseUid;
         }
+        if (userType && userData.user_type !== userType) {
+           updates.user_type = userType;
+           updates.userType = userType;
+        }
+        if (Object.keys(updates).length > 0) {
+           await userDoc.ref.update(updates);
+        }
+        const updatedDoc = await userDoc.ref.get();
+        const updatedData = updatedDoc.data() as any;
         return res.json({
           success: true,
           user: {
             id: userDoc.id,
-            ...userData,
+            ...updatedData,
             firebaseUid: firebaseUid,
-            fullName: userData.fullName || userData.name,
-            userType: userData.userType || userData.user_type
+            fullName: updatedData.fullName || updatedData.name,
+            userType: updatedData.userType || updatedData.user_type
           }
         });
       }
@@ -2293,24 +2430,43 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const user_id = req.profile?.id;
       if (!user_id) return res.status(401).json({ error: "Unauthorized" });
       
-      const commission = amount * 0.10; // 10% commission
-      const cashback = commission * 0.30; // 30% of commission goes to user
-      
-      const docRef = await db.collection("recharge_orders").add({
+      const baseAmount = Number(amount);
+      const isWalletDeposit = package_type === 'Wallet Deposit';
+      const serviceCharge = isWalletDeposit ? baseAmount * 0.03 : 0;
+      const totalPayable = isWalletDeposit ? baseAmount + serviceCharge : baseAmount;
+
+      const orderData: any = {
         user_id,
         mobile_number,
         operator,
         package_type,
-        amount: Number(amount),
-        commission,
-        cashback,
+        amount: baseAmount,
         payment_method,
         transaction_id: transaction_id || null,
         status: 'pending',
         created_at: FieldValue.serverTimestamp()
-      });
+      };
+
+      if (isWalletDeposit) {
+        orderData.service_charge = serviceCharge;
+        orderData.total_payable = totalPayable;
+      } else {
+        const commission = baseAmount * 0.10; // 10% commission
+        const cashback = commission * 0.30; // 30% of commission goes to user
+        orderData.commission = commission;
+        orderData.cashback = cashback;
+      }
       
-      res.json({ success: true, order_id: docRef.id, amount, cashback });
+      const docRef = await db.collection("recharge_orders").add(orderData);
+      
+      res.json({ 
+        success: true, 
+        order_id: docRef.id, 
+        amount: baseAmount, 
+        serviceCharge,
+        totalPayable,
+        cashback: orderData.cashback || 0 
+      });
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: "Failed to create recharge order" });
@@ -2372,13 +2528,16 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
       console.log(`[PAYMENT] Initiating: User=${userId}, Amount=${amount}, Purpose=${purpose}`);
 
-      // In a production environment with SSLCommerz, you would call their API here.
-      // Since this is a specialized environment, we simulate the redirect to a success page.
-      // We'll use a local success route that will then handle the post-payment logic.
-      
+      const baseAmount = Number(amount);
+      const isRecharge = purpose.startsWith('Recharge');
+      const charge = isRecharge ? baseAmount * 0.03 : 0;
+      const payableAmount = baseAmount + charge;
+
       const paymentData = {
         userId,
-        amount,
+        amount: baseAmount,
+        charge,
+        payableAmount,
         purpose,
         orderId: orderId || `PAY_${Date.now()}_${userId}`,
         status: 'pending',
@@ -2391,7 +2550,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const host = req.headers.host;
       const baseUrl = `${protocol}://${host}`;
 
-      const gatewayUrl = `${baseUrl}/api/payment/simulate-gateway?paymentId=${docRef.id}&amount=${amount}&orderId=${paymentData.orderId}`;
+      const gatewayUrl = `${baseUrl}/api/payment/simulate-gateway?paymentId=${docRef.id}&amount=${payableAmount}&orderId=${paymentData.orderId}`;
 
       res.json({ success: true, gatewayUrl });
     } catch (error: any) {
@@ -2402,23 +2561,51 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
   app.get("/api/payment/simulate-gateway", async (req, res) => {
     const { paymentId, amount, orderId } = req.query;
-    // This simulates the user entering their card info and clicking "Pay"
-    // In reality, SSLCommerz would redirect here after payment.
-    res.send(`
-      <html>
-        <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc;">
-          <div style="background: white; padding: 2rem; border-radius: 1rem; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
-            <h1>SSLCommerz Simulation</h1>
-            <p>Order ID: ${orderId}</p>
-            <p>Amount: ৳${amount}</p>
-            <div style="margin-top: 2rem; display: flex; gap: 1rem;">
-              <a href="/api/payment/success?paymentId=${paymentId}" style="background: #10b981; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold;">Simulate Success</a>
-              <a href="/api/payment/fail?paymentId=${paymentId}" style="background: #ef4444; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold;">Simulate Failure</a>
+    try {
+      const paymentDoc = await db.collection("online_payments").doc(paymentId as string).get();
+      const payment = paymentDoc.exists ? paymentDoc.data() as any : null;
+      
+      const baseAmount = payment ? payment.amount : amount;
+      const charge = payment ? (payment.charge || 0) : 0;
+      const payableAmount = payment ? (payment.payableAmount || amount) : amount;
+
+      res.send(`
+        <html>
+          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc; margin: 0; padding: 1rem;">
+            <div style="background: white; padding: 2.5rem; border-radius: 1.5rem; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); max-width: 450px; width: 100%; border: 1px solid #e2e8f0; text-align: center;">
+              <div style="color: #4f46e5; font-size: 2.5rem; font-weight: 900; margin-bottom: 0.5rem; letter-spacing: -0.025em;">SSLCommerz</div>
+              <div style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1.5rem;">Secure Payment Gateway</div>
+              
+              <div style="background: #f8fafc; border-radius: 1rem; padding: 1.25rem; margin-bottom: 1.5rem; border: 1px dashed #e2e8f0; text-align: left;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem; color: #475569;">
+                  <span>Order ID:</span>
+                  <span style="font-family: monospace; font-weight: bold; color: #1e293b;">${orderId}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem; color: #475569;">
+                  <span>Base Amount:</span>
+                  <span style="font-weight: bold; color: #1e293b;">৳${Number(baseAmount).toFixed(2)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem; color: #475569;">
+                  <span>Service Charge (3%):</span>
+                  <span style="font-weight: bold; color: #ef4444;">৳${Number(charge).toFixed(2)}</span>
+                </div>
+                <div style="border-top: 1px solid #e2e8f0; margin-top: 0.75rem; padding-top: 0.75rem; display: flex; justify-content: space-between; font-size: 1.125rem; font-weight: 900; color: #1e293b;">
+                  <span>Total Payable:</span>
+                  <span style="color: #4f46e5;">৳${Number(payableAmount).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1.5rem;">
+                <a href="/api/payment/success?paymentId=${paymentId}" style="background: #10b981; color: white; padding: 1rem 1.5rem; border-radius: 0.75rem; text-decoration: none; font-weight: bold; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; transition: all 0.2s;">Pay Now</a>
+                <a href="/api/payment/fail?paymentId=${paymentId}" style="background: #ef4444; color: white; padding: 1rem 1.5rem; border-radius: 0.75rem; text-decoration: none; font-weight: bold; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; transition: all 0.2s;">Cancel Payment</a>
+              </div>
             </div>
-          </div>
-        </body>
-      </html>
-    `);
+          </body>
+        </html>
+      `);
+    } catch (err: any) {
+      res.status(500).send("Gateway error");
+    }
   });
 
   app.get("/api/payment/success", async (req, res) => {
@@ -2772,6 +2959,192 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     } catch (e: any) {
       console.error("[Upload Proxy] Fail-safe error:", e);
       res.status(500).json({ error: e.message || "Failed to process upload" });
+    }
+  });
+
+  // Ball Game Wallet & Conversion API
+  app.post("/api/balls/convert", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { type, amount } = req.body; // type: 'taka_to_red' | 'white_to_yellow' | 'red_to_yellow'
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        return res.status(400).json({ error: "অকার্যকর পরিমাণ।" });
+      }
+
+      const adminDb = getAdminDb();
+      let updatedUser: any = {};
+
+      await adminDb.runTransaction(async (transaction: any) => {
+        const userRef = adminDb.collection("users").doc(userId);
+        const userDoc = await transaction.get(userRef);
+        const userData = userDoc.data();
+        if (!userData) {
+          throw new Error("USER_NOT_FOUND");
+        }
+
+        if (type === 'taka_to_red') {
+          const balance = Number(userData.wallet_balance || 0);
+          const requiredBalance = numAmount * 1.03; // 3% service charge
+          if (balance < requiredBalance) {
+            throw new Error("INSUFFICIENT_BALANCE");
+          }
+          const currentRed = Number(userData.red_balls_count || 0);
+          updatedUser = {
+            wallet_balance: balance - requiredBalance,
+            red_balls_count: currentRed + numAmount
+          };
+        } else if (type === 'white_to_yellow') {
+          const white = Number(userData.white_balls_count || 0);
+          const requiredWhite = numAmount * 1.05; // 5% service charge
+          if (white < requiredWhite) {
+            throw new Error("INSUFFICIENT_WHITE_BALLS");
+          }
+          if (numAmount % 3 !== 0) {
+            throw new Error("MUST_BE_MULTIPLE_OF_3");
+          }
+          const yellowEarned = numAmount / 3;
+          const currentYellow = Number(userData.yellow_balls_count || 0);
+          updatedUser = {
+            white_balls_count: white - requiredWhite,
+            yellow_balls_count: currentYellow + yellowEarned
+          };
+        } else if (type === 'red_to_yellow') {
+          const red = Number(userData.red_balls_count || 0);
+          const requiredRed = numAmount * 1.05; // 5% service charge
+          if (red < requiredRed) {
+            throw new Error("INSUFFICIENT_RED_BALLS");
+          }
+          if (numAmount % 10 !== 0) {
+            throw new Error("MUST_BE_MULTIPLE_OF_10");
+          }
+          const yellowEarned = numAmount / 10;
+          const currentYellow = Number(userData.yellow_balls_count || 0);
+          updatedUser = {
+            red_balls_count: red - requiredRed,
+            yellow_balls_count: currentYellow + yellowEarned
+          };
+        } else {
+          throw new Error("INVALID_CONVERSION_TYPE");
+        }
+
+        transaction.update(userRef, updatedUser);
+
+        // Add transaction entry to points_history
+        const historyRef = adminDb.collection("points_history").doc();
+        transaction.set(historyRef, {
+          user_id: userId,
+          type: type,
+          amount: numAmount,
+          description: type === 'taka_to_red' 
+            ? `${numAmount} টাকা কনভার্ট করে ${numAmount} লাল বল পাওয়া গিয়েছে (৩% সার্ভিস চার্জ সহ মোট কর্তন: ${(numAmount * 1.03).toFixed(2)} টাকা)`
+            : type === 'white_to_yellow'
+            ? `${numAmount} সাদা বল কনভার্ট করে ${numAmount/3} হলুদ বল পাওয়া গিয়েছে (৫% সার্ভিস চার্জ সহ মোট কর্তন: ${(numAmount * 1.05).toFixed(2)} সাদা বল)`
+            : `${numAmount} লাল বল কনভার্ট করে ${numAmount/10} হলুদ বল পাওয়া গিয়েছে (৫% সার্ভিস চার্জ সহ মোট কর্তন: ${(numAmount * 1.05).toFixed(2)} লাল বল)`,
+          created_at: FieldValue.serverTimestamp()
+        });
+      });
+
+      res.json({ success: true, message: "কনভার্ট সফল হয়েছে।" });
+    } catch (error: any) {
+      console.error("[Convert Error]", error);
+      let errorMsg = "সার্ভার এরর। আবার চেষ্টা করুন।";
+      if (error.message === "INSUFFICIENT_BALANCE") errorMsg = "আপনার ওয়ালেট এ ৩% সার্ভিস চার্জসহ পর্যাপ্ত টাকা নেই।";
+      if (error.message === "INSUFFICIENT_WHITE_BALLS") errorMsg = "আপনার কাছে ৫% সার্ভিস চার্জসহ পর্যাপ্ত সাদা বল নেই।";
+      if (error.message === "INSUFFICIENT_RED_BALLS") errorMsg = "আপনার কাছে ৫% সার্ভিস চার্জসহ পর্যাপ্ত লাল বল নেই।";
+      if (error.message === "MUST_BE_MULTIPLE_OF_3") errorMsg = "পরিমাণটি ৩ এর গুণিতক হতে হবে।";
+      if (error.message === "MUST_BE_MULTIPLE_OF_10") errorMsg = "পরিমাণটি ১০ এর গুণিতক হতে হবে।";
+      res.status(400).json({ error: errorMsg });
+    }
+  });
+
+  app.post("/api/balls/earn-white", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const adminDb = getAdminDb();
+      await adminDb.runTransaction(async (transaction: any) => {
+        const userRef = adminDb.collection("users").doc(userId);
+        const userDoc = await transaction.get(userRef);
+        const userData = userDoc.data();
+        if (!userData) throw new Error("USER_NOT_FOUND");
+
+        const currentWhite = Number(userData.white_balls_count || 0);
+        transaction.update(userRef, {
+          white_balls_count: currentWhite + 1
+        });
+
+        // Add history
+        const historyRef = adminDb.collection("points_history").doc();
+        transaction.set(historyRef, {
+          user_id: userId,
+          type: "ad_earn",
+          amount: 1,
+          description: "বিজ্ঞাপন দেখার জন্য ১ টি সাদা বল পেয়েছেন।",
+          created_at: FieldValue.serverTimestamp()
+        });
+      });
+
+      res.json({ success: true, message: "১ টি সাদা বল যোগ হয়েছে।" });
+    } catch (error: any) {
+      console.error("[Earn White Error]", error);
+      res.status(500).json({ error: "সার্ভার এরর।" });
+    }
+  });
+
+  app.post("/api/balls/subscribe", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { planName, amount, duration } = req.body;
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        return res.status(400).json({ error: "অকার্যকর পরিমাণ।" });
+      }
+
+      const adminDb = getAdminDb();
+      await adminDb.runTransaction(async (transaction: any) => {
+        const userRef = adminDb.collection("users").doc(userId);
+        const userDoc = await transaction.get(userRef);
+        const userData = userDoc.data();
+        if (!userData) throw new Error("USER_NOT_FOUND");
+
+        const red = Number(userData.red_balls_count || 0);
+        if (red < numAmount) {
+          throw new Error("INSUFFICIENT_RED_BALLS");
+        }
+
+        const now = new Date();
+        const days = duration === 'yearly' ? 365 : 30;
+        const newEndDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+        transaction.update(userRef, {
+          red_balls_count: red - numAmount,
+          subscription_package: planName.toLowerCase(),
+          subscription_end_date: newEndDate.toISOString()
+        });
+
+        // Add transaction entry
+        const historyRef = adminDb.collection("points_history").doc();
+        transaction.set(historyRef, {
+          user_id: userId,
+          type: "subscription_buy",
+          amount: numAmount,
+          description: `${planName} সাবস্ক্রিপশন কিনতে ${numAmount} লাল বল খরচ হয়েছে।`,
+          created_at: FieldValue.serverTimestamp()
+        });
+      });
+
+      res.json({ success: true, message: "সাবস্ক্রিপশন সফলভাবে সক্রিয় হয়েছে।" });
+    } catch (error: any) {
+      console.error("[Subscribe Red Ball Error]", error);
+      let errorMsg = "সার্ভার এরর। আবার চেষ্টা করুন।";
+      if (error.message === "INSUFFICIENT_RED_BALLS") errorMsg = "আপনার ওয়ালেট এ পর্যাপ্ত লাল বল নেই।";
+      res.status(400).json({ error: errorMsg });
     }
   });
 

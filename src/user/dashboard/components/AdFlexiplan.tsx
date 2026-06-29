@@ -247,6 +247,14 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
   const [reach, setReach] = useState(1000);
   const [validity, setValidity] = useState(7);
   const [placements, setPlacements] = useState<string[]>(['Dashboard']);
+  const [selectedPreviewPlacement, setSelectedPreviewPlacement] = useState<string>('Dashboard');
+  const [previewTab, setPreviewTab] = useState<'banner' | 'placement'>('placement');
+
+  useEffect(() => {
+    if (placements.length > 0 && !placements.includes(selectedPreviewPlacement)) {
+      setSelectedPreviewPlacement(placements[0]);
+    }
+  }, [placements, selectedPreviewPlacement]);
   
   // Payment States
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -913,61 +921,289 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
       {/* Live Ad Preview Section */}
       <div className="max-w-5xl mx-auto mb-40 px-4">
         <div className="bg-white dark:bg-slate-900 overflow-hidden rounded-[2.5rem] border-2 border-slate-100 dark:border-slate-800 shadow-xl group">
-          <div className="p-6 md:p-8 border-b-2 border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
+          <div className="p-6 md:p-8 border-b-2 border-slate-50 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-lg">
                 <Eye size={20} />
               </div>
               <h3 className="text-xl font-black text-indigo-950 dark:text-white uppercase tracking-tight">{t('বিজ্ঞাপনের লাইভ প্রিভিউ', 'LIVE AD PREVIEW')}</h3>
             </div>
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Draft Mode</span>
+            
+            {/* Preview Mode Selector Pills */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+              <button
+                onClick={() => setPreviewTab('placement')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all uppercase tracking-wider ${
+                  previewTab === 'placement'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-300'
+                }`}
+              >
+                {t('প্লেসমেন্ট স্ক্রিন', 'Placement Screen')}
+              </button>
+              <button
+                onClick={() => setPreviewTab('banner')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all uppercase tracking-wider ${
+                  previewTab === 'banner'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-300'
+                }`}
+              >
+                {t('সরাসরি ব্যানার', 'Direct Banner')}
+              </button>
             </div>
           </div>
-          <div className="p-8 md:p-12 flex items-center justify-center min-h-[300px]">
-            <div className="w-full max-w-2xl bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] p-8 border border-slate-200 dark:border-slate-700 shadow-inner relative overflow-hidden group/ad">
-              <div className="relative z-10 space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-2xl ${adType === 'Election' ? 'bg-amber-600' : 'bg-indigo-600'} text-white flex items-center justify-center shadow-xl`}>
+
+          <div className="p-6 md:p-10 flex flex-col items-center justify-center min-h-[350px] bg-slate-50/30 dark:bg-slate-950/20">
+            {previewTab === 'placement' ? (
+              <>
+                {/* Selected Placements Sub-navigation */}
+                <div className="flex flex-wrap gap-2 justify-center mb-6 max-w-2xl px-4">
+                  {placements.length === 0 ? (
+                    <p className="text-xs font-black text-rose-500 uppercase">{t('কোন প্লেসমেন্ট সিলেক্ট করা হয়নি। দয়া করে উপরে প্লেসমেন্ট সিলেক্ট করুন।', 'No placements selected. Please select a placement above.')}</p>
+                  ) : (
+                    placements.map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setSelectedPreviewPlacement(p)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all uppercase tracking-wider border-2 ${
+                          selectedPreviewPlacement === p 
+                            ? 'bg-indigo-50 border-indigo-600 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-white' 
+                            : 'bg-white hover:bg-slate-50 text-slate-500 border-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                        }`}
+                      >
+                        {t(`${p} স্ক্রিন`, `${p} Screen`)}
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Simulated Device Screen Mockup Frame */}
+                {placements.length > 0 && (
+                  <div className="w-full max-w-2xl border-4 border-slate-200 dark:border-slate-800 rounded-[2rem] overflow-hidden bg-slate-100 dark:bg-slate-950 p-2 md:p-4 shadow-inner">
                     {(() => {
-                      const Icon = adTypes.find(t => t.id === adType)?.icon || MonitorPlay;
-                      return <Icon size={32} />;
+                      const adBannerElement = (
+                        <div className="w-full bg-gradient-to-r from-indigo-50 to-blue-50 dark:from-indigo-950/20 dark:to-slate-950/20 border border-dashed border-indigo-300 dark:border-indigo-800 rounded-xl p-4 flex items-center justify-between shadow-sm relative overflow-hidden my-3">
+                          {adMedia ? (
+                            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: `url(${URL.createObjectURL(adMedia)})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+                          ) : null}
+                          <div className="flex items-center gap-3 relative z-10">
+                            <div className={`w-10 h-10 ${adType === 'Election' ? 'bg-amber-600' : 'bg-indigo-600'} text-white rounded-lg flex items-center justify-center shadow`}>
+                              {(() => {
+                                const Icon = adTypes.find(t => t.id === adType)?.icon || MonitorPlay;
+                                return <Icon size={20} />;
+                              })()}
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-black text-indigo-950 dark:text-white leading-tight">
+                                {adTitle || (adType === 'Election' ? t('নির্বাচনী প্রচারণা ২০২৬', 'Election Campaign 2026') : t('আপনার বিজ্ঞাপন শিরোনাম', 'Your Ad Title'))}
+                              </h5>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                {adType} • {location}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right relative z-10 flex flex-col items-end gap-1">
+                            <span className="text-[8px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">{t('বিজ্ঞাপন', 'AD')}</span>
+                            {adType === 'Election' && <span className="text-[7px] text-amber-600 font-black uppercase tracking-wider">Special</span>}
+                          </div>
+                        </div>
+                      );
+
+                      switch (selectedPreviewPlacement) {
+                        case 'Dashboard':
+                          return (
+                            <div className="w-full bg-white dark:bg-slate-900 rounded-[1.5rem] border-2 border-slate-100 dark:border-slate-850 p-4 space-y-4 shadow-lg text-slate-850 dark:text-slate-100">
+                              <div className="flex justify-between items-center border-b pb-2 border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 font-bold text-[10px]">U</div>
+                                  <div>
+                                    <h6 className="text-[9px] font-black leading-none">{t('উকিল ড্যাশবোর্ড', 'Lawyer Dashboard')}</h6>
+                                    <span className="text-[7px] text-emerald-500 font-bold">● Active</span>
+                                  </div>
+                                </div>
+                                <div className="w-3 h-3 rounded-full bg-slate-100 dark:bg-slate-800"></div>
+                              </div>
+                              <div className="border border-indigo-200 dark:border-indigo-900 rounded-xl p-1 bg-indigo-50/10">
+                                <div className="text-[7px] text-indigo-600 dark:text-indigo-400 font-black px-1 pb-1 uppercase tracking-wider">{t('ড্যাশবোর্ড বিজ্ঞাপন (অটো-সিরিয়াল ভিত্তিক ঘূর্ণন)', 'DASHBOARD AD (SERIAL ROTATION)')}</div>
+                                {adBannerElement}
+                              </div>
+                              <div className="grid grid-cols-3 gap-2">
+                                <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
+                                  <span className="text-[6px] font-black text-slate-400 block uppercase">{t('আজকের মামলা', 'TODAY CASES')}</span>
+                                  <span className="text-xs font-black text-slate-700 dark:text-white">০৫</span>
+                                </div>
+                                <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
+                                  <span className="text-[6px] font-black text-slate-400 block uppercase">{t('মোট ক্লায়েন্ট', 'TOTAL CLIENTS')}</span>
+                                  <span className="text-xs font-black text-slate-700 dark:text-white">৮৪</span>
+                                </div>
+                                <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
+                                  <span className="text-[6px] font-black text-slate-400 block uppercase">{t('আজকের আয়', 'TODAY EARNING')}</span>
+                                  <span className="text-xs font-black text-emerald-600">৳১,২০০</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        case 'Cases':
+                          return (
+                            <div className="w-full bg-white dark:bg-slate-900 rounded-[1.5rem] border-2 border-slate-100 dark:border-slate-850 p-4 space-y-3 shadow-lg text-slate-850 dark:text-slate-100">
+                              <div className="border-b pb-2 border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                <h6 className="text-[9px] font-black uppercase tracking-wider">{t('মামলা তালিকা', 'CASE RECORDS')}</h6>
+                                <span className="text-[7px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-black text-slate-500">Active</span>
+                              </div>
+                              <div className="space-y-1.5">
+                                <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                                  <div>
+                                    <span className="text-[8px] font-black text-indigo-600 block">CR-120/2024</span>
+                                    <span className="text-[7px] text-slate-400 font-bold">{t('মোঃ রহিম বনাম রাষ্ট্র', 'Md. Rahim vs State')}</span>
+                                  </div>
+                                  <span className="text-[7px] bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 px-1.5 py-0.5 rounded font-bold">{t('পরবর্তী শুনানি: ১৫ জুলাই', 'Next: 15 July')}</span>
+                                </div>
+                                <div className="border border-indigo-200 dark:border-indigo-900 rounded-xl p-1 bg-indigo-50/10">
+                                  <div className="text-[7px] text-indigo-600 dark:text-indigo-400 font-black px-1 pb-1 uppercase tracking-wider">{t('মামলা পেইজ বিজ্ঞাপন স্থান', 'CASE PAGE AD SLOT')}</div>
+                                  {adBannerElement}
+                                </div>
+                                <div className="bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                                  <div>
+                                    <span className="text-[8px] font-black text-indigo-600 block">CV-45/2023</span>
+                                    <span className="text-[7px] text-slate-400 font-bold">{t('সম্পত্তি সংক্রান্ত মামলা', 'Land Property Dispute')}</span>
+                                  </div>
+                                  <span className="text-[7px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 px-1.5 py-0.5 rounded font-bold">{t('রায় অপেক্ষমান', 'Judgment Pending')}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        case 'Calendar':
+                          return (
+                            <div className="w-full bg-white dark:bg-slate-900 rounded-[1.5rem] border-2 border-slate-100 dark:border-slate-850 p-4 space-y-3 shadow-lg text-slate-850 dark:text-slate-100">
+                              <div className="border-b pb-2 border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                <h6 className="text-[9px] font-black uppercase tracking-wider">{t('কোর্ট ক্যালেন্ডার', 'COURT CALENDAR')}</h6>
+                                <span className="text-[7px] text-slate-400 font-bold">June 2026</span>
+                              </div>
+                              <div className="grid grid-cols-7 gap-1 text-center text-[7px] font-bold">
+                                {['S','M','T','W','T','F','S'].map((day, i) => (
+                                  <div key={i} className="text-slate-400 font-black py-0.5">{day}</div>
+                                ))}
+                                {Array.from({ length: 14 }).map((_, i) => (
+                                  <div key={i} className={`p-1 rounded ${i === 8 ? 'bg-indigo-600 text-white font-black' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300'}`}>
+                                    {i + 1}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="border border-indigo-200 dark:border-indigo-900 rounded-xl p-1 bg-indigo-50/10">
+                                <div className="text-[7px] text-indigo-600 dark:text-indigo-400 font-black px-1 pb-1 uppercase tracking-wider">{t('ক্যালেন্ডার পেইজ বিজ্ঞাপন স্থান', 'CALENDAR PAGE AD SLOT')}</div>
+                                {adBannerElement}
+                              </div>
+                            </div>
+                          );
+                        case 'AI Bot':
+                          return (
+                            <div className="w-full bg-white dark:bg-slate-900 rounded-[1.5rem] border-2 border-slate-100 dark:border-slate-850 p-4 space-y-3 shadow-lg text-slate-850 dark:text-slate-100">
+                              <div className="border-b pb-2 border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                <h6 className="text-[9px] font-black uppercase tracking-wider text-indigo-600">AI LEGAL BOT</h6>
+                                <span className="text-[7px] text-slate-400 font-bold">Powered by Gemini</span>
+                              </div>
+                              <div className="space-y-2 text-[9px] leading-relaxed">
+                                <div className="bg-slate-100 dark:bg-slate-800 p-2 rounded-xl max-w-[80%] text-slate-700 dark:text-slate-200 font-bold">
+                                  <p>{t('জামিনের আবেদন কিভাবে লিখতে হয়?', 'How to draft a bail petition?')}</p>
+                                </div>
+                                <div className="bg-indigo-50 dark:bg-indigo-950/40 p-2.5 rounded-xl max-w-[90%] text-indigo-950 dark:text-indigo-100 font-bold space-y-2">
+                                  <p>{t('জামিনের আবেদন ফৌজদারি কার্যবিধির ৪৯৮ ধারায় করতে হবে...', 'Bail petition must be filed under Sec 498 of CrPC...')}</p>
+                                  <div className="pt-2 border-t border-indigo-100 dark:border-indigo-900">
+                                    <div className="text-[7px] text-indigo-600 dark:text-indigo-400 font-black uppercase mb-1">{t('স্পন্সরড সাজেশনস', 'SPONSERED RELEVANT SUGGESTION')}</div>
+                                    {adBannerElement}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        case 'News':
+                          return (
+                            <div className="w-full bg-white dark:bg-slate-900 rounded-[1.5rem] border-2 border-slate-100 dark:border-slate-850 p-4 space-y-3 shadow-lg text-slate-850 dark:text-slate-100">
+                              <div className="border-b pb-2 border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                <h6 className="text-[9px] font-black uppercase tracking-wider text-red-600">{t('আইন আদালত নিউজ', 'LEGAL NEWS PORTAL')}</h6>
+                                <span className="text-[7px] text-slate-400 font-bold">Breaking News</span>
+                              </div>
+                              <div className="space-y-2">
+                                <h5 className="text-[10px] font-black text-slate-900 dark:text-white leading-tight">
+                                  {t('আইনজীবী সমিতির নতুন বাজেট ঘোষণা: ডিজিটাল সেবা বাড়ানোর উদ্যোগ', 'Bar Association Announces New Budget: Digitalization Initiatives')}
+                                </h5>
+                                <p className="text-[8px] text-slate-500 dark:text-slate-400 leading-relaxed font-bold">
+                                  {t('আজ বার ভবনে কার্যনির্বাহী কমিটির মিটিংয়ে বাজেট পাস করা হয়েছে। এর মাধ্যমে সকল সদস্য পাবেন দ্রুত এআই লিগ্যাল সাপোর্ট...', 'The budget was passed in the executive committee meeting today. All members will now receive AI Legal Support...')}
+                                </p>
+                                <div className="border border-indigo-200 dark:border-indigo-900 rounded-xl p-1 bg-indigo-50/10">
+                                  <div className="text-[7px] text-indigo-600 dark:text-indigo-400 font-black px-1 pb-1 uppercase tracking-wider">{t('নিউজ পোর্টাল বিজ্ঞাপন স্থান', 'NEWS PORTAL AD SLOT')}</div>
+                                  {adBannerElement}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        default:
+                          return (
+                            <div className="w-full bg-white dark:bg-slate-900 rounded-[1.5rem] border-2 border-slate-100 dark:border-slate-800 p-4 space-y-3 shadow-lg text-slate-850 dark:text-slate-100">
+                              <div className="border-b pb-2 border-slate-100 dark:border-slate-850 flex justify-between items-center">
+                                <h6 className="text-[9px] font-black uppercase tracking-wider">{selectedPreviewPlacement} {t('স্ক্রিন প্রিভিউ', 'Screen Preview')}</h6>
+                                <span className="text-[7px] text-slate-400 font-bold">Simulated</span>
+                              </div>
+                              <div className="border border-indigo-200 dark:border-indigo-900 rounded-xl p-1 bg-indigo-50/10">
+                                <div className="text-[7px] text-indigo-600 dark:text-indigo-400 font-black px-1 pb-1 uppercase tracking-wider">{selectedPreviewPlacement} {t('বিজ্ঞাপন স্থান', 'AD SLOT')}</div>
+                                {adBannerElement}
+                              </div>
+                              <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 text-center text-[8px] text-slate-400 font-black uppercase">
+                                {selectedPreviewPlacement} {t('স্ক্রিন কন্টেন্ট এরিয়া', 'Screen Content Area')}
+                              </div>
+                            </div>
+                          );
+                      }
                     })()}
                   </div>
-                  <div>
-                    <h4 className="text-xl md:text-2xl font-black text-indigo-950 dark:text-white uppercase tracking-tighter">
-                      {adTitle || (adType === 'Election' ? 'Election Candidate Profile' : 'Professional Legal Service')}
-                    </h4>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{adType} • {location}</p>
+                )}
+              </>
+            ) : (
+              /* Direct Banner Design (Original Preview) */
+              <div className="w-full max-w-2xl bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] p-8 border border-slate-200 dark:border-slate-700 shadow-inner relative overflow-hidden group/ad">
+                <div className="relative z-10 space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl ${adType === 'Election' ? 'bg-amber-600' : 'bg-indigo-600'} text-white flex items-center justify-center shadow-xl`}>
+                      {(() => {
+                        const Icon = adTypes.find(t => t.id === adType)?.icon || MonitorPlay;
+                        return <Icon size={32} />;
+                      })()}
+                    </div>
+                    <div>
+                      <h4 className="text-xl md:text-2xl font-black text-indigo-950 dark:text-white uppercase tracking-tighter">
+                        {adTitle || (adType === 'Election' ? t('নির্বাচনী প্রচারণা ২০২৬', 'Election Campaign 2026') : t('আপনার বিজ্ঞাপন শিরোনাম', 'Your Ad Title'))}
+                      </h4>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{adType} • {location}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="h-2 w-24 bg-indigo-600 rounded-full"></div>
+                  
+                  <p className="text-base md:text-lg font-bold text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">
+                    {adDescription || (adType === 'Election' 
+                      ? t('একটি উন্নত এসোসিয়েশনের জন্য ভোট দিন। একটি শক্তিশালী বার গঠনে যোগ দিন।', `Vote for a better association. Join the movement for a strong and unified bar in ${location}.`) 
+                      : t('আপনার আইন সংক্রান্ত বিষয়ে সঠিক পরামর্শ পান। দেওয়ানী ও ফৌজদারি মামলায় অভিজ্ঞ।', `Get expert legal consultation in ${location}. Specialized in Civil and Criminal litigation.`)
+                    )}
+                  </p>
+
+                  <div className="pt-4 flex flex-wrap gap-3">
+                    <span className="px-4 py-2 bg-white dark:bg-slate-800 rounded-xl text-[10px] font-black text-indigo-600 shadow-sm border border-slate-100 dark:border-slate-700">#AD_CAMPAIGN</span>
+                    <span className="px-4 py-2 bg-white dark:bg-slate-800 rounded-xl text-[10px] font-black text-slate-500 shadow-sm border border-slate-100 dark:border-slate-700">{reach.toLocaleString()} REACH</span>
+                    {fbLink && <span className="px-4 py-2 bg-blue-600 rounded-xl text-[8px] font-black text-white shadow-sm flex items-center gap-1"><Facebook size={12} /> FB</span>}
+                    {ytLink && <span className="px-4 py-2 bg-rose-600 rounded-xl text-[8px] font-black text-white shadow-sm flex items-center gap-1"><Youtube size={12} /> YT</span>}
                   </div>
                 </div>
                 
-                <div className="h-2 w-24 bg-indigo-600 rounded-full"></div>
-                
-                <p className="text-base md:text-lg font-bold text-slate-600 dark:text-slate-300 leading-relaxed max-w-lg">
-                  {adDescription || (adType === 'Election' 
-                    ? `Vote for a better association. Join the movement for a strong and unified bar in ${location}.` 
-                    : `Get expert legal consultation in ${location}. Specialized in Civil and Criminal litigation.`
-                  )}
-                </p>
-
-                <div className="pt-4 flex flex-wrap gap-3">
-                  <span className="px-4 py-2 bg-white dark:bg-slate-800 rounded-xl text-[10px] font-black text-indigo-600 shadow-sm border border-slate-100 dark:border-slate-700">#AD_CAMPAIGN</span>
-                  <span className="px-4 py-2 bg-white dark:bg-slate-800 rounded-xl text-[10px] font-black text-slate-500 shadow-sm border border-slate-100 dark:border-slate-700">{reach.toLocaleString()} REACH</span>
-                  {fbLink && <span className="px-4 py-2 bg-blue-600 rounded-xl text-[8px] font-black text-white shadow-sm flex items-center gap-1"><Facebook size={12} /> FB</span>}
-                  {ytLink && <span className="px-4 py-2 bg-rose-600 rounded-xl text-[8px] font-black text-white shadow-sm flex items-center gap-1"><Youtube size={12} /> YT</span>}
+                {/* Decorative Elements */}
+                <div className="absolute top-0 right-0 p-8">
+                  <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400">
+                    <Zap size={20} />
+                  </div>
                 </div>
+                <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-indigo-600/5 rounded-full blur-3xl"></div>
               </div>
-              
-              {/* Fake UI Decorations */}
-              <div className="absolute top-0 right-0 p-8">
-                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400">
-                  <Zap size={20} />
-                </div>
-              </div>
-              <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-indigo-600/5 rounded-full blur-3xl"></div>
-            </div>
+            )}
           </div>
         </div>
       </div>

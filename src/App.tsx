@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "./firebase";
-import { onSnapshot, doc } from "firebase/firestore";
+import { onSnapshot, doc, query, collection, where } from "firebase/firestore";
 import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
 import YoutubeGate from "./user/auth/YoutubeGate";
@@ -50,6 +50,7 @@ interface UserProfile {
   redBallsCount?: number;
   isSuspended?: boolean;
   suspensionReason?: string;
+  isAdvertiser?: boolean;
 }
 
 import { fetchWithAuth } from "./lib/api";
@@ -106,6 +107,7 @@ export default function App() {
                 mobile: fbUser.phoneNumber,
                 fullName: fbUser.displayName,
                 profilePicture: fbUser.photoURL,
+                userType: sessionStorage.getItem("registrationUserType") || undefined,
               }),
             });
 
@@ -131,6 +133,14 @@ export default function App() {
       }
     });
     return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (user && user.email && user.email.toLowerCase() === 'mdcdairy.official@gmail.com' && user.userType !== 'super_admin') {
+      const updatedUser = { ...user, userType: 'super_admin' as const };
+      setUser(updatedUser);
+      localStorage.setItem("appUser", JSON.stringify(updatedUser));
+    }
   }, [user]);
 
   useEffect(() => {
@@ -267,6 +277,19 @@ export default function App() {
               newProfile.suspensionReason = data.suspensionReason;
               updated = true;
             }
+            if (
+              data.isAdvertiser !== undefined &&
+              data.isAdvertiser !== user.isAdvertiser
+            ) {
+              newProfile.isAdvertiser = data.isAdvertiser;
+              updated = true;
+            } else if (
+              data.is_advertiser !== undefined &&
+              data.is_advertiser !== user.isAdvertiser
+            ) {
+              newProfile.isAdvertiser = data.is_advertiser;
+              updated = true;
+            }
 
             if (updated) {
               setUser(newProfile);
@@ -291,11 +314,12 @@ export default function App() {
     if (!user || !user.firebaseUid) return;
 
     // Real-time synchronization of user's core attributes (Trust style & suspension triggers)
-    const userDocRef = doc(db, "users", user.firebaseUid);
+    const q = query(collection(db, "users"), where("firebase_uid", "==", user.firebaseUid));
     const unsubscribe = onSnapshot(
-      userDocRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
+      q,
+      (querySnapshot) => {
+        if (!querySnapshot.empty) {
+          const snapshot = querySnapshot.docs[0];
           const data = snapshot.data();
           setUser((prev) => {
             if (!prev) return null;
@@ -325,6 +349,7 @@ export default function App() {
                 data.red_balls_count !== undefined ? data.red_balls_count : 0,
               isSuspended: data.is_suspended || false,
               suspensionReason: data.suspension_reason || "",
+              isAdvertiser: data.is_advertiser || data.isAdvertiser || false,
             };
 
             Object.entries(fieldsToSync).forEach(([key, value]) => {
@@ -343,7 +368,7 @@ export default function App() {
         }
       },
       (err) => {
-        console.error("[App] Users onSnapshot failed:", err);
+        console.error("[App] Users query onSnapshot failed:", err);
       },
     );
 
@@ -451,6 +476,7 @@ export default function App() {
               redBallsCount={user.redBallsCount || 0}
               isSuspended={user.isSuspended || false}
               suspensionReason={user.suspensionReason || ""}
+              isAdvertiser={user.isAdvertiser || false}
               onLogout={handleLogout}
               onUpdateProfile={handleUpdateProfile}
             />
