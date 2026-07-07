@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, User, Phone, MapPin, Briefcase, Star, Filter, Mail, TrendingUp, CheckCircle2, XCircle, Handshake, ChevronRight, ShieldAlert } from 'lucide-react';
+import { Search, User, Phone, MapPin, Briefcase, Star, Filter, Mail, TrendingUp, CheckCircle2, XCircle, Handshake, ChevronRight, ShieldAlert, Award, Crown } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getClerks } from '../../services/user/featureService';
 import { BANGLADESH_DISTRICTS } from '../../constants';
@@ -37,6 +37,9 @@ export default function ClerkDirectory({ currentUserId, currentUserName = 'User'
           const rating = (Math.random() * (5 - 4) + 4).toFixed(1);
           const reviews = Math.floor(Math.random() * 100) + 5;
 
+          // Calculate rankingScore based on experience, successful filings, active cases, and rating
+          const rankingScore = (successful_filings * 3) + (active_cases * 2) + (experience * 10) + (parseFloat(rating) * 50);
+
           return {
             ...clerk,
             rating,
@@ -47,6 +50,7 @@ export default function ClerkDirectory({ currentUserId, currentUserName = 'User'
             trust_score: clerk.trust_score !== undefined ? clerk.trust_score : 100,
             warnings_count: clerk.warnings_count || 0,
             red_balls_count: clerk.red_balls_count || 0,
+            rankingScore,
             stats: {
               active: clerk.is_approved !== false,
               experience,
@@ -56,7 +60,17 @@ export default function ClerkDirectory({ currentUserId, currentUserName = 'User'
           };
         });
 
-        setClerks(enrichedData);
+        // Assign true rank index relative to all clerks sorted by rankingScore descending
+        const sortedByRank = [...enrichedData].sort((a, b) => b.rankingScore - a.rankingScore);
+        const fullyEnrichedData = enrichedData.map(c => {
+          const rankIndex = sortedByRank.findIndex(s => s.id === c.id);
+          return {
+            ...c,
+            rank: rankIndex + 1
+          };
+        });
+
+        setClerks(fullyEnrichedData);
       } catch (err) {
         console.error("Error fetching clerks:", err);
       } finally {
@@ -121,7 +135,7 @@ export default function ClerkDirectory({ currentUserId, currentUserName = 'User'
       const bIsMe = currentUserId && (b.id === currentUserId || b.firebase_uid === currentUserId);
       if (aIsMe) return -1;
       if (bIsMe) return 1;
-      return 0;
+      return (b.rankingScore || 0) - (a.rankingScore || 0);
     });
   }, [clerks, searchQuery, selectedDistrict, currentUserId]);
 
@@ -180,6 +194,7 @@ export default function ClerkDirectory({ currentUserId, currentUserName = 'User'
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {filteredClerks.map((clerk) => {
             const isMe = currentUserId && (clerk.id === currentUserId || clerk.firebase_uid === currentUserId);
+            const isClerkSubscribed = clerk.subscription_package && clerk.subscription_package !== 'free' || clerk.subscriptionPackage && clerk.subscriptionPackage !== 'free';
             
             return (
               <div key={clerk.id} className={`bg-white p-8 rounded-[3rem] border shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 transition-all group flex flex-col md:flex-row gap-8 relative overflow-hidden ${
@@ -198,21 +213,46 @@ export default function ClerkDirectory({ currentUserId, currentUserName = 'User'
                 {/* Profile Side */}
                 <div className="flex flex-col items-center md:w-48 shrink-0">
                   <div className="relative mb-4">
-                    <div className="w-32 h-32 rounded-[2.5rem] bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-3xl border-4 border-white shadow-xl overflow-hidden group-hover:scale-105 transition-transform duration-500 ring-4 ring-indigo-50">
+                    <div className={`w-32 h-32 rounded-[2.5rem] bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-3xl border-4 border-white shadow-xl overflow-hidden group-hover:scale-105 transition-transform duration-500 ring-4 ${
+                      isClerkSubscribed 
+                        ? 'ring-amber-400 shadow-amber-200 shadow-lg dark:ring-amber-500' 
+                        : 'ring-indigo-50'
+                    }`}>
                       {clerk.profile_picture ? (
                         <img src={clerk.profile_picture} alt={clerk.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
                         clerk.name?.substring(0, 2).toUpperCase() || <User size={40} />
                       )}
                     </div>
+                    {/* Rank Badge */}
+                    <div className={`absolute -bottom-2 -left-2 px-2.5 py-1.5 rounded-[1rem] text-[10px] font-black shadow-lg border-2 border-white flex items-center gap-0.5 z-10 whitespace-nowrap ${
+                      clerk.rank === 1 ? 'bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-slate-950 border-amber-300' :
+                      clerk.rank === 2 ? 'bg-gradient-to-r from-slate-200 to-slate-300 text-slate-800 border-slate-200' :
+                      clerk.rank === 3 ? 'bg-gradient-to-r from-amber-700 to-amber-800 text-white border-amber-600' :
+                      'bg-slate-900 text-white border-slate-700'
+                    }`}>
+                      {clerk.rank <= 3 ? <Crown size={10} className="fill-current" /> : null}
+                      <span>র‍্যাংক #{clerk.rank}</span>
+                    </div>
                     {parseFloat(clerk.rating) >= 4.5 && clerk.reviews >= 50 && (
                       <div className="absolute -top-2 -left-2 w-10 h-10 bg-amber-400 rounded-2xl flex items-center justify-center shadow-lg border border-white text-white">
                         <Star size={20} fill="currentColor" />
                       </div>
                     )}
+                    {isClerkSubscribed && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-slate-950 px-3 py-1 rounded-full text-[10px] font-black shadow-md border-2 border-white flex items-center gap-1 z-10 whitespace-nowrap animate-pulse">
+                        <Award size={12} className="fill-slate-950" />
+                        <span>প্রিমিয়াম</span>
+                      </div>
+                    )}
                   </div>
                   
-                  <h3 className="font-black text-slate-900 text-lg text-center mb-1 group-hover:text-indigo-600 transition-colors leading-tight">{clerk.name}</h3>
+                  <h3 className="font-black text-slate-900 text-lg text-center mb-1 group-hover:text-indigo-600 transition-colors leading-tight flex items-center justify-center gap-1">
+                    {clerk.name}
+                    {isClerkSubscribed && (
+                      <Award size={18} className="text-amber-500 fill-amber-100 shrink-0" />
+                    )}
+                  </h3>
                   <span className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-black uppercase tracking-wider mb-3">
                     মুহুরি (Clerk)
                   </span>

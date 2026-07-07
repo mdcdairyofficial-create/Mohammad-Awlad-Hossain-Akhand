@@ -1294,17 +1294,20 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const { id } = req.params;
       const { package: pkg, days } = req.body;
       
-      const validPackages = ['free', 'classic', 'premium'];
+      const validPackages = ['free', 'classic', 'premium', 'special', 'silver', 'gold', 'platinum', 'diamond'];
       if (!validPackages.includes(pkg)) {
         return res.status(400).json({ error: "Invalid package" });
       }
 
-      const now = new Date();
-      const newEndDate = new Date(now.getTime() + (days || 30) * 24 * 60 * 60 * 1000);
+      let newEndDate: string | null = null;
+      if (pkg !== 'free') {
+        const now = new Date();
+        newEndDate = new Date(now.getTime() + (days || 30) * 24 * 60 * 60 * 1000).toISOString();
+      }
 
       await getAdminDb().collection("users").doc(id).update({
         subscription_package: pkg,
-        subscription_end_date: newEndDate.toISOString()
+        subscription_end_date: newEndDate
       });
       res.json({ success: true });
     } catch (error: any) {

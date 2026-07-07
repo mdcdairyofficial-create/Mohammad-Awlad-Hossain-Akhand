@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, User, Phone, MapPin, Briefcase, Star, Filter, Mail, TrendingUp, CheckCircle2, XCircle, Handshake, ChevronRight, ShieldAlert } from 'lucide-react';
+import { Search, User, Phone, MapPin, Briefcase, Star, Filter, Mail, TrendingUp, CheckCircle2, XCircle, Handshake, ChevronRight, ShieldAlert, Award, Crown } from 'lucide-react';
 import { motion } from 'motion/react';
 import { getLawyers } from '../../services/user/featureService';
 import { BANGLADESH_DISTRICTS } from '../../constants';
@@ -43,10 +43,14 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
           
           // Randomly assign categories if not present
           const randomCat = categories[Math.floor(Math.random() * (categories.length - 1)) + 1];
+          const rating = lawyer.rating || (Math.random() * (5 - 4) + 4).toFixed(1);
+          
+          // Calculate rankingScore based on wins, settlements, ongoing, and rating
+          const rankingScore = (won * 5) + (settled * 3) + (ongoing * 2) - (lost * 2) + (parseFloat(rating) * 10);
 
           return {
             ...lawyer,
-            rating: lawyer.rating || (Math.random() * (5 - 4) + 4).toFixed(1),
+            rating,
             reviews: lawyer.reviews || Math.floor(Math.random() * 200) + 10,
             specialization: lawyer.specialization || randomCat,
             profile_picture: lawyer.profile_picture || lawyer.photoUrl || null,
@@ -54,6 +58,7 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
             trust_score: lawyer.trust_score !== undefined ? lawyer.trust_score : 100,
             warnings_count: lawyer.warnings_count || 0,
             red_balls_count: lawyer.red_balls_count || 0,
+            rankingScore,
             stats: {
               active: lawyer.is_active !== false,
               ongoing,
@@ -65,8 +70,17 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
           };
         });
 
-        // Ensure current user is in the list if they are a lawyer
-        setLawyers(enrichedData);
+        // Assign true rank index relative to all lawyers sorted by rankingScore descending
+        const sortedByRank = [...enrichedData].sort((a, b) => b.rankingScore - a.rankingScore);
+        const fullyEnrichedData = enrichedData.map(l => {
+          const rankIndex = sortedByRank.findIndex(s => s.id === l.id);
+          return {
+            ...l,
+            rank: rankIndex + 1
+          };
+        });
+
+        setLawyers(fullyEnrichedData);
       } catch (err) {
         console.error("Error fetching lawyers:", err);
       } finally {
@@ -139,7 +153,7 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
       const bIsMe = currentUserId && (b.id === currentUserId || b.firebase_uid === currentUserId);
       if (aIsMe) return -1;
       if (bIsMe) return 1;
-      return 0;
+      return (b.rankingScore || 0) - (a.rankingScore || 0);
     });
   }, [lawyers, searchQuery, selectedDistrict, selectedCategory, currentUserId]);
 
@@ -215,6 +229,7 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
           {filteredLawyers.map((lawyer) => {
             const isMe = currentUserId && (lawyer.id === currentUserId || lawyer.firebase_uid === currentUserId);
+            const isLawyerSubscribed = lawyer.subscription_package && lawyer.subscription_package !== 'free' || lawyer.subscriptionPackage && lawyer.subscriptionPackage !== 'free';
             
             return (
               <div key={lawyer.id} className={`bg-white p-8 rounded-[3rem] border shadow-sm hover:shadow-xl hover:shadow-indigo-500/5 transition-all group flex flex-col md:flex-row gap-8 relative overflow-hidden ${
@@ -233,7 +248,11 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
                 {/* Profile Side */}
                 <div className="flex flex-col items-center md:w-48 shrink-0">
                   <div className="relative mb-4">
-                    <div className="w-32 h-32 rounded-[2.5rem] bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-3xl border-4 border-white shadow-xl overflow-hidden group-hover:scale-105 transition-transform duration-500 ring-4 ring-indigo-50">
+                    <div className={`w-32 h-32 rounded-[2.5rem] bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-3xl border-4 border-white shadow-xl overflow-hidden group-hover:scale-105 transition-transform duration-500 ring-4 ${
+                      isLawyerSubscribed 
+                        ? 'ring-amber-400 shadow-amber-200 shadow-lg dark:ring-amber-500' 
+                        : 'ring-indigo-50'
+                    }`}>
                       {lawyer.profile_picture ? (
                         <img src={lawyer.profile_picture} alt={lawyer.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       ) : (
@@ -244,14 +263,35 @@ export default function LawyerDirectory({ currentUserId, currentUserName = 'User
                       <CheckCircle2 size={20} fill="currentColor" className="text-white" />
                       <CheckCircle2 size={24} className="absolute" />
                     </div>
+                    {/* Rank Badge */}
+                    <div className={`absolute -bottom-2 -left-2 px-2.5 py-1.5 rounded-[1rem] text-[10px] font-black shadow-lg border-2 border-white flex items-center gap-0.5 z-10 whitespace-nowrap ${
+                      lawyer.rank === 1 ? 'bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600 text-slate-950 border-amber-300' :
+                      lawyer.rank === 2 ? 'bg-gradient-to-r from-slate-200 to-slate-300 text-slate-800 border-slate-200' :
+                      lawyer.rank === 3 ? 'bg-gradient-to-r from-amber-700 to-amber-800 text-white border-amber-600' :
+                      'bg-slate-900 text-white border-slate-700'
+                    }`}>
+                      {lawyer.rank <= 3 ? <Crown size={10} className="fill-current" /> : null}
+                      <span>র‍্যাংক #{lawyer.rank}</span>
+                    </div>
                     {parseFloat(lawyer.rating) >= 4.5 && lawyer.reviews >= 50 && (
                       <div className="absolute -top-2 -left-2 w-10 h-10 bg-amber-400 rounded-2xl flex items-center justify-center shadow-lg border border-white text-white">
                         <Star size={20} fill="currentColor" />
                       </div>
                     )}
+                    {isLawyerSubscribed && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-slate-950 px-3 py-1 rounded-full text-[10px] font-black shadow-md border-2 border-white flex items-center gap-1 z-10 whitespace-nowrap animate-pulse">
+                        <Award size={12} className="fill-slate-950" />
+                        <span>প্রিমিয়াম</span>
+                      </div>
+                    )}
                   </div>
                   
-                  <h3 className="font-black text-slate-900 text-lg text-center mb-1 group-hover:text-indigo-600 transition-colors leading-tight">{lawyer.name}</h3>
+                  <h3 className="font-black text-slate-900 text-lg text-center mb-1 group-hover:text-indigo-600 transition-colors leading-tight flex items-center justify-center gap-1">
+                    {lawyer.name}
+                    {isLawyerSubscribed && (
+                      <Award size={18} className="text-amber-500 fill-amber-100 shrink-0" />
+                    )}
+                  </h3>
                   <span className="px-4 py-1.5 bg-indigo-50 text-indigo-700 rounded-full text-xs font-black uppercase tracking-wider mb-3">
                     {lawyer.specialization}
                   </span>

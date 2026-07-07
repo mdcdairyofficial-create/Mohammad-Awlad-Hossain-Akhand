@@ -2400,13 +2400,22 @@ export default function Dashboard({
           {/* Profile Section in Sidebar */}
           <div className="px-6 py-4 flex flex-col items-center border-b border-white/10 mb-2">
             <div className="relative group">
-              <div className="w-20 h-20 rounded-full bg-white/10 border-2 border-white/20 overflow-hidden flex items-center justify-center">
+              <div className={`w-20 h-20 rounded-full bg-white/10 border-2 overflow-hidden flex items-center justify-center ${
+                isSubscribed 
+                  ? 'border-amber-400 ring-2 ring-amber-400/50 shadow-md shadow-amber-400/10' 
+                  : 'border-white/20'
+              }`}>
                 {profilePic ? (
                   <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
                 ) : (
                   <User className="text-white/40" size={40} />
                 )}
               </div>
+              {isSubscribed && (
+                <div className="absolute -top-1 -right-1 bg-gradient-to-r from-amber-400 to-amber-600 text-slate-950 p-1 rounded-full border border-white shadow-lg animate-pulse z-10" title="এমডিসি প্রিমিয়াম">
+                  <Award size={12} className="fill-amber-500 text-slate-950" />
+                </div>
+              )}
               <label className="absolute bottom-0 right-0 bg-indigo-600 p-1.5 rounded-full border-2 border-indigo-900 cursor-pointer hover:bg-indigo-500 transition-colors shadow-lg">
                 <Camera size={14} className="text-white" />
                 <input type="file" className="hidden" accept="image/*" onChange={handleProfilePicUpload} />
@@ -3367,20 +3376,35 @@ export default function Dashboard({
                   <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                     <div className="flex flex-col md:flex-row items-center gap-8 mb-8">
                       <div className="relative">
-                        <div className="w-32 h-32 rounded-3xl bg-slate-100 dark:bg-slate-800 border-4 border-white dark:border-slate-700 shadow-xl overflow-hidden flex items-center justify-center">
+                        <div className={`w-32 h-32 rounded-3xl bg-slate-100 dark:bg-slate-800 border-4 shadow-xl overflow-hidden flex items-center justify-center ${
+                          isSubscribed 
+                            ? 'border-amber-400 ring-4 ring-amber-400/30' 
+                            : 'border-white dark:border-slate-700'
+                        }`}>
                           {profilePic ? (
                             <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
                           ) : (
                             <User className="text-slate-300" size={64} />
                           )}
                         </div>
+                        {isSubscribed && (
+                          <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 text-slate-950 px-3 py-1 rounded-full text-[10px] font-black shadow-md border-2 border-white flex items-center gap-1 z-10 whitespace-nowrap animate-pulse">
+                            <Award size={12} className="fill-slate-950" />
+                            <span>প্রিমিয়াম</span>
+                          </div>
+                        )}
                         <label className="absolute -bottom-2 -right-2 bg-indigo-600 p-3 rounded-2xl border-4 border-white dark:border-slate-900 cursor-pointer hover:bg-indigo-500 transition-all shadow-lg hover:scale-110">
                           <Camera size={20} className="text-white" />
                           <input type="file" className="hidden" accept="image/*" onChange={handleProfilePicUpload} />
                         </label>
                       </div>
                       <div className="text-center md:text-left">
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2">{userName}</h2>
+                        <h2 className="text-3xl font-black text-slate-900 dark:text-white mb-2 flex items-center justify-center md:justify-start gap-2">
+                          {userName}
+                          {isSubscribed && (
+                            <Award size={24} className="text-amber-500 fill-amber-100 shrink-0" />
+                          )}
+                        </h2>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-4">
                           <div className="px-4 py-1.5 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-xl text-sm font-black flex items-center gap-2 border border-amber-200 dark:border-amber-800">
                             <Shield size={16} />

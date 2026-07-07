@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "start": "node --experimental-strip-types server.ts",
+    "dev": "tsx server/index.ts",
+    "start": "node --experimental-strip-types server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",

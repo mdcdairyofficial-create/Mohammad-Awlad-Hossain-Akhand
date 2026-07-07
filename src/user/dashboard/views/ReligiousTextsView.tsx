@@ -18,19 +18,19 @@ export const ReligiousTextsView = ({ t, language }: ReligiousTextsViewProps) => 
     gita: {
       title: t('gita'),
       icon: BookOpen,
-      url: 'https://www.holy-bhagavad-gita.org/Index/bn',
+      url: 'https://modernsanskrit.com/bengali-gita-pdf-download/#google_vignette',
       description: language === 'bn' ? 'শ্রীমদ্ভগবদ্গীতা-এর বাংলা সম্পূর্ণ পাঠ ও মাহাত্ম্য।' : 'Full Bengali text and significance of Bhagavad Gita.',
     },
     bible: {
       title: t('bible'),
       icon: BookText,
-      url: 'https://drive.google.com/file/d/11SFw2IGvkfjw7iQYr69oTm1Dvx_JiuMZ/preview',
+      url: 'https://www.ebanglalibrary.com/books/%E0%A6%AC%E0%A6%BE%E0%A6%82%E0%A6%B2%E0%A6%BE-%E0%A6%AC%E0%A6%BE%E0%A6%87%E0%A6%AC%E0%A7%87%E0%A6%B2/',
       description: language === 'bn' ? 'পবিত্র বাইবেল-এর বাংলা সম্পূর্ণ পাঠ (পুরাতন ও নতুন নিয়ম)।' : 'Full Bengali text of The Holy Bible (Old & New Testament).',
     },
     tripitaka: {
       title: t('tripitaka'),
       icon: ScrollText,
-      url: 'https://tipitaka.org/beng/',
+      url: 'https://devapriyawf.wordpress.com/2021/01/19/bengali-tripitaka/',
       description: language === 'bn' ? 'ত্রিপিটক-এর বাংলা সম্পূর্ণ পাঠ ও বৌদ্ধ দর্শন।' : 'Full Buddhist Tripitaka text and Buddhist philosophy.',
     },
   };

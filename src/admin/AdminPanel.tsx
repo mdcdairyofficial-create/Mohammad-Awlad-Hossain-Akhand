@@ -1206,30 +1206,21 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                     <div className="bg-white p-4.5 rounded-2xl border border-indigo-100 shadow-sm space-y-2">
                       <span className="font-bold text-slate-800 text-sm block">২. Warning System (ওয়ার্নিং নিয়ন্ত্রণ লজিক)</span>
                       <p>
-                        কোনো মুহুরীকে তার অপেশাদার আচরণের জন্য সতর্ক করতে প্যানেল থেকে <strong>Warn</strong> বোতামটি ব্যবহার করা যায়। 
-                      </p>
-                      <p className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg border border-amber-100 font-medium font-sans">
-                        ⚠️ কোনো মুহুরীর ওয়ার্নিং সংখ্যা <strong>৩ বার বা তার বেশি</strong> অতিক্রম করলে, সিস্টেম তাকে স্বয়ংক্রিয়ভাবে স্থগিত (Suspended) ও সাময়িক নিষিদ্ধ তালিকায় পাঠাবে।
+                        কোনো মুহুরীকে তার অপেশাদার আচরণের জন্য অফিসার বা অ্যাডমিন সতর্কবার্তা প্রদান করতে পারেন। প্রতিটি সতর্কবার্তার ফলে ট্রাস্ট স্কোর ১৫% হ্রাস পাবে এবং সর্বোচ্চ ৩টি সতর্কবার্তা বা সতর্কবার্তা না মানলে কঠোর সিদ্ধান্ত বা স্থায়ী বরখাস্তের নীতি বলবৎ হবে।
                       </p>
                     </div>
 
                     <div className="bg-white p-4.5 rounded-2xl border border-indigo-100 shadow-sm space-y-2">
-                      <span className="font-bold text-slate-800 text-sm block">৩. Red Ball Review (রেড বল স্ট্রাইক কন্ট্রোল)</span>
+                      <span className="font-bold text-slate-800 text-sm block">৩. Red Ball Strike (স্ট্রাইক ও বরখাস্তের নীতি)</span>
                       <p>
-                        পবিত্র ডিরেক্টরিতে শৃঙ্খলারক্ষা করার জন্য অফিসাররা মারাত্মক আর্থিক দুর্নীতি, ডুপ্লিকেট পেমেন্ট জালিয়াতি বা তথ্য চুরির দায়ে সরাসরি একটি <strong className="text-red-600">রেড বল (Red Ball Strike)</strong> ইস্যু করতে পারেন।
-                      </p>
-                      <p className="text-[11px] text-red-700 bg-red-50 p-2 rounded-lg border border-red-100 font-medium font-sans">
-                        🚫 পরপর <strong>৩টি রেড বল স্ট্রাইক</strong> পাওয়ার সাথে সাথেই মুহুরীর অ্যাকাউন্ট স্বয়ংক্রিয়ভাবে চিরতরে লক এবং নিষিদ্ধ (Permanently Suspended) হয়ে যাবে।
+                        কোনো মুহুরী গুরুতর অপরাধ করলে সরাসরি স্ট্রাইক প্রদানপূর্বক তার ট্রাস্ট স্কোর ৩০% কর্তন করা হয়। যদি কোনো মুহুরীর ট্রাস্ট স্কোর ৫০% বা তার নিচে নেমে যায়, তবে তাকে স্যান্ডবক্স প্যানেল থেকে সাময়িক বরখাস্ত করা সম্ভব।
                       </p>
                     </div>
 
                     <div className="bg-white p-4.5 rounded-2xl border border-indigo-100 shadow-sm space-y-2">
-                      <span className="font-bold text-slate-800 text-sm block">৪. Suspension & Appeal (বরখাস্ত বাতিল ও আপিল নিষ্পত্তি)</span>
+                      <span className="font-bold text-slate-800 text-sm block">৪. Appeal Mechanism (পুনরুদ্ধার ও আপিল আবেদন)</span>
                       <p>
-                        অ্যাকাউন্ট বরখাস্তের পর, মুহুরী তার প্যানেল থেকে একটি ওয়ান-টাইম <strong>"সাক্ষ্য ও আপিল আবেদন" (Appeal Form)</strong> জমা দিতে পারেন। 
-                      </p>
-                      <p className="text-[11px] text-indigo-800 bg-indigo-50 p-2 rounded-lg border border-indigo-100 font-medium font-sans">
-                        ✅ অফিসাররা আপিল পর্যালোচনা করে আবেদন <strong>Approve</strong> করলে সাথে সাথেই মুহুরীর সব ওয়ার্নিং ও রেড বল <strong>০</strong> এ রিসেট হয়ে যায়, ট্রাস্ট স্কোর পুনরায় <strong>১০০%</strong>-এ উন্নীত হয় এবং অ্যাকাউন্ট সচল হয়ে যায়।
+                        স্থগিত হওয়া মুহুরীগণ অফিসার প্যানেলে আপিল করতে পারেন। আপিল আবেদন যৌক্তিক প্রমাণিত হলে অ্যাডমিন বা অফিসার তাদের পুনরায় সক্রিয় ও ট্রাস্ট স্কোর রি-ইনস্ট্যান্ট করতে সক্ষম হবেন।
                       </p>
                     </div>
                   </div>
@@ -1237,9 +1228,142 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
 
               </div>
             );
-          })()}
+          })()}     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          {activeTab === 'subscriptions' && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-500">
+                    <th className="p-4 font-medium">ব্যবহারকারী</th>
+                    <th className="p-4 font-medium">প্যাকেজ</th>
+                    <th className="p-4 font-medium">মেয়াদ শেষ</th>
+                    <th className="p-4 font-medium text-right">অ্যাকশন</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {users.filter(u => u.user_type !== 'admin').map(user => {
+                    const getPackageLabel = (pkg?: string) => {
+                      switch (pkg) {
+                        case 'classic': return 'ক্লাসিক';
+                        case 'premium': return 'প্রিমিয়াম';
+                        case 'special': return 'স্পেশাল';
+                        case 'silver': return 'সিলভার';
+                        case 'gold': return 'গোল্ড';
+                        case 'platinum': return 'প্লাটিনাম';
+                        case 'diamond': return 'ডায়মন্ড';
+                        case 'free':
+                        default: return 'ফ্রি';
+                      }
+                    };
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    const getPackageBadgeClass = (pkg?: string) => {
+                      switch (pkg) {
+                        case 'diamond': return 'bg-purple-100 text-purple-800 border border-purple-200';
+                        case 'platinum': return 'bg-cyan-100 text-cyan-800 border border-cyan-200';
+                        case 'gold': return 'bg-amber-100 text-amber-800 border border-amber-200';
+                        case 'silver': return 'bg-slate-200 text-slate-800 border border-slate-300';
+                        case 'special': return 'bg-rose-100 text-rose-800 border border-rose-200';
+                        case 'premium': return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+                        case 'classic': return 'bg-blue-100 text-blue-800 border border-blue-200';
+                        default: return 'bg-slate-100 text-slate-700';
+                      }
+                    };
+
+                    return (
+                      <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 text-slate-800 font-medium">
+                          <div>{user.name}</div>
+                          <div className="text-xs text-slate-400">{user.mobile}</div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPackageBadgeClass(user.subscription_package)}`}>
+                            {getPackageLabel(user.subscription_package)}
+                          </span>
+                        </td>
+                        <td className="p-4 text-slate-500 text-sm">
+                          {user.subscription_end_date ? new Date(user.subscription_end_date).toLocaleDateString('bn-BD') : 'নেই'}
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex gap-2 justify-end items-center flex-wrap">
+                            {user.subscription_package && user.subscription_package !== 'free' && (
+                              <select
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === 'custom') {
+                                    const customDays = window.prompt("কত দিনের সাবস্ক্রিপশন দিতে চান? (দিনের সংখ্যা লিখুন):", "30");
+                                    if (customDays) {
+                                      const parsed = parseInt(customDays);
+                                      if (!isNaN(parsed) && parsed > 0) {
+                                        updateSubscription(user.id as any, user.subscription_package || 'classic', parsed);
+                                      } else {
+                                        alert("দয়া করে সঠিক সংখ্যা লিখুন।");
+                                      }
+                                    }
+                                  } else {
+                                    updateSubscription(user.id as any, user.subscription_package || 'classic', parseInt(val));
+                                  }
+                                }}
+                                value=""
+                                className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-md px-1.5 py-1 outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                                disabled={processingId === user.id}
+                              >
+                                <option value="" disabled>মেয়াদ পরিবর্তন</option>
+                                <option value="30">৩০ দিন (১ মাস)</option>
+                                <option value="90">৯০ দিন (৩ মাস)</option>
+                                <option value="180">১৮০ দিন (৬ মাস)</option>
+                                <option value="365">৩৬৫ দিন (১ বছর)</option>
+                                <option value="730">৭৩০ দিন (২ বছর)</option>
+                                <option value="custom">কাস্টম দিন লিখুন...</option>
+                              </select>
+                            )}
+                            <select 
+                              onChange={(e) => {
+                                const pkg = e.target.value;
+                                const daysMap: Record<string, number> = {
+                                  free: 0,
+                                  classic: 30,
+                                  premium: 30,
+                                  special: 30,
+                                  silver: 30,
+                                  gold: 90,
+                                  platinum: 180,
+                                  diamond: 365
+                                };
+                                updateSubscription(user.id as any, pkg, daysMap[pkg] || 30);
+                              }}
+                              value={user.subscription_package || 'free'}
+                              className="text-xs bg-slate-50 border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                              disabled={processingId === user.id}
+                            >
+                              <option value="free">ফ্রি (Free)</option>
+                              <option value="classic">ক্লাসিক (Classic)</option>
+                              <option value="premium">প্রিমিয়াম (Premium)</option>
+                              <option value="special">স্পেশাল (Special)</option>
+                              <option value="silver">সিলভার (Silver)</option>
+                              <option value="gold">গোল্ড (Gold)</option>
+                              <option value="platinum">প্লাটিনাম (Platinum)</option>
+                              <option value="diamond">ডায়মন্ড (Diamond)</option>
+                            </select>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`${user.name} (${user.mobile}) কে কি আপনি সম্পূর্ণ মুছে ফেলতে চান? এর ফলে এই মোবাইল নম্বর দিয়ে নতুন করে আবার সাইন আপ করা সম্ভব হবে।`)) {
+                                  deleteUser(user.id as any);
+                                }
+                              }}
+                              className="text-xs text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-md transition-colors font-medium"
+                              disabled={processingId === user.id}
+                            >
+                              মুছে ফেলুন
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           {activeTab === 'users' && (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -1338,68 +1462,6 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
             </div>
           )}
 
-          {activeTab === 'subscriptions' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-500">
-                    <th className="p-4 font-medium">ব্যবহারকারী</th>
-                    <th className="p-4 font-medium">প্যাকেজ</th>
-                    <th className="p-4 font-medium">মেয়াদ শেষ</th>
-                    <th className="p-4 font-medium text-right">অ্যাকশন</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {users.filter(u => u.user_type !== 'admin').map(user => (
-                    <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 text-slate-800 font-medium">
-                        <div>{user.name}</div>
-                        <div className="text-xs text-slate-400">{user.mobile}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          user.subscription_package === 'premium' ? 'bg-amber-100 text-amber-800' :
-                          user.subscription_package === 'standard' ? 'bg-blue-100 text-blue-800' :
-                          'bg-slate-100 text-slate-800'
-                        }`}>
-                          {user.subscription_package === 'premium' ? 'প্রিমিয়াম' : 
-                           user.subscription_package === 'standard' ? 'স্ট্যান্ডার্ড' : 'ফ্রি'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-slate-500 text-sm">
-                        {user.subscription_end_date ? new Date(user.subscription_end_date).toLocaleDateString('bn-BD') : 'নেই'}
-                      </td>
-                      <td className="p-4 text-right">
-                        <div className="flex gap-2 justify-end items-center">
-                          <select 
-                            onChange={(e) => updateSubscription(user.id as any, e.target.value, 30)}
-                            value={user.subscription_package || 'free'}
-                            className="text-xs bg-slate-50 border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500"
-                            disabled={processingId === user.id}
-                          >
-                            <option value="free">ফ্রি</option>
-                            <option value="standard">স্ট্যান্ডার্ড (৩০ দিন)</option>
-                            <option value="premium">প্রিমিয়াম (৩০ দিন)</option>
-                          </select>
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`${user.name} (${user.mobile}) কে কি আপনি সম্পূর্ণ মুছে ফেলতে চান? এর ফলে এই মোবাইল নম্বর দিয়ে নতুন করে আবার সাইন আপ করা সম্ভব হবে।`)) {
-                                deleteUser(user.id as any);
-                              }
-                            }}
-                            className="text-xs text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-md transition-colors font-medium"
-                            disabled={processingId === user.id}
-                          >
-                            মুছে ফেলুন
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
 
           {activeTab === 'cases' && (
             <div className="overflow-x-auto">
@@ -1842,6 +1904,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
               </div>
             </div>
           )}
+        </div>
 
           {activeTab === 'global_notifications' && (
             <div className="max-w-2xl mx-auto">
@@ -3956,8 +4019,7 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
             </div>
           )}
         </div>
-      </div>
-    )}
+      )}
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
