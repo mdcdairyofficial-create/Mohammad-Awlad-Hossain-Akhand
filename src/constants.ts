@@ -187,3 +187,47 @@ export const getCourtsForDistrict = (district: string, country: string = 'Bangla
   ];
 };
 
+export const CIVIL_CASE_STEPS = [
+  "S.R/AD(সমন/চিঠি)",
+  "W/S (জবাব)",
+  "Experate বা একতরফা",
+  "একতরফা জবানবন্দি",
+  "ADR",
+  "ইস্যু গঠন",
+  "CPC",
+  "SD",
+  "P.H (বাদীর স্বাক্ষী)",
+  "F.H (বিবাদীর স্বাক্ষী)",
+  "আদেশ"
+];
+
+export const CRIMINAL_CASE_STEPS = [
+  "সমন",
+  "সমন ফেরত",
+  "তদন্ত",
+  "চার্জশিট",
+  "সাক্ষ্য",
+  "রায়",
+  "হাজিরা",
+  "সময়"
+];
+
+export function formatCourtNameWithNo(courtName?: string, courtNumber?: string): string {
+  if (!courtName) return '';
+  const numStr = courtNumber ? courtNumber.trim() : '';
+  if (!numStr) return courtName;
+
+  if (courtName.includes(numStr)) {
+    return courtName;
+  }
+
+  const formattedNo = `(${numStr}) `;
+  if (courtName.includes('আদালত')) {
+    return courtName.replace('আদালত', `${formattedNo}আদালত`);
+  } else if (courtName.includes('ট্রাইব্যুনাল')) {
+    return courtName.replace('ট্রাইব্যুনাল', `${formattedNo}ট্রাইব্যুনাল`);
+  }
+
+  return `${formattedNo}${courtName}`;
+}
+

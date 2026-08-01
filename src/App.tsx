@@ -488,55 +488,7 @@ export default function App() {
           {showSplash && <SplashScreen key="splash" />}
         </AnimatePresence>
 
-        {/* Demo toggle for authentication - remove in production */}
-        {!showSplash && (
-          <div className="fixed bottom-4 left-4 z-[9999] flex flex-col gap-2 items-start bg-white p-4 rounded-xl shadow-2xl border-2 border-indigo-200">
-            <span className="text-xs font-bold text-indigo-600 mb-1">Developer Tools</span>
-            <button
-              onClick={() => {
-                localStorage.removeItem("youtubeVerifiedCompleted");
-                setYoutubeCompleted(false);
-                // Also reset facebook and telegram gates
-                localStorage.removeItem("facebookVerifiedCompleted");
-                localStorage.removeItem("firstSessionDate");
-                setFacebookCompleted(false);
 
-                localStorage.removeItem("telegramVerifiedCompleted");
-                localStorage.removeItem("secondSessionDate");
-                setTelegramCompleted(false);
-
-                setShowFacebookGate(true); // Treat as day 2 since they cleared it to test
-                setShowTelegramGate(true);
-              }}
-              className="bg-red-50 hover:bg-red-100 border border-red-200 text-xs px-4 py-2 rounded text-red-600 shadow-sm font-semibold transition-colors"
-              title="Reset UI Gates so you can see them again"
-            >
-              Reset UI Gates
-            </button>
-            <button
-              onClick={() => {
-                if (user) handleLogout();
-                else {
-                  const oneYearFromNow = new Date();
-                  oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-                  handleAuthSuccess({
-                    id: 1,
-                    fullName: "ব্যবহারকারী",
-                    userType: "lawyer",
-                    mobile: "01700000000",
-                    district: "ঢাকা",
-                    country: "Bangladesh",
-                    subscriptionEndDate: oneYearFromNow.toISOString(),
-                    subscriptionPackage: "diamond",
-                  });
-                }
-              }}
-              className="bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs px-4 py-2 rounded text-blue-600 shadow-sm font-semibold transition-colors w-full text-left"
-            >
-              {user ? "লগ আউট (Dev)" : "লগ ইন (Dev)"}
-            </button>
-          </div>
-        )}
       </div>
     </ErrorBoundary>
   );

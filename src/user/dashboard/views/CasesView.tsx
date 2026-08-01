@@ -19,6 +19,7 @@ import {
   CreditCard
 } from 'lucide-react';
 import { Case } from '../../../types';
+import { formatCourtNameWithNo } from '../../../constants';
 import { AdBanner } from '../AdBanner';
 
 interface CasesViewProps {
@@ -44,10 +45,12 @@ interface CasesViewProps {
   userType?: string;
   showAllCases?: boolean;
   onToggleShowAll?: () => void;
+  totalCasesCount?: number;
 }
 
 export const CasesView = ({
   cases,
+  totalCasesCount,
   caseSearchQuery,
   setCaseSearchQuery,
   caseFilter,
@@ -94,7 +97,7 @@ export const CasesView = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight">
-            {t('my_cases')} <span className="text-indigo-600 ml-2">({filteredCases.length})</span>
+            {t('my_cases')} <span className="text-indigo-600 ml-2">({showAllCases || caseSearchQuery || caseFilter !== 'all' || caseStatusFilter !== 'all' ? filteredCases.length : (totalCasesCount ?? filteredCases.length)})</span>
           </h2>
           <p className="text-slate-500 font-medium mt-1">
             {showAllCases 
@@ -261,7 +264,7 @@ export const CasesView = ({
                       </div>
                       <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('court_label')}</p>
-                        <p className="text-sm font-bold text-slate-700 leading-tight">{c.courtNumber ? c.courtNumber + ' ' : ''}{c.courtName}</p>
+                        <p className="text-sm font-bold text-slate-700 leading-tight">{formatCourtNameWithNo(c.courtName, c.courtNumber)}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-4">
@@ -341,7 +344,7 @@ export const CasesView = ({
                     </div>
                   </td>
                   <td className="px-8 py-5">
-                    <p className="text-sm font-bold text-slate-600">{c.courtNumber ? c.courtNumber + ' ' : ''}{c.courtName}</p>
+                    <p className="text-sm font-bold text-slate-600">{formatCourtNameWithNo(c.courtName, c.courtNumber)}</p>
                   </td>
                   <td className="px-8 py-5">
                     <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>

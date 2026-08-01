@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Users, Shield, CheckCircle, XCircle, FileText, CreditCard, LayoutDashboard, MessageSquare, Bell, Send, Clock, User as UserIcon, Search, TrendingUp, PieChart as PieChartIcon, BarChart as BarChartIcon, MapPin, ShieldAlert, Scale, ThumbsUp, ThumbsDown, Lock, ShieldCheck, Key, RefreshCw, Database, Activity, Play, ChevronDown, ChevronUp, RefreshCcw, Smartphone, Tablet, Monitor, Layout, Menu, Ruler, Terminal, Cpu, Zap, Check, ListChecks } from 'lucide-react';
+import { Trash2, Upload, Plus, Calendar, Image as ImageIcon, Download } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, AreaChart, Area, LineChart, Line } from 'recharts';
 import { sendGlobalNotification, subscribeToMessages, sendMessage } from '../services/user/featureService';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { auth, db } from '../firebase';
-import { collection, getDocs, doc, getDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, updateDoc, addDoc, query, where } from 'firebase/firestore';
+import { jsPDF } from 'jspdf';
 
 import { BANGLADESH_DISTRICTS, getPoliceStations } from '../constants';
+import AdStats from './AdStats';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -72,6 +75,7 @@ interface Case {
   status: string;
   lawyer_name: string;
   created_at: string;
+  authorityHolder?: 'lawyer' | 'clerk';
 }
 
 interface RechargeRequest {
@@ -132,11 +136,30 @@ interface AffiliateReferral {
   created_at: string;
 }
 
+const handleDownloadFile = (dataUri: string, defaultName: string) => {
+  const link = document.createElement('a');
+  link.href = dataUri;
+  let ext = 'jpg';
+  if (dataUri.startsWith('data:application/pdf')) {
+    ext = 'pdf';
+  } else if (dataUri.startsWith('data:image/png')) {
+    ext = 'png';
+  } else if (dataUri.startsWith('data:image/webp')) {
+    ext = 'webp';
+  }
+  link.download = `${defaultName}.${ext}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 export default function AdminPanel({ userType, userId }: { userType: string, userId: number }) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'cases' | 'recharge' | 'subscriptions' | 'sub_requests' | 'affiliate_proofs' | 'affiliate_referrals' | 'createUser' | 'recycleBin' | 'support_messages' | 'global_notifications' | 'complaints' | 'clerk_trust' | 'audit_logs' | 'responsive_design' | 'testing'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'cases' | 'recharge' | 'subscriptions' | 'sub_requests' | 'affiliate_proofs' | 'affiliate_referrals' | 'createUser' | 'recycleBin' | 'support_messages' | 'global_notifications' | 'complaints' | 'clerk_trust' | 'audit_logs' | 'responsive_design' | 'testing' | 'ad_stats'>('dashboard');
   const [userFilter, setUserFilter] = useState<'all' | 'lawyer' | 'clerk' | 'client' | 'admin' | 'super_admin' | 'bar_association' | 'advertiser'>('all');
   const [thanaFilter, setThanaFilter] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [caseSearchQuery, setCaseSearchQuery] = useState('');
+  const [caseAuthorityFilter, setCaseAuthorityFilter] = useState<'all' | 'lawyer' | 'clerk'>('all');
   const [users, setUsers] = useState<User[]>([]);
   const [cases, setCases] = useState<Case[]>([]);
   const [rechargeRequests, setRechargeRequests] = useState<RechargeRequest[]>([]);
@@ -224,6 +247,281 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
     { time: '23:59', 'ল্যাটেন্সি (Latency)': 10, 'সিপিইউ (CPU)': 18 },
   ];
   const [showDetailedReportModal, setShowDetailedReportModal] = useState(false);
+
+  // --- Mohor (Clerk) and Case Timeline/History Record States ---
+  const [selectedCaseForDetails, setSelectedCaseForDetails] = useState<any | null>(null);
+  const [selectedClerkForCases, setSelectedClerkForCases] = useState<any | null>(null);
+  const [clerkCases, setClerkCases] = useState<any[]>([]);
+  const [isLoadingClerkCases, setIsLoadingClerkCases] = useState(false);
+  
+  const [newHearingDate, setNewHearingDate] = useState('');
+  const [newHearingOrder, setNewHearingOrder] = useState('');
+  const [newHearingAccusedPhoto, setNewHearingAccusedPhoto] = useState('');
+  const [newHearingPetitionerPhoto, setNewHearingPetitionerPhoto] = useState('');
+  const [isSavingHearing, setIsSavingHearing] = useState(false);
+  const [accusedDragActive, setAccusedDragActive] = useState(false);
+  const [petitionerDragActive, setPetitionerDragActive] = useState(false);
+
+  // Fetch clerk cases from Firestore
+  const loadClerkCases = async (clerkId: string) => {
+    setIsLoadingClerkCases(true);
+    try {
+      const q = query(collection(db, 'cases'), where('user_id', '==', clerkId));
+      const snap = await getDocs(q);
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClerkCases(list);
+    } catch (err) {
+      console.error("Error loading clerk cases:", err);
+    } finally {
+      setIsLoadingClerkCases(false);
+    }
+  };
+
+  // Trigger when selectedClerkForCases changes
+  useEffect(() => {
+    if (selectedClerkForCases) {
+      loadClerkCases(String(selectedClerkForCases.id));
+    }
+  }, [selectedClerkForCases]);
+
+  // Hearing records drag and drop + file processing for accused
+  const handleDragAccused = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setAccusedDragActive(true);
+    } else if (e.type === "dragleave") {
+      setAccusedDragActive(false);
+    }
+  };
+
+  const handleDropAccused = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setAccusedDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      processFile(file, 'accused');
+    }
+  };
+
+  const handleFileSelectAccused = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      processFile(file, 'accused');
+    }
+  };
+
+  // Hearing records drag and drop + file processing for petitioner
+  const handleDragPetitioner = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setPetitionerDragActive(true);
+    } else if (e.type === "dragleave") {
+      setPetitionerDragActive(false);
+    }
+  };
+
+  const handleDropPetitioner = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setPetitionerDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      processFile(file, 'petitioner');
+    }
+  };
+
+  const handleFileSelectPetitioner = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      processFile(file, 'petitioner');
+    }
+  };
+
+  const compressImageAndConvertToPdf = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Limit max dimensions to 600px to keep size under 100 KB (averages 30-50 KB)
+            const maxDimension = 600;
+            if (width > height) {
+              if (width > maxDimension) {
+                height = Math.round((height * maxDimension) / width);
+                width = maxDimension;
+              }
+            } else {
+              if (height > maxDimension) {
+                width = Math.round((width * maxDimension) / height);
+                height = maxDimension;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error("Canvas context is not available"));
+              return;
+            }
+            
+            // Draw white background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Highly compress as JPEG (quality 0.3) for minimum storage & network cost
+            const compressedJpegBase64 = canvas.toDataURL('image/jpeg', 0.3);
+            
+            // Convert to single page PDF matching aspect ratio
+            const doc = new jsPDF({
+              orientation: width > height ? 'l' : 'p',
+              unit: 'px',
+              format: [width, height]
+            });
+            doc.addImage(compressedJpegBase64, 'JPEG', 0, 0, width, height, undefined, 'FAST');
+            
+            const pdfDataUri = doc.output('datauristring');
+            resolve(pdfDataUri);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error("Failed to load image"));
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFile = async (file: File, side: 'accused' | 'petitioner') => {
+    if (!file.type.startsWith('image/')) {
+      alert("অনুগ্রহ করে শুধুমাত্র ছবি (ইমেজ) ফাইল আপলোড করুন!");
+      return;
+    }
+    try {
+      const pdfBase64 = await compressImageAndConvertToPdf(file);
+      if (side === 'accused') {
+        setNewHearingAccusedPhoto(pdfBase64);
+      } else {
+        setNewHearingPetitionerPhoto(pdfBase64);
+      }
+    } catch (err) {
+      console.error("PDF compression error:", err);
+      alert("ফাইল প্রসেস করতে ত্রুটি হয়েছে!");
+    }
+  };
+
+  // Add a new hearing date/record to Case history
+  const handleSaveHearingRecord = async () => {
+    if (!newHearingDate.trim()) {
+      alert("শুনানির তারিখ প্রদান করা আবশ্যক!");
+      return;
+    }
+    setIsSavingHearing(true);
+    try {
+      const newEntry = {
+        id: Date.now().toString(),
+        date: newHearingDate,
+        actionBy: 'accused',
+        description: 'শুনানির রেকর্ড ও আদেশ',
+        order: newHearingOrder,
+        accusedPhoto: newHearingAccusedPhoto,
+        petitionerPhoto: newHearingPetitionerPhoto,
+      };
+
+      const currentHistory = selectedCaseForDetails.history || [];
+      const updatedHistory = [...currentHistory, newEntry].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Update in Firestore
+      const caseRef = doc(db, 'cases', String(selectedCaseForDetails.id));
+      await updateDoc(caseRef, { history: updatedHistory });
+
+      // Update in local selected case state
+      const updatedCaseObj = { ...selectedCaseForDetails, history: updatedHistory };
+      setSelectedCaseForDetails(updatedCaseObj);
+
+      // Update in global cases list
+      setCases(prev => prev.map(c => c.id === selectedCaseForDetails.id ? { ...c, history: updatedHistory } : c));
+
+      // Update in clerkCases list if open
+      setClerkCases(prev => prev.map(c => c.id === selectedCaseForDetails.id ? { ...c, history: updatedHistory } : c));
+
+      // Reset inputs
+      setNewHearingDate('');
+      setNewHearingOrder('');
+      setNewHearingAccusedPhoto('');
+      setNewHearingPetitionerPhoto('');
+      alert("মামলার শুনানির রেকর্ড সফলভাবে সংরক্ষণ করা হয়েছে!");
+    } catch (err: any) {
+      console.error("Error saving hearing record:", err);
+      alert("রেকর্ড সংরক্ষণ করতে সমস্যা হয়েছে: " + err.message);
+    } finally {
+      setIsSavingHearing(false);
+    }
+  };
+
+  // Delete a hearing date/record from Case history
+  const handleDeleteHearingRecord = async (entryId: string) => {
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই তারিখের রেকর্ডটি মুছে ফেলতে চান?")) return;
+    try {
+      const updatedHistory = (selectedCaseForDetails.history || []).filter((h: any) => h.id !== entryId);
+
+      // Update in Firestore
+      const caseRef = doc(db, 'cases', String(selectedCaseForDetails.id));
+      await updateDoc(caseRef, { history: updatedHistory });
+
+      // Update in local selected case state
+      const updatedCaseObj = { ...selectedCaseForDetails, history: updatedHistory };
+      setSelectedCaseForDetails(updatedCaseObj);
+
+      // Update in global cases list
+      setCases(prev => prev.map(c => c.id === selectedCaseForDetails.id ? { ...c, history: updatedHistory } : c));
+
+      // Update in clerkCases list if open
+      setClerkCases(prev => prev.map(c => c.id === selectedCaseForDetails.id ? { ...c, history: updatedHistory } : c));
+
+      alert("রেকর্ড সফলভাবে মুছে ফেলা হয়েছে!");
+    } catch (err: any) {
+      console.error("Error deleting hearing record:", err);
+      alert("রেকর্ড মুছে ফেলতে সমস্যা হয়েছে: " + err.message);
+    }
+  };
+
+  // Update Case Authority Holder from Admin Panel
+  const handleUpdateCaseAuthority = async (newAuthority: 'lawyer' | 'clerk') => {
+    if (!selectedCaseForDetails) return;
+    try {
+      const caseRef = doc(db, 'cases', String(selectedCaseForDetails.id));
+      await updateDoc(caseRef, { authorityHolder: newAuthority });
+
+      // Update in local selected case state
+      const updatedCaseObj = { ...selectedCaseForDetails, authorityHolder: newAuthority };
+      setSelectedCaseForDetails(updatedCaseObj);
+
+      // Update in global cases list
+      setCases(prev => prev.map(c => c.id === selectedCaseForDetails.id ? { ...c, authorityHolder: newAuthority } : c));
+
+      // Update in clerkCases list if open
+      setClerkCases(prev => prev.map(c => c.id === selectedCaseForDetails.id ? { ...c, authorityHolder: newAuthority } : c));
+
+      alert("মামলার পরিচালনার অধিকার সফলভাবে পরিবর্তন করা হয়েছে!");
+    } catch (err: any) {
+      console.error("Error updating case authority:", err);
+      alert("মামলার অধিকার পরিবর্তন করতে সমস্যা হয়েছে: " + err.message);
+    }
+  };
 
   // Phase 12 Testing Logs definition
   const FUNCTIONAL_TEST_STEPS = [
@@ -939,6 +1237,14 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
         >
           <Terminal size={18} /> ডায়াগনস্টিক ও টেস্টিং ল্যাব
         </button>
+        {userType === 'super_admin' && (
+          <button 
+            onClick={() => setActiveTab('ad_stats')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'ad_stats' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            <TrendingUp size={18} /> বিজ্ঞাপন পরিসংখ্যান
+          </button>
+        )}
         <button 
           onClick={() => setShowResetConfirm(true)}
           disabled={processingId === -1}
@@ -1408,7 +1714,18 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                       </td>
                       <td className="p-4 text-right">
                         {user.user_type !== 'super_admin' && (
-                          <div className="flex gap-2 justify-end items-center">
+                          <div className="flex gap-2 justify-end items-center font-sans">
+                            {(user.user_type === 'clerk' || user.user_type === 'lawyer') && (
+                              <button
+                                onClick={() => setSelectedClerkForCases(user)}
+                                className={cn(
+                                  "text-[10px] text-white px-2.5 py-1 rounded transition-colors font-bold",
+                                  user.user_type === 'lawyer' ? "bg-indigo-600 hover:bg-indigo-700" : "bg-emerald-600 hover:bg-emerald-700"
+                                )}
+                              >
+                                মামলাসমূহ দেখুন
+                              </button>
+                            )}
                             {userType === 'super_admin' && user.user_type !== 'admin' && (
                               <button
                                 onClick={() => {
@@ -1463,45 +1780,118 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
           )}
 
 
-          {activeTab === 'cases' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-500">
-                    <th className="p-4 font-medium">মামলা নং</th>
-                    <th className="p-4 font-medium">আদালত</th>
-                    <th className="p-4 font-medium">বাদী/বিবাদী</th>
-                    <th className="p-4 font-medium">আইনজীবী/ব্যবহারকারী</th>
-                    <th className="p-4 font-medium">স্ট্যাটাস</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {cases.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 text-slate-800 font-medium">{c.case_number}</td>
-                      <td className="p-4 text-slate-600">{c.court_name}</td>
-                      <td className="p-4 text-slate-600 text-sm">
-                        <div className="font-medium text-indigo-600">{c.petitioner}</div>
-                        <div className="text-xs text-slate-400">বনাম</div>
-                        <div className="font-medium text-rose-600">{c.respondent}</div>
-                      </td>
-                      <td className="p-4 text-slate-600">{c.lawyer_name || 'অজানা'}</td>
-                      <td className="p-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
-                          {c.status || 'চলমান'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {cases.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="p-8 text-center text-slate-500">কোনো মামলা পাওয়া যায়নি</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {activeTab === 'cases' && (() => {
+            const filteredCases = cases.filter(c => {
+              const caseNo = ((c as any).caseNumber || c.case_number || '').toLowerCase();
+              const courtNm = ((c as any).courtName || c.court_name || '').toLowerCase();
+              const pet = (c.petitioner || '').toLowerCase();
+              const res = (c.respondent || '').toLowerCase();
+              const lawNm = (c.lawyer_name || '').toLowerCase();
+              const query = caseSearchQuery.toLowerCase();
+              
+              const matchesQuery = !query || 
+                caseNo.includes(query) || 
+                courtNm.includes(query) || 
+                pet.includes(query) || 
+                res.includes(query) || 
+                lawNm.includes(query);
+                
+              const authority = c.authorityHolder || 'lawyer';
+              const matchesAuthority = caseAuthorityFilter === 'all' || authority === caseAuthorityFilter;
+              
+              return matchesQuery && matchesAuthority;
+            });
+
+            return (
+              <div className="space-y-4">
+                {/* Cases Filter Controls */}
+                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between font-sans">
+                  <div className="relative w-full md:w-72">
+                    <input
+                      type="text"
+                      placeholder="মামলা নং, আদালত বা পক্ষ দিয়ে খুঁজুন..."
+                      value={caseSearchQuery}
+                      onChange={(e) => setCaseSearchQuery(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2 rounded-2xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">ফিল্টার:</span>
+                    <select
+                      value={caseAuthorityFilter}
+                      onChange={(e) => setCaseAuthorityFilter(e.target.value as any)}
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-black text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      <option value="all">সব মামলা</option>
+                      <option value="lawyer">💼 উকিল (Lawyer) পরিচালিত</option>
+                      <option value="clerk">📋 মুহুরি (Clerk) পরিচালিত</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-500">
+                        <th className="p-4 font-medium">মামলা নং</th>
+                        <th className="p-4 font-medium">আদালত</th>
+                        <th className="p-4 font-medium">বাদী/বিবাদী</th>
+                        <th className="p-4 font-medium">আইনজীবী/ব্যবহারকারী</th>
+                        <th className="p-4 font-medium">পরিচালনার अधिकार</th>
+                        <th className="p-4 font-medium">স্ট্যাটাস</th>
+                        <th className="p-4 font-medium text-right">অ্যাকশন</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredCases.map(c => {
+                        const caseNo = (c as any).caseNumber || c.case_number;
+                        const courtNm = (c as any).courtName || c.court_name;
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 text-slate-800 font-medium">{caseNo}</td>
+                            <td className="p-4 text-slate-600">{courtNm}</td>
+                            <td className="p-4 text-slate-600 text-sm">
+                              <div className="font-medium text-indigo-600">{c.petitioner}</div>
+                              <div className="text-xs text-slate-400">বনাম</div>
+                              <div className="font-medium text-rose-600">{c.respondent}</div>
+                            </td>
+                            <td className="p-4 text-slate-600">{c.lawyer_name || 'অজানা'}</td>
+                            <td className="p-4">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${
+                                c.authorityHolder === 'clerk'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-indigo-100 text-indigo-800'
+                              }`}>
+                                {c.authorityHolder === 'clerk' ? '📋 মুহুরি (Clerk)' : '💼 উকিল (Lawyer)'}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                                {c.status || 'চলমান'}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => setSelectedCaseForDetails(c)}
+                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                              >
+                                বিস্তারিত ও রেকর্ড
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filteredCases.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="p-8 text-center text-slate-500">কোনো মামলা পাওয়া যায়নি</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {activeTab === 'recharge' && (
             <div className="overflow-x-auto">
@@ -2758,6 +3148,12 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'ad_stats' && userType === 'super_admin' && (
+            <div className="space-y-6">
+              <AdStats />
             </div>
           )}
 
@@ -4048,6 +4444,467 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : 'হ্যাঁ, রিসেট করুন'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* clerk cases list modal */}
+      {selectedClerkForCases && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[80] p-4 font-sans">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col border border-slate-100">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+              <div>
+                <h3 className="text-xl font-bold text-slate-800">{selectedClerkForCases.user_type === 'lawyer' ? 'আইনজীবী' : 'মুহুরী'} "{selectedClerkForCases.name}"-এর মামলার রেকর্ড</h3>
+                <p className="text-xs text-slate-500 mt-1">মোবাইল নম্বর: {selectedClerkForCases.mobile}{selectedClerkForCases.thana ? ` | থানা: ${selectedClerkForCases.thana}` : ''}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedClerkForCases(null)}
+                className="p-2 hover:bg-indigo-100 rounded-full transition-colors text-slate-500"
+              >
+                <XCircle size={24} className="text-indigo-600 hover:text-indigo-800" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              {isLoadingClerkCases ? (
+                <div className="flex flex-col items-center justify-center p-12">
+                  <div className="w-8 h-8 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-slate-500">মামলাসমূহ ডাটাবেস থেকে খোঁজা হচ্ছে...</p>
+                </div>
+              ) : clerkCases.length === 0 ? (
+                <div className="text-center p-12 text-slate-500">
+                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  এই {selectedClerkForCases.user_type === 'lawyer' ? 'আইনজীবীর' : 'মুহুরীর'} কোনো মামলা এখনও রেকর্ড করা হয়নি।
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-500">
+                        <th className="p-4 font-medium">মামলা নং</th>
+                        <th className="p-4 font-medium">আদালত</th>
+                        <th className="p-4 font-medium">বাদী/বিবাদী</th>
+                        <th className="p-4 font-medium">স্ট্যাটাস</th>
+                        <th className="p-4 font-medium text-right">রেকর্ড ও বিবরণ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {clerkCases.map(c => {
+                        const caseNo = c.caseNumber || c.case_number;
+                        const courtNm = c.courtName || c.court_name;
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 text-slate-800 font-medium">{caseNo}</td>
+                            <td className="p-4 text-slate-600">{courtNm}</td>
+                            <td className="p-4 text-slate-600 text-sm">
+                              <div className="font-medium text-indigo-600">{c.petitioner}</div>
+                              <div className="text-xs text-slate-400">বনাম</div>
+                              <div className="font-medium text-rose-600">{c.respondent}</div>
+                            </td>
+                            <td className="p-4">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                                {c.status || 'চলমান'}
+                              </span>
+                            </td>
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => setSelectedCaseForDetails(c)}
+                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                              >
+                                বিস্তারিত ও রেকর্ড
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Case Details Modal with Hearing Timeline Table & Image Upload */}
+      {selectedCaseForDetails && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[90] p-4 font-sans overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-5xl w-full my-8 shadow-2xl flex flex-col border border-slate-100 overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-950 text-white">
+              <div>
+                <span className="text-xs font-bold bg-indigo-800 px-2.5 py-1 rounded-full text-indigo-200">মামলার বিবরণ ও শুনানির রেকর্ড</span>
+                <h3 className="text-xl font-bold mt-1.5">মামলা নম্বর: {selectedCaseForDetails.caseNumber || selectedCaseForDetails.case_number}</h3>
+                <p className="text-xs text-indigo-300 mt-1">{selectedCaseForDetails.courtName || selectedCaseForDetails.court_name}</p>
+              </div>
+              <button 
+                onClick={() => setSelectedCaseForDetails(null)}
+                className="p-2 hover:bg-indigo-900 rounded-full transition-colors text-white/80 hover:text-white"
+              >
+                <XCircle size={26} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+              {/* Top Case Meta Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-sm">
+                <div>
+                  <span className="text-xs text-slate-400 block font-medium">पक्षসমূহ (Parties)</span>
+                  <div className="mt-1">
+                    <span className="font-bold text-indigo-600">{selectedCaseForDetails.petitioner}</span>
+                    <span className="mx-1.5 text-slate-400 text-xs font-medium">বনাম</span>
+                    <span className="font-bold text-rose-600">{selectedCaseForDetails.respondent}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block font-medium">আইনজীবী (Lawyer)</span>
+                  <span className="font-bold text-slate-700 block mt-1">{selectedCaseForDetails.lawyer_name || 'অজানা'}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block font-medium">বর্তমান স্ট্যাটাস</span>
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 mt-1">
+                    {selectedCaseForDetails.status || 'চলমান'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block font-medium">মামলা পরিচালনার পূর্ণ অধিকার</span>
+                  <div className="mt-1">
+                    <select
+                      value={selectedCaseForDetails.authorityHolder || 'lawyer'}
+                      onChange={(e) => handleUpdateCaseAuthority(e.target.value as 'lawyer' | 'clerk')}
+                      className="bg-white border border-slate-250 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all cursor-pointer"
+                    >
+                      <option value="lawyer">💼 উকিল (Lawyer)</option>
+                      <option value="clerk">📋 মুহুরি (Clerk)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Date-wise Case Records Table */}
+              <div>
+                <h4 className="text-base font-extrabold text-slate-900 mb-3 flex items-center gap-2">
+                  <Scale size={18} className="text-indigo-600" />
+                  তারিখ অনুযায়ী শুনানির রেকর্ড ও আদেশসমূহ (টেবিল ভিউ)
+                </h4>
+                
+                {(!selectedCaseForDetails.history || selectedCaseForDetails.history.length === 0) ? (
+                  <div className="text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-sm">
+                    কোনো শুনানির তারিখের রেকর্ড এখনও নেই। নিচের ফর্মটি ব্যবহার করে প্রথম রেকর্ড যোগ করুন।
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-150 rounded-2xl shadow-sm">
+                    <table className="w-full text-left border-collapse bg-white">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider">
+                          <th className="p-4">তারিখ</th>
+                          <th className="p-4 w-1/4">বাদীপক্ষের ছবি</th>
+                          <th className="p-4 w-1/4">আসামিপক্ষের ছবি</th>
+                          <th className="p-4 w-1/3">আদেশ ও বিবরণ</th>
+                          <th className="p-4 text-center">মুছে ফেলুন</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
+                        {selectedCaseForDetails.history.map((h: any) => (
+                          <tr key={h.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="p-4 font-bold text-indigo-950 whitespace-nowrap">
+                              {h.date ? new Date(h.date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' }) : 'অজানা'}
+                              <span className="block text-[10px] font-normal text-slate-400 mt-1">{h.date}</span>
+                            </td>
+                            <td className="p-4">
+                              {h.petitionerPhoto ? (
+                                h.petitionerPhoto.startsWith('data:application/pdf') || h.petitionerPhoto.includes('.pdf') ? (
+                                  <div className="relative group w-32 h-24 rounded-lg overflow-hidden border border-slate-200 bg-red-50 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                                    <FileText className="w-8 h-8 text-red-500 mb-1" />
+                                    <span className="text-[10px] font-bold text-red-700">পিডিএফ ডকুমেন্ট</span>
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                      <a 
+                                        href={h.petitionerPhoto} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-1 rounded transition-colors w-24 block text-center"
+                                      >
+                                        বড় করে দেখুন
+                                      </a>
+                                      <button 
+                                        onClick={() => handleDownloadFile(h.petitionerPhoto, `petitioner_${h.date || 'hearing'}`)}
+                                        className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                      >
+                                        <Download size={11} /> ডাউনলোড
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="relative group w-32 h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                    <img 
+                                      src={h.petitionerPhoto} 
+                                      alt="Petitioner" 
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                      <a 
+                                        href={h.petitionerPhoto} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-1 rounded transition-colors w-24 block text-center"
+                                      >
+                                        বড় করে দেখুন
+                                      </a>
+                                      <button 
+                                        onClick={() => handleDownloadFile(h.petitionerPhoto, `petitioner_${h.date || 'hearing'}`)}
+                                        className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                      >
+                                        <Download size={11} /> ডাউনলোড
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              ) : (
+                                <div className="w-32 h-24 rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center bg-slate-50/50 text-slate-400 text-xs">
+                                  <ImageIcon size={18} className="mb-1 text-slate-300" />
+                                  <span>ছবি আপলোড করা হয়নি</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              {h.accusedPhoto ? (
+                                h.accusedPhoto.startsWith('data:application/pdf') || h.accusedPhoto.includes('.pdf') ? (
+                                  <div className="relative group w-32 h-24 rounded-lg overflow-hidden border border-slate-200 bg-red-50 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                                    <FileText className="w-8 h-8 text-red-500 mb-1" />
+                                    <span className="text-[10px] font-bold text-red-700">পিডিএফ ডকুমেন্ট</span>
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                      <a 
+                                        href={h.accusedPhoto} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-1 rounded transition-colors w-24 block text-center"
+                                      >
+                                        বড় করে দেখুন
+                                      </a>
+                                      <button 
+                                        onClick={() => handleDownloadFile(h.accusedPhoto, `accused_${h.date || 'hearing'}`)}
+                                        className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                      >
+                                        <Download size={11} /> ডাউনলোড
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="relative group w-32 h-24 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                    <img 
+                                      src={h.accusedPhoto} 
+                                      alt="Accused" 
+                                      referrerPolicy="no-referrer"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                      <a 
+                                        href={h.accusedPhoto} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-1 rounded transition-colors w-24 block text-center"
+                                      >
+                                        বড় করে দেখুন
+                                      </a>
+                                      <button 
+                                        onClick={() => handleDownloadFile(h.accusedPhoto, `accused_${h.date || 'hearing'}`)}
+                                        className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                      >
+                                        <Download size={11} /> ডাউনলোড
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              ) : (
+                                <div className="w-32 h-24 rounded-lg border-2 border-dashed border-slate-200 flex flex-col items-center justify-center bg-slate-50/50 text-slate-400 text-xs">
+                                  <ImageIcon size={18} className="mb-1 text-slate-300" />
+                                  <span>ছবি আপলোড করা হয়নি</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-4 leading-relaxed font-sans text-slate-600 break-words max-w-sm whitespace-pre-line">
+                              {h.order || h.description || 'আদেশ রেকর্ড করা হয়নি।'}
+                            </td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={() => handleDeleteHearingRecord(h.id)}
+                                className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="রেকর্ড মুছুন"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Inline Form to Add New Hearing Date Record */}
+              <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 space-y-4">
+                <h4 className="text-sm font-black text-indigo-950 uppercase tracking-widest flex items-center gap-1.5 border-b border-indigo-100 pb-2">
+                  <Plus size={16} className="text-indigo-600" />
+                  নতুন শুনানির তারিখ, আদেশ ও উভয়পক্ষের ছবি আপলোড ফর্ম
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Left: Input fields */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">১. শুনানির তারিখ (Hearing Date) *</label>
+                      <div className="relative">
+                        <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input 
+                          type="date"
+                          value={newHearingDate}
+                          onChange={(e) => setNewHearingDate(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-1">২. আদালত কর্তৃক আদেশ/রায় (Passed Order) *</label>
+                      <textarea 
+                        rows={3}
+                        value={newHearingOrder}
+                        onChange={(e) => setNewHearingOrder(e.target.value)}
+                        placeholder="শুনানির আদেশ ও মামলা সংক্রান্ত বিশদ বিবরণ বাংলায় এখানে লিখুন..."
+                        className="w-full px-4 py-2 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700 bg-white text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Middle: Petitioner Picture upload with drag & drop */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">৩. বাদীপক্ষের ছবি আপলোড করুন</label>
+                    <div 
+                      onDragEnter={handleDragPetitioner}
+                      onDragLeave={handleDragPetitioner}
+                      onDragOver={handleDragPetitioner}
+                      onDrop={handleDropPetitioner}
+                      className={cn(
+                        "border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center transition-all h-[155px] relative overflow-hidden bg-white cursor-pointer",
+                        petitionerDragActive ? "border-indigo-500 bg-indigo-50/30" : "border-slate-200 hover:border-indigo-400",
+                        newHearingPetitionerPhoto ? "border-solid border-emerald-500 bg-emerald-50/5" : ""
+                      )}
+                    >
+                      {newHearingPetitionerPhoto ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-white/90">
+                          <img 
+                            src={newHearingPetitionerPhoto} 
+                            alt="Preview Petitioner" 
+                            className="h-20 w-auto rounded border border-slate-200 object-cover mb-2"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setNewHearingPetitionerPhoto('')}
+                            className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200 font-bold transition-colors"
+                          >
+                            ছবি মুছুন
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload size={22} className="text-slate-400 mb-1.5 animate-bounce" />
+                          <span className="text-xs text-slate-500 text-center block font-medium">
+                            ড্র্যাগ করে ছবি ছেড়ে দিন বা
+                          </span>
+                          <span className="text-xs text-indigo-600 font-bold mt-1 inline-block hover:underline">
+                            ফাইল সিলেক্ট করুন
+                          </span>
+                          <input 
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileSelectPetitioner}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Accused Picture upload with drag & drop */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">৪. আসামিপক্ষের ছবি আপলোড করুন</label>
+                    <div 
+                      onDragEnter={handleDragAccused}
+                      onDragLeave={handleDragAccused}
+                      onDragOver={handleDragAccused}
+                      onDrop={handleDropAccused}
+                      className={cn(
+                        "border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center transition-all h-[155px] relative overflow-hidden bg-white cursor-pointer",
+                        accusedDragActive ? "border-indigo-500 bg-indigo-50/30" : "border-slate-200 hover:border-indigo-400",
+                        newHearingAccusedPhoto ? "border-solid border-emerald-500 bg-emerald-50/5" : ""
+                      )}
+                    >
+                      {newHearingAccusedPhoto ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center p-2 bg-white/90">
+                          <img 
+                            src={newHearingAccusedPhoto} 
+                            alt="Preview Accused" 
+                            className="h-20 w-auto rounded border border-slate-200 object-cover mb-2"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setNewHearingAccusedPhoto('')}
+                            className="text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200 font-bold transition-colors"
+                          >
+                            ছবি মুছুন
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload size={22} className="text-slate-400 mb-1.5 animate-bounce" />
+                          <span className="text-xs text-slate-500 text-center block font-medium">
+                            ড্র্যাগ করে ছবি ছেড়ে দিন বা
+                          </span>
+                          <span className="text-xs text-indigo-600 font-bold mt-1 inline-block hover:underline">
+                            ফাইল সিলেক্ট করুন
+                          </span>
+                          <input 
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileSelectAccused}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewHearingDate('');
+                      setNewHearingOrder('');
+                      setNewHearingAccusedPhoto('');
+                      setNewHearingPetitionerPhoto('');
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
+                  >
+                    ফর্ম রিসেট
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveHearingRecord}
+                    disabled={isSavingHearing}
+                    className="px-5 py-2 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5 shadow-md shadow-indigo-600/10"
+                  >
+                    {isSavingHearing ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Plus size={14} />
+                    )}
+                    রেকর্ড যোগ করুন
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

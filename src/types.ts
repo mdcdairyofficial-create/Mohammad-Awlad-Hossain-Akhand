@@ -6,6 +6,8 @@ export interface CaseHistoryEntry {
   actionBy: UserRole | 'petitioner' | 'respondent' | 'court' | 'accused';
   description: string;
   order?: string;
+  accusedPhoto?: string;
+  petitionerPhoto?: string;
   documents?: { name: string; type: string; url: string }[];
 }
 
@@ -57,10 +59,32 @@ export interface Case {
   documents?: { name: string; type: string; url: string }[];
   clerkCanCall?: boolean;
   lawyerCanCall?: boolean;
+  synced_by_users?: string[];
+  hasConflictWarning?: boolean;
   created_at?: any;
   priority?: 'low' | 'medium' | 'high';
   date?: string;
   details?: string;
+  authorityHolder?: 'lawyer' | 'clerk';
+}
+
+export interface CaseComplaint {
+  id?: string;
+  caseId: string | number;
+  caseNumber: string;
+  complainantId: string;
+  complainantName?: string;
+  complainantRole?: string;
+  accusedUserId?: string;
+  accusedSide?: string;
+  accusedName?: string;
+  conflictingDate?: string;
+  conflictingStep?: string;
+  note?: string;
+  status: 'pending' | 'resolved' | 'rejected';
+  fineDeducted?: number;
+  pendingFineAmount?: number;
+  created_at?: any;
 }
 
 export interface Notification {

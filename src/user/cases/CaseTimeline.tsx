@@ -12,9 +12,27 @@ import {
   EyeOff, 
   CheckCircle2,
   ArrowLeft,
-  Plus
+  Plus,
+  Download
 } from 'lucide-react';
 import { Case } from '../../types';
+
+const handleDownloadFile = (dataUri: string, defaultName: string) => {
+  const link = document.createElement('a');
+  link.href = dataUri;
+  let ext = 'jpg';
+  if (dataUri.startsWith('data:application/pdf')) {
+    ext = 'pdf';
+  } else if (dataUri.startsWith('data:image/png')) {
+    ext = 'png';
+  } else if (dataUri.startsWith('data:image/webp')) {
+    ext = 'webp';
+  }
+  link.download = `${defaultName}.${ext}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
 
 interface TimelineEvent {
   id: string;
@@ -27,6 +45,8 @@ interface TimelineEvent {
   uploaderSide: 'petitioner' | 'respondent'; // বাদী | বিবাদী
   isSharedWithOpponent: boolean;
   attachments?: (string | { name: string; url: string })[];
+  accusedPhoto?: string;
+  petitionerPhoto?: string;
 }
 
 interface CaseTimelineProps {
@@ -121,7 +141,9 @@ export default function CaseTimeline({ caseInfo, caseData, currentUserRole, curr
           uploaderRole: uploaderR,
           uploaderSide: entry.actionBy === 'respondent' || entry.actionBy === 'accused' ? 'respondent' : 'petitioner',
           isSharedWithOpponent: true,
-          attachments: uploads
+          attachments: uploads,
+          accusedPhoto: entry.accusedPhoto,
+          petitionerPhoto: entry.petitionerPhoto
         });
       });
     }
@@ -377,6 +399,114 @@ export default function CaseTimeline({ caseInfo, caseData, currentUserRole, curr
 
                   <div className={`p-4 rounded-xl text-sm leading-relaxed ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-slate-50'}`}>
                     {event.content}
+                  </div>
+
+                  <div className="flex flex-wrap gap-4 mt-4">
+                    {event.petitionerPhoto && (
+                      <div>
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1.5 font-sans">বাদীপক্ষের ছবি</p>
+                        {event.petitionerPhoto.startsWith('data:application/pdf') || event.petitionerPhoto.includes('.pdf') ? (
+                          <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                            <FileText className="w-8 h-8 text-red-500 mb-1" />
+                            <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                              <a 
+                                href={event.petitionerPhoto} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                              >
+                                বড় করে দেখুন
+                              </a>
+                              <button 
+                                onClick={() => handleDownloadFile(event.petitionerPhoto!, `petitioner_${event.date || 'hearing'}`)}
+                                className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                              >
+                                <Download size={11} /> ডাউনলোড
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                            <img 
+                              src={event.petitionerPhoto} 
+                              alt="Petitioner" 
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                              <a 
+                                href={event.petitionerPhoto} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                              >
+                                বড় করে দেখুন
+                              </a>
+                              <button 
+                                onClick={() => handleDownloadFile(event.petitionerPhoto!, `petitioner_${event.date || 'hearing'}`)}
+                                className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                              >
+                                <Download size={11} /> ডাউনলোড
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {event.accusedPhoto && (
+                      <div>
+                        <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1.5 font-sans">আসামির ছবি</p>
+                        {event.accusedPhoto.startsWith('data:application/pdf') || event.accusedPhoto.includes('.pdf') ? (
+                          <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                            <FileText className="w-8 h-8 text-red-500 mb-1" />
+                            <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                              <a 
+                                href={event.accusedPhoto} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                              >
+                                বড় করে দেখুন
+                              </a>
+                              <button 
+                                onClick={() => handleDownloadFile(event.accusedPhoto!, `accused_${event.date || 'hearing'}`)}
+                                className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                              >
+                                <Download size={11} /> ডাউনলোড
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                            <img 
+                              src={event.accusedPhoto} 
+                              alt="Accused" 
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                              <a 
+                                href={event.accusedPhoto} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                              >
+                                বড় করে দেখুন
+                              </a>
+                              <button 
+                                onClick={() => handleDownloadFile(event.accusedPhoto!, `accused_${event.date || 'hearing'}`)}
+                                className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                              >
+                                <Download size={11} /> ডাউনলোড
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {event.attachments && event.attachments.length > 0 && (

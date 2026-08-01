@@ -170,8 +170,26 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       }
 
       if (!isLogin) {
+        if (!formData.fullName.trim()) {
+          throw new Error('অনুগ্রহ করে আপনার পুরো নাম লিখুন।');
+        }
+        if (!formData.mobile.trim()) {
+          throw new Error('অনুগ্রহ করে মোবাইল নম্বর বা ইমেইল লিখুন।');
+        }
+        if (!formData.district) {
+          throw new Error('অনুগ্রহ করে জেলা নির্বাচন করুন।');
+        }
+        if (formData.country === 'Bangladesh' && !formData.thana) {
+          throw new Error('অনুগ্রহ করে থানা নির্বাচন করুন।');
+        }
+        if (!formData.password) {
+          throw new Error('পাসওয়ার্ড প্রদান করা আবশ্যক।');
+        }
+        if (formData.password.length < 6) {
+          throw new Error('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
+        }
         if (formData.password !== formData.confirmPassword) {
-          throw new Error('পাসওয়ার্ড দুটি মিলছে না');
+          throw new Error('পাসওয়ার্ড দুটি মিলছে না।');
         }
         
         // 1. Firebase Auth Registration
@@ -217,22 +235,37 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
 
+        const userObj = data.user || {
+          id: fbUser.uid,
+          firebaseUid: fbUser.uid,
+          firebase_uid: fbUser.uid,
+          fullName: formData.fullName,
+          name: formData.fullName,
+          mobile: fullMobile,
+          email: formData.email || null,
+          userType: userType,
+          user_type: userType,
+          district: formData.district,
+          thana: formData.thana,
+          country: formData.country,
+        };
+
         // 3. Firestore Backup (using merge to preserve existing cases, points, and wallet balance)
         const userToSaveFirestore: any = {
-          firebase_uid: data.user.firebase_uid,
-          name: data.user.fullName,
-          email: data.user.email,
-          mobile: data.user.mobile,
-          user_type: data.user.userType,
-          district: data.user.district,
-          thana: data.user.thana,
-          country: data.user.country,
-          referral_code: data.user.referralCode || '',
-          referred_by: data.user.referredBy || '',
+          firebase_uid: userObj.firebase_uid || userObj.firebaseUid || fbUser.uid,
+          name: userObj.fullName || userObj.name || formData.fullName,
+          email: userObj.email || formData.email || null,
+          mobile: userObj.mobile || fullMobile,
+          user_type: userObj.userType || userObj.user_type || userType,
+          district: userObj.district || formData.district,
+          thana: userObj.thana || formData.thana,
+          country: userObj.country || formData.country,
+          referral_code: userObj.referralCode || userObj.referral_code || '',
+          referred_by: userObj.referredBy || userObj.referred_by || '',
         };
-        if (data.user.isAdvertiser !== undefined) {
-          userToSaveFirestore.isAdvertiser = data.user.isAdvertiser;
-          userToSaveFirestore.is_advertiser = data.user.isAdvertiser;
+        if (userObj.isAdvertiser !== undefined) {
+          userToSaveFirestore.isAdvertiser = userObj.isAdvertiser;
+          userToSaveFirestore.is_advertiser = userObj.isAdvertiser;
         }
 
         try {
@@ -242,7 +275,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         }
 
         setLoading(false);
-        onAuthSuccess(data.user);
+        onAuthSuccess(userObj);
       } else {
         // 1. Firebase Auth Login
         let userCred;
@@ -337,8 +370,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       const errorCode = err.code || '';
       
       if (errorCode === 'auth/email-already-in-use') {
-        setError('এই ইমেইল বা নম্বরটি দিয়ে আগে থেকেই অ্যাকাউন্ট আছে। লগইন করুন।');
+        setError('এই ইমেইল বা নম্বরটি দিয়ে আগে থেকেই অ্যাকাউন্ট আছে। অনুগ্রহ করে লগইন করুন।');
         setTimeout(() => setIsLogin(true), 3000);
+      } else if (errorCode === 'auth/weak-password') {
+        setError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।');
       } else if (errorCode === 'auth/invalid-email') {
         setError('সঠিক ইমেইল বা মোবাইল নম্বর দিন।');
       } else if (errorCode === 'auth/invalid-credential' || errorCode === 'auth/wrong-password' || errorCode === 'auth/user-not-found') {
@@ -350,7 +385,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       } else if (errorCode === 'auth/too-many-requests') {
         setError('অতিরিক্ত বার চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।');
       } else {
-        setError(err.message || 'লগইন করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।');
+        setError(err.message || 'সাইন আপ বা লগইন করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।');
       }
       setLoading(false);
     }
@@ -410,7 +445,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
               </div>
             )}
-
+            
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               {!resetMode && (
@@ -432,7 +467,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             {!resetMode && !isLogin && (
               <>
                 <div className="bg-slate-50 p-2 rounded-2xl flex flex-wrap gap-2 mb-2 border border-slate-200">
-                  {([ 'lawyer', 'clerk', 'client', 'bar_association', 'advertiser'] as UserRole[]).map((type) => (
+                  {([ 'lawyer', 'clerk', 'client', 'advertiser'] as UserRole[]).map((type) => (
                     <button
                       key={type}
                       type="button"
@@ -450,7 +485,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                             {type === 'lawyer' ? 'আইনজীবী' : 
                              type === 'clerk' ? 'মুহুরী' : 
                              type === 'client' ? 'পক্ষ' :
-                             type === 'bar_association' ? 'বার অ্যাসোসিয়েশন' : 'বিজ্ঞাপনদাতা'}
+                             'বিজ্ঞাপনদাতা'}
                           </span>
                         </div>
                       </div>
@@ -497,8 +532,12 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                     className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-700"
                     required
                   >
-                    <option value="" disabled>জেলা নির্বাচন করুন</option>
-                    {BANGLADESH_DISTRICTS.map((district) => (
+                    <option value="" disabled>জেলা/রাজ্য নির্বাচন করুন</option>
+                    {(formData.country === 'India' 
+                      ? INDIA_DISTRICTS 
+                      : formData.country === 'Pakistan' 
+                      ? PAKISTAN_DISTRICTS 
+                      : BANGLADESH_DISTRICTS).map((district) => (
                       <option key={district} value={district}>{district}</option>
                     ))}
                   </select>

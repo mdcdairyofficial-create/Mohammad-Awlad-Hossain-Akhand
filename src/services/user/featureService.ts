@@ -40,11 +40,55 @@ export const updateProfile = async (userId: string, data: any) => {
   }
 };
 
+// Cache configuration and helpers
+const CACHE_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes cache validity
+
+const loadFromCache = <T>(key: string): { data: T; timestamp: number } | null => {
+  try {
+    const val = localStorage.getItem(key);
+    if (val) {
+      return JSON.parse(val);
+    }
+  } catch (e) {
+    console.error("Cache read error for key", key, e);
+  }
+  return null;
+};
+
+const saveToCache = <T>(key: string, data: T) => {
+  try {
+    const payload = {
+      data,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+  } catch (e) {
+    console.error("Cache write error for key", key, e);
+  }
+};
+
+const clearCache = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.error("Cache remove error for key", key, e);
+  }
+};
+
 // Cases
 export const subscribeToCases = (userId: string, callback: (cases: Case[]) => void, dateFilter?: string) => {
+  const cacheKey = `cases_cache_${userId}`;
+  const cached = loadFromCache<Case[]>(cacheKey);
+
+  // Serve from cache if fresh
+  if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
+    console.log(`[Cache Hit] Serving cases from cache for user: ${userId}`);
+    callback(cached.data);
+    return () => {}; // Dummy unsubscribe
+  }
+
   let q = query(
-    collection(db, 'cases'),
-    where('user_id', '==', userId)
+    collection(db, 'cases')
   );
 
   if (dateFilter) {
@@ -64,6 +108,7 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
       return dateB - dateA;
     });
     
+    saveToCache(cacheKey, cases);
     callback(cases);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, 'cases');
@@ -81,6 +126,12 @@ export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
     await setDoc(userRef, {
       points: increment(10)
     }, { merge: true });
+    
+    clearCache(`cases_cache_${caseData.user_id}`);
+  }
+
+  if (auth.currentUser) {
+    clearCache(`cases_cache_${auth.currentUser.uid}`);
   }
 
   return caseRef;
@@ -93,6 +144,13 @@ export const updateCase = async (caseId: string, caseData: Partial<Case>) => {
       ...caseData,
       updated_at: serverTimestamp()
     });
+    
+    if (caseData.user_id) {
+      clearCache(`cases_cache_${caseData.user_id}`);
+    }
+    if (auth.currentUser) {
+      clearCache(`cases_cache_${auth.currentUser.uid}`);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `cases/${caseId}`);
   }
@@ -102,6 +160,9 @@ export const deleteCase = async (caseId: string) => {
   const ref = doc(db, 'cases', caseId);
   try {
     await deleteDoc(ref);
+    if (auth.currentUser) {
+      clearCache(`cases_cache_${auth.currentUser.uid}`);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `cases/${caseId}`);
   }
@@ -110,6 +171,15 @@ export const deleteCase = async (caseId: string) => {
 
 // Notifications
 export const subscribeToNotifications = (userId: string, callback: (notifications: Notification[]) => void) => {
+  const cacheKey = `notifications_cache_${userId}`;
+  const cached = loadFromCache<Notification[]>(cacheKey);
+
+  if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
+    console.log(`[Cache Hit] Serving notifications from cache for user: ${userId}`);
+    callback(cached.data);
+    return () => {}; // Dummy unsubscribe
+  }
+
   const q = query(
     collection(db, 'notifications'),
     where('user_id', '==', userId),
@@ -129,6 +199,7 @@ export const subscribeToNotifications = (userId: string, callback: (notification
       return dateB - dateA;
     });
     
+    saveToCache(cacheKey, notifications);
     callback(notifications);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, 'notifications');
@@ -136,6 +207,15 @@ export const subscribeToNotifications = (userId: string, callback: (notification
 };
 
 export const subscribeToGlobalNotifications = (callback: (notifications: Notification[]) => void) => {
+  const cacheKey = 'global_notifications_cache';
+  const cached = loadFromCache<Notification[]>(cacheKey);
+
+  if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
+    console.log('[Cache Hit] Serving global notifications from cache');
+    callback(cached.data);
+    return () => {}; // Dummy unsubscribe
+  }
+
   const q = query(
     collection(db, 'global_notifications'),
     orderBy('created_at', 'desc'),
@@ -149,6 +229,8 @@ export const subscribeToGlobalNotifications = (callback: (notifications: Notific
       isGlobal: true,
       isRead: false // Global notifications are always unread for the user initially
     } as unknown as Notification));
+    
+    saveToCache(cacheKey, notifications);
     callback(notifications);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, 'global_notifications');
@@ -162,6 +244,7 @@ export const sendGlobalNotification = async (notification: Omit<Notification, 'i
       isRead: false,
       created_at: serverTimestamp()
     });
+    clearCache('global_notifications_cache');
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'global_notifications');
   }
@@ -175,6 +258,7 @@ export const sendNotification = async (userId: string, notification: Omit<Notifi
       read: false,
       created_at: new Date().toISOString()
     });
+    clearCache(`notifications_cache_${userId}`);
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'notifications');
   }
@@ -183,10 +267,22 @@ export const sendNotification = async (userId: string, notification: Omit<Notifi
 export const markNotificationAsRead = async (notificationId: string) => {
   const ref = doc(db, 'notifications', notificationId);
   await updateDoc(ref, { read: true });
+  if (auth.currentUser) {
+    clearCache(`notifications_cache_${auth.currentUser.uid}`);
+  }
 };
 
 // Tasks
 export const subscribeToTasks = (userId: string, callback: (tasks: Task[]) => void) => {
+  const cacheKey = `tasks_cache_${userId}`;
+  const cached = loadFromCache<Task[]>(cacheKey);
+
+  if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
+    console.log(`[Cache Hit] Serving tasks from cache for user: ${userId}`);
+    callback(cached.data);
+    return () => {}; // Dummy unsubscribe
+  }
+
   const q = query(
     collection(db, 'tasks'),
     where('assignedTo', '==', userId)
@@ -204,6 +300,7 @@ export const subscribeToTasks = (userId: string, callback: (tasks: Task[]) => vo
       return dateB - dateA;
     });
     
+    saveToCache(cacheKey, tasks);
     callback(tasks);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, 'tasks');
@@ -211,10 +308,19 @@ export const subscribeToTasks = (userId: string, callback: (tasks: Task[]) => vo
 };
 
 export const createTask = async (task: Omit<Task, 'id' | 'created_at'>) => {
-  return await addDoc(collection(db, 'tasks'), {
+  const taskRef = await addDoc(collection(db, 'tasks'), {
     ...task,
     created_at: serverTimestamp()
   });
+
+  if (task.assignedTo) {
+    clearCache(`tasks_cache_${task.assignedTo}`);
+  }
+  if (auth.currentUser) {
+    clearCache(`tasks_cache_${auth.currentUser.uid}`);
+  }
+
+  return taskRef;
 };
 
 export const updateTask = async (taskId: string, taskData: Partial<Task>) => {
@@ -224,6 +330,13 @@ export const updateTask = async (taskId: string, taskData: Partial<Task>) => {
       ...taskData,
       updated_at: serverTimestamp()
     });
+    
+    if (taskData.assignedTo) {
+      clearCache(`tasks_cache_${taskData.assignedTo}`);
+    }
+    if (auth.currentUser) {
+      clearCache(`tasks_cache_${auth.currentUser.uid}`);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, `tasks/${taskId}`);
   }
@@ -233,6 +346,9 @@ export const deleteTask = async (taskId: string) => {
   const ref = doc(db, 'tasks', taskId);
   try {
     await deleteDoc(ref);
+    if (auth.currentUser) {
+      clearCache(`tasks_cache_${auth.currentUser.uid}`);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `tasks/${taskId}`);
   }
@@ -310,42 +426,78 @@ export const sendMessage = async (chatSessionId: string, message: Omit<SupportMe
 
 // Lawyer Directory
 export const getLawyers = async () => {
+  const cacheKey = 'lawyers_cache';
+  const cached = loadFromCache<any[]>(cacheKey);
+
+  // Cache lawyers for 30 minutes since they change rarely
+  if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
+    console.log('[Cache Hit] Serving lawyers from cache');
+    return cached.data;
+  }
+
   const q = query(
     collection(db, 'users'),
     where('user_type', '==', 'lawyer'),
     limit(100)
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
+  const data = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   })) as any[];
+
+  saveToCache(cacheKey, data);
+  return data;
 };
 
 // Clerk Directory
 export const getClerks = async () => {
+  const cacheKey = 'clerks_cache';
+  const cached = loadFromCache<any[]>(cacheKey);
+
+  // Cache clerks for 30 minutes since they change rarely
+  if (cached && (Date.now() - cached.timestamp < 30 * 60 * 1000)) {
+    console.log('[Cache Hit] Serving clerks from cache');
+    return cached.data;
+  }
+
   const q = query(
     collection(db, 'users'),
     where('user_type', '==', 'clerk'),
     limit(100)
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
+  const data = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   })) as any[];
+
+  saveToCache(cacheKey, data);
+  return data;
 };
 
 // Archive Case History
 export const searchArchiveCases = async (caseNumber: string) => {
+  const cacheKey = `archive_cases_cache_${caseNumber}`;
+  const cached = loadFromCache<ArchiveCase[]>(cacheKey);
+
+  // Archive cases are history and never change, cache for 2 hours
+  if (cached && (Date.now() - cached.timestamp < 120 * 60 * 1000)) {
+    console.log(`[Cache Hit] Serving archive cases from cache for: ${caseNumber}`);
+    return cached.data;
+  }
+
   const q = query(
     collection(db, 'archive_cases'),
     where('caseNumber', '==', caseNumber),
     limit(10)
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({
+  const data = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   })) as unknown as ArchiveCase[];
+
+  saveToCache(cacheKey, data);
+  return data;
 };

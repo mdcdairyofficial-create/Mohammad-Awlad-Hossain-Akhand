@@ -75,7 +75,7 @@ import { doc, updateDoc, setDoc, collection, addDoc, serverTimestamp } from 'fir
 import Markdown from 'react-markdown';
 import { emergencyData } from '../../data/emergencyData';
 import CaseTimeline from '../cases/CaseTimeline';
-import { getPoliceStations, getCourtsForDistrict, BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS } from '../../constants';
+import { getPoliceStations, getCourtsForDistrict, BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS, formatCourtNameWithNo } from '../../constants';
 import MediGen from '../ai/MediGen';
 import AffiliateZone from '../resources/AffiliateZone';
 import BarAdminDashboard from '../../admin/BarAdminDashboard';
@@ -149,6 +149,23 @@ import { PointsView } from './views/PointsView';
 import { FullscreenAdViewer } from './components/FullscreenAdViewer';
 import { fetchWithAuth } from '../../lib/api';
 
+const handleDownloadFile = (dataUri: string, defaultName: string) => {
+  const link = document.createElement('a');
+  link.href = dataUri;
+  let ext = 'jpg';
+  if (dataUri.startsWith('data:application/pdf')) {
+    ext = 'pdf';
+  } else if (dataUri.startsWith('data:image/png')) {
+    ext = 'png';
+  } else if (dataUri.startsWith('data:image/webp')) {
+    ext = 'webp';
+  }
+  link.download = `${defaultName}.${ext}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
 const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boolean, onClose: () => void, caseData: Case | null, language: 'bn' | 'en' | 'hi' | 'ur' }) => {
   if (!caseData) return null;
   const t = (key: keyof typeof translations.bn) => translations[language]?.[key] || translations.bn[key] || key;
@@ -204,6 +221,114 @@ const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boo
                              <p className="text-sm font-bold text-slate-800">{entry.order}</p>
                           </div>
                         )}
+
+                        <div className="flex flex-wrap gap-4 mb-3">
+                          {entry.petitionerPhoto && (
+                            <div>
+                               <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'বাদীপক্ষের ছবি' : 'Petitioner Photo'}</p>
+                               {entry.petitionerPhoto.startsWith('data:application/pdf') || entry.petitionerPhoto.includes('.pdf') ? (
+                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                                   <FileText className="w-8 h-8 text-red-500 mb-1" />
+                                   <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
+                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                     <a 
+                                       href={entry.petitionerPhoto} 
+                                       target="_blank" 
+                                       rel="noreferrer"
+                                       className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                     >
+                                       {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                     </a>
+                                     <button 
+                                       onClick={() => handleDownloadFile(entry.petitionerPhoto!, `petitioner_${entry.date || 'hearing'}`)}
+                                       className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                     >
+                                       <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                     </button>
+                                   </div>
+                                 </div>
+                               ) : (
+                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                   <img 
+                                     src={entry.petitionerPhoto} 
+                                     alt="Petitioner" 
+                                     referrerPolicy="no-referrer"
+                                     className="w-full h-full object-cover"
+                                   />
+                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                     <a 
+                                       href={entry.petitionerPhoto} 
+                                       target="_blank" 
+                                       rel="noreferrer"
+                                       className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                     >
+                                       {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                     </a>
+                                     <button 
+                                       onClick={() => handleDownloadFile(entry.petitionerPhoto!, `petitioner_${entry.date || 'hearing'}`)}
+                                       className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                     >
+                                       <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                     </button>
+                                   </div>
+                                 </div>
+                               )}
+                            </div>
+                          )}
+
+                          {entry.accusedPhoto && (
+                            <div>
+                               <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'আসামির ছবি' : 'Accused Photo'}</p>
+                               {entry.accusedPhoto.startsWith('data:application/pdf') || entry.accusedPhoto.includes('.pdf') ? (
+                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                                   <FileText className="w-8 h-8 text-red-500 mb-1" />
+                                   <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
+                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                     <a 
+                                       href={entry.accusedPhoto} 
+                                       target="_blank" 
+                                       rel="noreferrer"
+                                       className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                     >
+                                       {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                     </a>
+                                     <button 
+                                       onClick={() => handleDownloadFile(entry.accusedPhoto!, `accused_${entry.date || 'hearing'}`)}
+                                       className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                     >
+                                       <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                     </button>
+                                   </div>
+                                 </div>
+                               ) : (
+                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                   <img 
+                                     src={entry.accusedPhoto} 
+                                     alt="Accused" 
+                                     referrerPolicy="no-referrer"
+                                     className="w-full h-full object-cover"
+                                   />
+                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                      <a 
+                                        href={entry.accusedPhoto} 
+                                        target="_blank" 
+                                        rel="noreferrer" 
+                                        className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                      >
+                                        {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                      </a>
+                                      <button 
+                                        onClick={() => handleDownloadFile(entry.accusedPhoto!, `accused_${entry.date || 'hearing'}`)}
+                                        className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                      >
+                                        <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                      </button>
+                                    </div>
+                                 </div>
+                               )}
+                            </div>
+                          )}
+                        </div>
 
                         {entry.documents && entry.documents.length > 0 && (
                           <div className="space-y-2">
@@ -326,14 +451,20 @@ export default function Dashboard({
   const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
   const [cases, setCases] = useState<Case[]>(() => {
     try {
       const uid = initialFirebaseUid || auth.currentUser?.uid || null;
       if (uid) {
         const cached = localStorage.getItem(`cases_cache_${uid}`);
-        if (cached) return JSON.parse(cached);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+          if (parsed && typeof parsed === 'object' && 'data' in parsed && Array.isArray(parsed.data)) {
+            return parsed.data;
+          }
+        }
       }
     } catch (e) {}
     return [];
@@ -343,7 +474,13 @@ export default function Dashboard({
       const uid = initialFirebaseUid || auth.currentUser?.uid || null;
       if (uid) {
         const cached = localStorage.getItem(`tasks_cache_${uid}`);
-        if (cached) return JSON.parse(cached);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) return parsed;
+          if (parsed && typeof parsed === 'object' && 'data' in parsed && Array.isArray(parsed.data)) {
+            return parsed.data;
+          }
+        }
       }
     } catch (e) {}
     return [];
@@ -959,6 +1096,7 @@ export default function Dashboard({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [editName, setEditName] = useState(userName);
+  const [editEmail, setEditEmail] = useState(userEmail || '');
   const [editMobile, setEditMobile] = useState(userMobile || '');
   const [editDistrict, setEditDistrict] = useState(userDistrict || '');
   const [userThana, setUserThana] = useState(userPoliceStation || '');
@@ -970,11 +1108,12 @@ export default function Dashboard({
 
   useEffect(() => {
     setEditName(userName);
+    setEditEmail(userEmail || '');
     setEditMobile(userMobile || '');
     setEditDistrict(userDistrict || '');
     setEditThana(userPoliceStation || '');
     setUserThana(userPoliceStation || '');
-  }, [userName, userMobile, userDistrict, userPoliceStation]);
+  }, [userName, userEmail, userMobile, userDistrict, userPoliceStation]);
 
   useEffect(() => {
     if (referralCode) {
@@ -1269,53 +1408,85 @@ export default function Dashboard({
 
   const normalizedUserMobile = normalizeMobile(userMobile);
 
-  const visibleCases = currentViewMode === 'client'
-    ? cases.filter(c => {
-        // Created by current user -> always visible
-        const isCreatedByUser = c.user_id !== undefined && (
-          String(c.user_id) === String(userId) || 
-          (firebaseUid && String(c.user_id) === String(firebaseUid))
-        );
-        if (isCreatedByUser) return true;
+  const normalizeName = (n?: string | null) => {
+    if (!n) return '';
+    return n.trim().toLowerCase();
+  };
 
-        if (!userMobile) return false;
-        const pMobile = normalizeMobile(c.petitionerMobile);
-        const rMobile = normalizeMobile(c.respondentMobile);
-        return (pMobile !== '' && pMobile === normalizedUserMobile) || 
-               (rMobile !== '' && rMobile === normalizedUserMobile);
-      })
-    : currentViewMode !== 'admin' && userMobile
-    ? cases.filter(c => {
-        // Created by current user -> always visible
-        const isCreatedByUser = c.user_id !== undefined && (
-          String(c.user_id) === String(userId) || 
-          (firebaseUid && String(c.user_id) === String(firebaseUid))
-        );
-        if (isCreatedByUser) return true;
+  const normalizedUserName = normalizeName(userName);
 
-        const pMobile = normalizeMobile(c.petitionerMobile);
-        const rMobile = normalizeMobile(c.respondentMobile);
-        
-        const checkArray = (arr?: string | string[] | null) => {
-          if (!arr) return false;
-          if (Array.isArray(arr)) {
-            return arr.some(m => normalizeMobile(m) === normalizedUserMobile);
-          }
-          return normalizeMobile(arr) === normalizedUserMobile;
-        };
+  const isUserAssociatedWithCase = (c: Case) => {
+    // 1. Created by current user -> always visible
+    const isCreatedByUser = c.user_id !== undefined && (
+      String(c.user_id) === String(userId) || 
+      (firebaseUid && String(c.user_id) === String(firebaseUid))
+    );
+    if (isCreatedByUser) return true;
 
-        return pMobile === normalizedUserMobile || 
-               rMobile === normalizedUserMobile ||
-               checkArray(c.petitionerLawyerMobile) ||
-               checkArray(c.respondentLawyerMobile) ||
-               checkArray(c.petitionerClerkMobile) ||
-               checkArray(c.respondentClerkMobile) ||
-               checkArray(c.petitionerAsstLawyerMobile) ||
-               checkArray(c.respondentAsstLawyerMobile) ||
-               checkArray(c.petitionerAsstClerkMobile) ||
-               checkArray(c.respondentAsstClerkMobile);
-      })
-    : cases;
+    // Helper to check mobile array or string field
+    const checkMobileMatch = (field?: string | string[] | null) => {
+      if (!field || !normalizedUserMobile) return false;
+      if (Array.isArray(field)) {
+        return field.some(m => normalizeMobile(m) === normalizedUserMobile);
+      }
+      return normalizeMobile(field) === normalizedUserMobile;
+    };
+
+    // Helper to check name field match
+    const checkNameMatch = (field?: string | null) => {
+      if (!field || !normalizedUserName || normalizedUserName.length < 2) return false;
+      const cleanField = field.trim().toLowerCase();
+      return cleanField.includes(normalizedUserName) || normalizedUserName.includes(cleanField);
+    };
+
+    // 2. Check Mobile matches (Lawyers, Clerks, Parties)
+    if (normalizedUserMobile) {
+      if (normalizeMobile(c.petitionerMobile) === normalizedUserMobile) return true;
+      if (normalizeMobile(c.respondentMobile) === normalizedUserMobile) return true;
+      if (checkMobileMatch(c.petitionerLawyerMobile)) return true;
+      if (checkMobileMatch(c.respondentLawyerMobile)) return true;
+      if (checkMobileMatch(c.petitionerClerkMobile)) return true;
+      if (checkMobileMatch(c.respondentClerkMobile)) return true;
+      if (checkMobileMatch(c.petitionerAsstLawyerMobile)) return true;
+      if (checkMobileMatch(c.respondentAsstLawyerMobile)) return true;
+      if (checkMobileMatch(c.petitionerAsstClerkMobile)) return true;
+      if (checkMobileMatch(c.respondentAsstClerkMobile)) return true;
+      if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
+        if (c.respondentDetails.some(r => normalizeMobile(r.phone) === normalizedUserMobile)) return true;
+      }
+    }
+
+    // 3. Check Name matches (Lawyers, Clerks, Parties)
+    if (normalizedUserName) {
+      if (checkNameMatch(c.petitionerLawyer)) return true;
+      if (checkNameMatch(c.respondentLawyer)) return true;
+      if (checkNameMatch(c.petitionerClerk)) return true;
+      if (checkNameMatch(c.respondentClerk)) return true;
+      if (checkNameMatch(c.petitionerAsstClerk)) return true;
+      if (checkNameMatch(c.respondentAsstClerk)) return true;
+      if (checkNameMatch(c.petitioner)) return true;
+      if (checkNameMatch(c.respondent)) return true;
+      if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
+        if (c.respondentDetails.some(r => checkNameMatch(r.name))) return true;
+      }
+    }
+
+    // 4. Check synced_by_users list
+    if (c.synced_by_users && Array.isArray(c.synced_by_users)) {
+      if (c.synced_by_users.some(u => 
+        String(u) === String(userId) || 
+        (firebaseUid && String(u) === String(firebaseUid)) ||
+        (normalizedUserMobile && normalizeMobile(u) === normalizedUserMobile)
+      )) return true;
+    }
+
+    return false;
+  };
+
+  const isAdminUser = userType === 'admin' || userType === 'super_admin' || currentViewMode === 'admin';
+  const visibleCases = isAdminUser ? cases : cases.filter(isUserAssociatedWithCase);
+  const ownCasesCount = visibleCases.filter(c => c.user_id && String(c.user_id) === String(firebaseUid || userId)).length;
+  const assignedCasesCount = visibleCases.length - ownCasesCount;
 
   const getRenderTodayStr = () => {
     const today = new Date();
@@ -1363,6 +1534,9 @@ export default function Dashboard({
 
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
 
+  const is20CasesReached = cases.length >= 20;
+  const isSubRequired = is20CasesReached && !isSubscribed && !['admin', 'super_admin', 'country_manager'].includes(userType);
+
   const menuGroups = currentViewMode === 'advertiser' ? [
     {
       title: language === 'bn' ? 'বিজ্ঞাপন ব্যবস্থাপনা' : 'Ad Management',
@@ -1393,17 +1567,17 @@ export default function Dashboard({
       items: [
         { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
         ...(currentViewMode === 'clerk' ? [
-          { id: 'performance', label: t('performance_nav'), icon: Award },
-          { id: 'cause_list', label: t('cause_list'), icon: FileText },
-          { id: 'monthly_report', label: t('monthly_report'), icon: Landmark },
+          { id: 'performance', label: t('performance_nav'), icon: Award, requiresSubscription: isSubRequired },
+          { id: 'cause_list', label: t('cause_list'), icon: FileText, requiresSubscription: isSubRequired },
+          { id: 'monthly_report', label: t('monthly_report'), icon: Landmark, requiresSubscription: isSubRequired },
         ] : []),
         { id: 'cases', label: currentViewMode === 'client' ? t('my_cases') : t('cases'), icon: FileText },
         { id: 'calendar', label: t('calendar'), icon: Calendar },
         ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
-          { id: 'invoices', label: t('invoices'), icon: CreditCard },
+          { id: 'invoices', label: t('invoices'), icon: CreditCard, requiresSubscription: isSubRequired },
         ] : []),
         ...(currentViewMode !== 'client' ? [
-          { id: 'tasks', label: t('task_management'), icon: CheckCircle2 },
+          { id: 'tasks', label: t('task_management'), icon: CheckCircle2, requiresSubscription: isSubRequired },
         ] : []),
         { id: 'case_timeline', label: t('case_timeline'), icon: History },
         { id: 'notifications', label: t('notifications'), icon: Bell },
@@ -1415,10 +1589,10 @@ export default function Dashboard({
         { id: 'lawyer_directory', label: currentViewMode === 'client' ? t('find_lawyer') : t('lawyer_directory'), icon: Users },
         { id: 'clerk_directory', label: currentViewMode === 'client' ? t('find_clerk') : t('clerk_directory'), icon: Users },
         ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
-          { id: 'legal_drafts', label: language === 'bn' ? 'আইনি খসড়া ও ফরম' : 'Legal Drafts', icon: FileText },
-          { id: 'library', label: language === 'bn' ? 'লাইব্রেরি' : 'Library', icon: BookOpen },
+          { id: 'legal_drafts', label: language === 'bn' ? 'আইনি খসড়া ও ফরম' : 'Legal Drafts', icon: FileText, requiresSubscription: isSubRequired },
+          { id: 'library', label: language === 'bn' ? 'লাইব্রেরি' : 'Library', icon: BookOpen, requiresSubscription: isSubRequired },
         ] : []),
-        { id: 'medigen', label: t('medigen'), icon: Stethoscope },
+        { id: 'medigen', label: t('medigen'), icon: Stethoscope, requiresSubscription: isSubRequired },
       ]
     },
     {
@@ -1441,11 +1615,11 @@ export default function Dashboard({
       items: [
         { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        ...(currentViewMode !== 'client' ? [
+        ...((currentViewMode !== 'client' && (cases.length >= 20 || isSubscribed || userType === 'admin' || userType === 'super_admin')) ? [
           { id: 'subscription', label: t('subscription'), icon: CreditCard },
         ] : []),
         ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
-          { id: 'lottery', label: language === 'bn' ? 'সাপ্তাহিক লটারি 🎁' : 'Weekly Lottery 🎁', icon: Award }
+          { id: 'lottery', label: language === 'bn' ? 'সাপ্তাহিক লটারি 🎁' : 'Weekly Lottery 🎁', icon: Award, requiresSubscription: isSubRequired }
         ] : []),
       ]
     },
@@ -1470,6 +1644,11 @@ export default function Dashboard({
       setShowIDCard(true);
       return;
     }
+    const restrictedTabs = ['performance', 'cause_list', 'monthly_report', 'invoices', 'tasks', 'legal_drafts', 'library', 'medigen', 'lottery'];
+    if (isSubRequired && restrictedTabs.includes(tab)) {
+      setShowSubscriptionPrompt(true);
+      return;
+    }
     if (tab === 'calendar' && currentViewMode === 'client') {
       setShowAd(true);
       setAdAction(() => () => setActiveTab(tab as any));
@@ -1492,12 +1671,12 @@ export default function Dashboard({
     alert(t('meeting_request_sent'));
   };
 
-  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string) => {
-    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
+  const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string, extraCaseData?: Partial<Case>) => {
+    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraCaseData);
     handleUpdateSelectedParty(id, selectedParty);
   };
 
-  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string) => {
+  const handleUpdateCaseOrder = async (caseId: string | number, nextDate: string, order: string, clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string, extraCaseData?: Partial<Case>) => {
     const targetCase = cases.find(c => c.id === caseId);
     if (targetCase) {
       if (nextDate && nextDate !== targetCase.nextDate) {
@@ -1538,7 +1717,8 @@ export default function Dashboard({
         lawyerCanCall, 
         visibility,
         history: updatedHistory,
-        documents: [...(targetCase.documents || []), ...attachedDocs]
+        documents: [...(targetCase.documents || []), ...attachedDocs],
+        ...(extraCaseData || {})
       });
     }
   };
@@ -1861,7 +2041,8 @@ export default function Dashboard({
     lawyerInfo?: {name: string, phone: string},
     clerkInfo?: {name: string, phone: string},
     nextDate?: string,
-    caseSection?: string
+    caseSection?: string,
+    authorityHolder?: 'lawyer' | 'clerk'
   ) => {
     // Find the case
     const targetCase = cases.find(c => c.caseNumber === caseNumber || c.rawCaseNumber === caseNumber);
@@ -1870,6 +2051,7 @@ export default function Dashboard({
       let updatedCase = { ...targetCase };
       
       if (caseSection) updatedCase.caseSection = caseSection;
+      if (authorityHolder) updatedCase.authorityHolder = authorityHolder;
       
       if (side === 'respondent') {
         if (respondents && respondents.length > 0) {
@@ -1962,7 +2144,61 @@ export default function Dashboard({
         alert(language === 'bn' ? 'ডাটাবেসে আপডেট করতে সমস্যা হয়েছে।' : 'Failed to update database.');
       }
     } else {
-      setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
+      // Create new case in DB and update local state for Join / Accused Added mode
+      const newCaseData: any = {
+        user_id: firebaseUid || String(userId),
+        caseNumber: caseNumber,
+        rawCaseNumber: caseNumber,
+        status: 'Running',
+        order: order || '',
+        additionalOrder: additionalOrder || '',
+        nextDate: nextDate || new Date().toISOString().split('T')[0],
+        caseSection: caseSection || '',
+        totalRespondents: totalRespondents || '',
+        district: userDistrict || '',
+        country: userCountry || 'Bangladesh',
+        courtName: '',
+        court: '',
+        petitioner: side === 'petitioner' ? (lawyerInfo?.name || userName || 'বাদী') : '',
+        respondent: side === 'respondent' && respondents?.length ? respondents.map(r => r.name).join(', ') : '',
+        createdAt: new Date().toISOString(),
+        authorityHolder: authorityHolder || (currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? currentViewMode : 'lawyer')
+      };
+
+      if (side === 'respondent') {
+        if (respondents && respondents.length > 0) {
+          newCaseData.respondentDetails = respondents;
+          newCaseData.respondentMobile = respondents[0]?.phone || '';
+        }
+        if (lawyerInfo?.name) {
+          newCaseData.respondentLawyer = lawyerInfo.name;
+          newCaseData.respondentLawyerMobile = lawyerInfo.phone ? [lawyerInfo.phone] : [];
+        }
+        if (clerkInfo?.name) {
+          newCaseData.respondentClerk = clerkInfo.name;
+          newCaseData.respondentClerkMobile = clerkInfo.phone ? [clerkInfo.phone] : [];
+        }
+      } else {
+        if (lawyerInfo?.name) {
+          newCaseData.petitionerLawyer = lawyerInfo.name;
+          newCaseData.petitionerLawyerMobile = lawyerInfo.phone ? [lawyerInfo.phone] : [];
+        }
+        if (clerkInfo?.name) {
+          newCaseData.petitionerClerk = clerkInfo.name;
+          newCaseData.petitionerClerkMobile = clerkInfo.phone ? [clerkInfo.phone] : [];
+        }
+      }
+
+      try {
+        const createdRef = await createCase(newCaseData);
+        const createdId = createdRef?.id || Date.now().toString();
+        const createdCase = { ...newCaseData, id: createdId };
+        setCases(prev => [createdCase, ...prev]);
+        setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
+      } catch (err) {
+        console.error("Failed to create joined case:", err);
+        alert(language === 'bn' ? 'ডাটাবেসে মামলা সংরক্ষণ করতে সমস্যা হয়েছে।' : 'Failed to save case.');
+      }
     }
     
     setIsJoinFormOpen(false);
@@ -2741,7 +2977,10 @@ export default function Dashboard({
                   <HomeView 
                     userName={userName}
                     userType={currentViewMode}
-                    cases={casesForDisplay}
+                    cases={visibleCases}
+                    allCasesCount={cases.length}
+                    ownCasesCount={ownCasesCount}
+                    assignedCasesCount={assignedCasesCount}
                     tasks={tasks}
                     language={language}
                     theme={theme}
@@ -2792,6 +3031,7 @@ export default function Dashboard({
               {activeTab === 'cases' && (
                 <CasesView 
                   cases={casesForDisplay}
+                  totalCasesCount={visibleCases.length}
                   caseSearchQuery={caseSearchQuery}
                   setCaseSearchQuery={setCaseSearchQuery}
                   caseFilter={caseFilter}
@@ -3410,6 +3650,16 @@ export default function Dashboard({
                             <Shield size={16} />
                             {userPoints || 0} {t('points')}
                           </div>
+                          <div className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-black flex items-center gap-2 border border-indigo-200 dark:border-indigo-800">
+                            <Briefcase size={16} />
+                            {language === 'bn' ? 'নিজের মামলা: ' : 'Own Cases: '}
+                            {visibleCases.filter(c => c.user_id && String(c.user_id) === String(firebaseUid || userId)).length}
+                          </div>
+                          <div className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-xl text-sm font-black flex items-center gap-2 border border-emerald-200 dark:border-emerald-800">
+                            <FileText size={16} />
+                            {language === 'bn' ? 'মোট পরিচালিত মামলা: ' : 'Total Managed: '}
+                            {visibleCases.length}
+                          </div>
                         </div>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3">
                           <span className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold uppercase tracking-wider">
@@ -3468,6 +3718,19 @@ export default function Dashboard({
                             )}
                           </div>
                           <div className="flex items-center justify-between">
+                            <span className="text-slate-500 font-medium">{t('email_address')}</span>
+                            {isEditingProfile ? (
+                              <input 
+                                type="email" 
+                                value={editEmail} 
+                                onChange={(e) => setEditEmail(e.target.value)}
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                              />
+                            ) : (
+                              <span className="font-bold text-slate-900 dark:text-white">{editEmail || userEmail || t('not_provided' as any)}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between">
                             <span className="text-slate-500 font-medium">{t('district_label')}</span>
                             {isEditingProfile ? (
                               <select 
@@ -3520,7 +3783,9 @@ export default function Dashboard({
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-slate-500 font-medium">{t('referral_code_label')}</span>
-                            <span className="font-bold text-slate-900 dark:text-white">{referralCode || '-'}</span>
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {referralCode || '-'}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-slate-500 font-medium">{t('subscription_expiry')}</span>
@@ -3731,7 +3996,7 @@ export default function Dashboard({
                       )}
                     </div>
 
-                    {(currentViewMode === 'lawyer' || currentViewMode === 'clerk') && (
+                    {(currentViewMode === 'lawyer' || currentViewMode === 'clerk' || currentViewMode === 'client') && (
                       <div className="mt-8 flex justify-end gap-3">
                         <button 
                           onClick={async () => {
@@ -3744,6 +4009,7 @@ export default function Dashboard({
                                   },
                                   body: JSON.stringify({
                                     fullName: editName,
+                                    email: editEmail,
                                     mobile: editMobile,
                                     district: editDistrict,
                                     policeStation: editThana,
@@ -3766,6 +4032,7 @@ export default function Dashboard({
                                   const docId = firebaseUid || String(userId);
                                   await setDoc(doc(db, 'users', docId), {
                                     fullName: editName,
+                                    email: editEmail,
                                     mobile: editMobile,
                                     district: editDistrict,
                                     policeStation: editThana,
@@ -3778,6 +4045,7 @@ export default function Dashboard({
                               
                               onUpdateProfile?.({
                                 fullName: editName,
+                                email: editEmail,
                                 mobile: editMobile,
                                 district: editDistrict,
                                 policeStation: editThana,
@@ -3966,39 +4234,39 @@ export default function Dashboard({
                             value={referralCode ? `${window.location.origin}/register?ref=${referralCode}` : t('create_account')} 
                             className="bg-transparent flex-1 outline-none text-xs text-slate-600 dark:text-slate-300 font-medium px-2 select-all h-full min-w-0"
                           />
-                            <button 
-                              onClick={() => {
-                                if (referralCode) {
-                                  navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referralCode}`);
-                                  alert(t('link_copied_success') || 'Link copied!');
-                                } else {
-                                  alert(t('register_for_referral'));
-                                }
-                              }}
-                              className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-md shadow-indigo-200 dark:shadow-none"
-                            >
-                              <Copy size={14} />
-                              {t('copy_link')}
-                            </button>
-                          </div>
                           <button 
                             onClick={() => {
                               if (referralCode) {
-                                const link = `${window.location.origin}/register?ref=${referralCode}`;
-                                const text = `Join MDC Casebook and manage cases easily: ${link}`;
-                                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                                navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referralCode}`);
+                                alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Referral link copied to clipboard!'));
                               } else {
                                 alert(t('register_for_referral'));
                               }
                             }}
-                            className="w-full px-4 py-3 bg-[#25D366] text-white rounded-2xl font-bold text-xs hover:bg-[#128C7E] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 dark:shadow-none"
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-md shadow-indigo-200 dark:shadow-none"
                           >
-                            <MessageSquare size={16} fill="currentColor" />
-                            {t('share_via_whatsapp') || 'Share via WhatsApp'}
+                            <Copy size={14} />
+                            {t('copy_link')}
                           </button>
                         </div>
+                        <button 
+                          onClick={() => {
+                            if (referralCode) {
+                              const link = `${window.location.origin}/register?ref=${referralCode}`;
+                              const text = `Join MDC Casebook and manage cases easily: ${link}`;
+                              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                            } else {
+                              alert(t('register_for_referral'));
+                            }
+                          }}
+                          className="w-full px-4 py-3 bg-[#25D366] text-white rounded-2xl font-bold text-xs hover:bg-[#128C7E] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 dark:shadow-none"
+                        >
+                          <MessageSquare size={16} fill="currentColor" />
+                          {t('share_via_whatsapp') || 'Share via WhatsApp'}
+                        </button>
                       </div>
                     </div>
+                  </div>
 
                     <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                       <h3 className="text-xl font-bold mb-6 flex items-center gap-3">
@@ -4364,7 +4632,7 @@ export default function Dashboard({
                       }
 
                       const groupedCases = searchedCases.reduce((acc, c) => {
-                          const court = c.courtName || t('other_court');
+                          const court = formatCourtNameWithNo(c.courtName || t('other_court'), c.courtNumber);
                           if (!acc[court]) acc[court] = [];
                           acc[court].push(c);
                           return acc;
@@ -5046,8 +5314,8 @@ export default function Dashboard({
                   caseData={selectedCaseForCard}
                   isPetitioner={isUserPetitioner(selectedCaseForCard)}
                   isRespondent={isUserRespondent(selectedCaseForCard)}
-                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate) => {
-                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
+                  onUpdate={(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraCaseData) => {
+                    handleUpdateCaseFull(id, nextDate, order, selectedParty, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraCaseData);
                   }}
                   onAddDocument={handleAddDocument}
                   onCaseNumberClick={(caseNum) => {

@@ -29,6 +29,16 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 // Register service worker for offline support
 registerSW({ immediate: true });
 
+
+setTimeout(() => {
+  const el = document.querySelector('div#root:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > form:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(2)');
+  if (el) {
+    fetch('/api/dump', { method: 'POST', body: el.outerHTML });
+  } else {
+    fetch('/api/dump', { method: 'POST', body: 'NOT FOUND' });
+  }
+}, 5000);
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

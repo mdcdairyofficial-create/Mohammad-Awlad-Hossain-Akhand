@@ -9,6 +9,7 @@ import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 import { initializeApp as initializeClientApp } from "firebase/app";
 import { 
   getFirestore as getClientFirestore, 
+  initializeFirestore,
   collection, 
   query as firestoreQuery, 
   where, 
@@ -22,6 +23,7 @@ import {
   deleteDoc,
   serverTimestamp,
   increment,
+  arrayUnion,
   writeBatch,
   runTransaction as firestoreRunTransaction,
   limit as firestoreLimit
@@ -35,7 +37,13 @@ let _databaseId: string | undefined;
 // FieldValue shim for Client SDK
 const FieldValue = {
   increment: (n: number) => increment(n),
-  serverTimestamp: () => serverTimestamp()
+  serverTimestamp: () => serverTimestamp(),
+  arrayUnion: (...elements: any[]) => {
+    if (admin && admin.firestore && admin.firestore.FieldValue) {
+      return admin.firestore.FieldValue.arrayUnion(...elements);
+    }
+    return arrayUnion(...elements);
+  }
 };
 
 const AdminFieldValue = FieldValue;
@@ -79,7 +87,14 @@ function initializeFirebase() {
     if (firebaseConfig.apiKey) {
       console.log("[Firebase] Initializing Client SDK for Firestore Workaround");
       const clientApp = initializeClientApp(firebaseConfig);
-      _clientDb = getClientFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+      try {
+        _clientDb = initializeFirestore(clientApp, {
+          experimentalForceLongPolling: true,
+        }, firebaseConfig.firestoreDatabaseId);
+      } catch (e) {
+        console.warn("[Firebase] Could not initialize with long polling, falling back to default.", e);
+        _clientDb = getClientFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+      }
     }
   } catch (err) {
     console.error("[Firebase] Critical Initialization error:", err);
@@ -422,8 +437,8 @@ const authenticate = async (req: any, res: any, next: any) => {
           });
 
           // --- 500MB Usage Limit Logic ---
-          const displayMb = parseFloat(req.profile.display_data_mb || "0");
-          const isSubscribed = req.profile.subscription_status === 'active' || (req.profile.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
+          const displayMb = parseFloat(req.profile?.display_data_mb || "0");
+          const isSubscribed = req.profile?.subscription_status === 'active' || (req.profile?.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
           
           // Prevent all non-GET requests if limit exceeded and not subscribed
           if (displayMb >= 500 && !isSubscribed && req.method !== 'GET') {
@@ -474,6 +489,13 @@ async function startServer() {
 
   // Health check for Cloud Run
   app.get("/health", (req, res) => res.status(200).send("OK"));
+  
+app.use(express.text({type: "*/*"}));
+app.post('/api/dump', (req, res) => {
+  fs.writeFileSync('dump.txt', req.body);
+  res.send('ok');
+});
+
   app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
   app.get("/api/users/:id", authenticate, async (req: any, res) => {
@@ -489,15 +511,15 @@ async function startServer() {
         return res.status(404).json({ error: "User not found" });
       }
 
-      const userData = userDoc.data() as any;
+      const userData = (userDoc.data() || {}) as any;
 
-      if (userData.firebase_uid !== firebaseUid && !isAdmin) {
+      if (userData.firebase_uid && userData.firebase_uid !== firebaseUid && !isAdmin) {
         return res.status(403).json({ error: "Forbidden: Access denied" });
       }
 
       res.json({
         id: userDoc.id,
-        firebaseUid: userData.firebase_uid,
+        firebaseUid: userData.firebase_uid || firebaseUid,
         fullName: userData.name,
         email: userData.email,
         mobile: userData.mobile,
@@ -518,7 +540,11 @@ async function startServer() {
         facebookUrl: userData.facebook_url,
         linkedinUrl: userData.linkedin_url,
         points: userData.points || 0,
-        walletBalance: userData.wallet_balance || 0
+        walletBalance: userData.wallet_balance || 0,
+        yellowBallsCount: userData.yellow_balls_count || 0,
+        whiteBallsCount: userData.white_balls_count || 0,
+        redBallsCount: userData.red_balls_count || 0,
+        pendingYellowFine: userData.pending_yellow_fine || 0
       });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
@@ -828,9 +854,10 @@ app.post('/api/subscription/request', async (req, res) => {
         return res.status(403).json({ error: "প্রোফাইল আপডেট করার অনুমতি নেই।" });
       }
 
-      const { fullName, mobile, district, chamberAddress, officeHours, barAssociation, membershipId, socialLinks } = req.body;
+      const { fullName, email, mobile, district, chamberAddress, officeHours, barAssociation, membershipId, socialLinks } = req.body;
       const updateData: any = {};
       if (fullName !== undefined) updateData.name = fullName || 'ব্যবহারকারী';
+      if (email !== undefined) updateData.email = email;
       if (mobile !== undefined) updateData.mobile = mobile;
       if (district !== undefined) updateData.district = district;
       if (chamberAddress !== undefined) updateData.chamber_address = chamberAddress;
@@ -1607,22 +1634,33 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         }
       }
 
-      const userData = userDoc.data() as any;
+      const userData = (userDoc.data() || {}) as any;
       res.json({ 
         success: true, 
         user: { 
           id: userDoc.id,
           ...userData,
-          firebaseUid: userData.firebase_uid,
-          fullName: userData.fullName || userData.name,
-          userType: userData.userType || userData.user_type,
-          subscriptionEndDate: userData.subscriptionEndDate || userData.subscription_end_date
+          firebaseUid: userData.firebase_uid || firebaseUid,
+          firebase_uid: userData.firebase_uid || firebaseUid,
+          fullName: userData.fullName || userData.name || '',
+          userType: userData.userType || userData.user_type || 'client',
+          subscriptionEndDate: userData.subscriptionEndDate || userData.subscription_end_date || null
         } 
       });
     } catch (error: any) {
       console.error("[Auth Sync Error]", error);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  app.get("/api/auth/register", (req, res) => {
+    res.json({
+      success: true,
+      status: "active",
+      message: "রেজিস্ট্রেশন এপিআই সফলভাবে সক্রিয় আছে। অ্যাকাউন্ট তৈরি করার জন্য POST মেথডে তথ্য পাঠাতে হবে।",
+      endpoint: "/api/auth/register",
+      method: "POST"
+    });
   });
 
   app.post("/api/auth/register", async (req, res) => {
@@ -1634,15 +1672,46 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       }
 
       const usersRef = db.collection("users");
-      // Check if user exists by mobile, email or firebaseUid
+      // Check if user exists by mobile (including variants), email or firebaseUid or doc ID
       let existingQuery;
-      if (mobile) existingQuery = await usersRef.where("mobile", "==", mobile).limit(1).get();
-      if ((!existingQuery || existingQuery.empty) && email) existingQuery = await usersRef.where("email", "==", email).limit(1).get();
-      if ((!existingQuery || existingQuery.empty) && firebaseUid) existingQuery = await usersRef.where("firebase_uid", "==", firebaseUid).limit(1).get();
+
+      // Mobile variants check
+      if (mobile) {
+        const cleanDigits = mobile.replace(/[^\d]/g, '');
+        const searchMobiles = [mobile];
+        if (cleanDigits.length >= 10) {
+          const last10 = cleanDigits.substring(cleanDigits.length - 10);
+          searchMobiles.push(last10);
+          searchMobiles.push(`0${last10}`);
+          searchMobiles.push(`+880${last10}`);
+          searchMobiles.push(`+91${last10}`);
+          searchMobiles.push(`+92${last10}`);
+        }
+        const uniqueMobiles = Array.from(new Set(searchMobiles));
+        for (const m of uniqueMobiles) {
+          if (!existingQuery || existingQuery.empty) {
+            existingQuery = await usersRef.where("mobile", "==", m).limit(1).get();
+          }
+        }
+      }
+
+      if ((!existingQuery || existingQuery.empty) && email && !email.endsWith("@auth.local")) {
+        existingQuery = await usersRef.where("email", "==", email).limit(1).get();
+      }
+
+      if ((!existingQuery || existingQuery.empty) && firebaseUid) {
+        existingQuery = await usersRef.where("firebase_uid", "==", firebaseUid).limit(1).get();
+        if (existingQuery.empty) {
+          const docById = await usersRef.doc(firebaseUid).get();
+          if (docById.exists) {
+            existingQuery = { empty: false, docs: [docById] } as any;
+          }
+        }
+      }
       
       if (existingQuery && !existingQuery.empty) {
         const userDoc = existingQuery.docs[0];
-        const userData = userDoc.data() as any;
+        const userData = (userDoc.data() || {}) as any;
         if (firebaseUid) {
            const updates: any = {};
            if (!userData.firebase_uid) updates.firebase_uid = firebaseUid;
@@ -1650,13 +1719,11 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
            if (userType === 'advertiser') {
              updates.is_advertiser = true;
              updates.isAdvertiser = true;
-             // If user doesn't have a professional/client role yet, or their current role is advertiser, make it advertiser
              if (!userData.user_type || userData.user_type === 'advertiser') {
                updates.user_type = 'advertiser';
                updates.userType = 'advertiser';
              }
            } else {
-             // If they are registering for a professional/client role, but they were previously an advertiser
              if (userData.user_type === 'advertiser') {
                updates.is_advertiser = true;
                updates.isAdvertiser = true;
@@ -1729,7 +1796,6 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         if (!referrerSnap.empty) {
           initialPoints = 200;
           const referrerDoc = referrerSnap.docs[0];
-          // Give 100 points to referrer for successful join
           await referrerDoc.ref.update({
             points: FieldValue.increment(100)
           });
@@ -1739,18 +1805,24 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const newUser = {
         firebase_uid: firebaseUid || null,
         name: fullName,
+        fullName: fullName,
         mobile: mobile,
         email: email || null,
         password: password, 
         user_type: finalUserType,
+        userType: finalUserType,
         district: district,
         thana: thana || null,
         country: country,
         referral_code: referralCode,
+        referralCode: referralCode,
         referred_by: referredBy || null,
+        referredBy: referredBy || null,
         is_approved: true,
         subscription_package: subscriptionPackage,
+        subscriptionPackage: subscriptionPackage,
         subscription_end_date: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
+        subscriptionEndDate: new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString(),
         createdAt: new Date().toISOString(),
         points: initialPoints,
         ai_questions_count: 0,
@@ -1758,9 +1830,15 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       };
       console.log("[DEBUG] Registration newUser:", JSON.stringify(newUser));
 
-      const docRef = await usersRef.add(newUser);
+      let userDoc: any;
+      if (firebaseUid) {
+        await usersRef.doc(firebaseUid).set(newUser, { merge: true });
+        userDoc = await usersRef.doc(firebaseUid).get();
+      } else {
+        const docRef = await usersRef.add(newUser);
+        userDoc = await docRef.get();
+      }
 
-      const userDoc = await docRef.get();
       const userData = userDoc.data() as any;
 
       res.json({ 
@@ -1790,7 +1868,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       if (!eQuery.empty) {
         // User exists, update with firebaseUid if not present
         const userDoc = eQuery.docs[0];
-        const userData = userDoc.data() as any;
+        const userData = (userDoc.data() || {}) as any;
         const updates: any = {};
         if (!userData.firebase_uid) {
            updates.firebase_uid = firebaseUid;
@@ -1803,15 +1881,16 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
            await userDoc.ref.update(updates);
         }
         const updatedDoc = await userDoc.ref.get();
-        const updatedData = updatedDoc.data() as any;
+        const updatedData = (updatedDoc.data() || {}) as any;
         return res.json({
           success: true,
           user: {
             id: userDoc.id,
             ...updatedData,
             firebaseUid: firebaseUid,
-            fullName: updatedData.fullName || updatedData.name,
-            userType: updatedData.userType || updatedData.user_type
+            firebase_uid: firebaseUid,
+            fullName: updatedData.fullName || updatedData.name || '',
+            userType: updatedData.userType || updatedData.user_type || 'client'
           }
         });
       }
@@ -1969,9 +2048,13 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         return res.status(400).json({ error: "মোবাইল নম্বর এবং পাসওয়ার্ড দেওয়া আবশ্যক।" });
       }
 
+      if (!req.profile) {
+        return res.status(400).json({ error: "ইউজার প্রোফাইল পাওয়া যায়নি।" });
+      }
+
       const activeUserId = req.profile.id;
-      const activeUserMobile = req.profile.mobile;
-      const activeUserUid = req.profile.firebase_uid || req.user.uid;
+      const activeUserMobile = req.profile.mobile || '';
+      const activeUserUid = req.profile.firebase_uid || req.user?.uid || '';
 
       // Normalize the entry
       let cleanSecondary = secondaryMobile.replace(/[^\d]/g, '');
@@ -2005,7 +2088,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       }
 
       const secondaryDoc = secQuery.docs[0];
-      const secondaryData = secondaryDoc.data() as any;
+      const secondaryData = (secondaryDoc.data() || {}) as any;
 
       if (secondaryDoc.id === activeUserId) {
         return res.status(400).json({ error: "আপনি একই অ্যাকাউন্ট সিঙ্ক করার চেষ্টা করছেন।" });
@@ -2097,6 +2180,16 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  app.get("/api/auth/login", (req, res) => {
+    res.json({
+      success: true,
+      status: "active",
+      message: "লগইন এপিআই সফলভাবে সক্রিয় আছে। লগইন করার জন্য POST মেথডে তথ্য পাঠাতে হবে।",
+      endpoint: "/api/auth/login",
+      method: "POST"
+    });
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { mobile, rawMobile, password } = req.body;
@@ -2121,8 +2214,9 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       }
       
       const userDoc = query.docs[0];
-      const user = userDoc.data() as any;
+      const user = (userDoc.data() || {}) as any;
 
+      let authUser: any = null;
       // Auto-heal/sync Firebase Auth user credentials if missing or out of sync
       let firebaseEmail = user.email;
       if (!firebaseEmail && user.mobile) {
@@ -2138,7 +2232,6 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       if (firebaseEmail) {
         try {
           console.log(`[Auto-Heal] Verifying/Healing Firebase Auth for email: ${firebaseEmail}`);
-          let authUser;
           try {
             authUser = await admin.auth().getUserByEmail(firebaseEmail);
             console.log(`[Auto-Heal] Found in Firebase Auth: uid=${authUser.uid}. Syncing password...`);
@@ -2174,15 +2267,18 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         success: true, 
         user: { 
           id: userDoc.id, 
-          fullName: user.fullName || user.name, 
-          mobile: user.mobile, 
-          userType: user.userType || user.user_type, 
-          district: user.district, 
-          country: user.country,
-          referralCode: user.referralCode || user.referral_code,
-          subscriptionEndDate: user.subscriptionEndDate || user.subscription_end_date,
-          subscriptionPackage: user.subscriptionPackage || user.subscription_package,
-          profilePicture: user.profilePicture || user.profile_picture,
+          ...user,
+          firebaseUid: user.firebase_uid || authUser?.uid || userDoc.id,
+          firebase_uid: user.firebase_uid || authUser?.uid || userDoc.id,
+          fullName: user.fullName || user.name || '', 
+          mobile: user.mobile || '', 
+          userType: user.userType || user.user_type || 'client', 
+          district: user.district || '', 
+          country: user.country || 'Bangladesh',
+          referralCode: user.referralCode || user.referral_code || '',
+          subscriptionEndDate: user.subscriptionEndDate || user.subscription_end_date || null,
+          subscriptionPackage: user.subscriptionPackage || user.subscription_package || 'free',
+          profilePicture: user.profilePicture || user.profile_picture || null,
           points: user.points || 0
         } 
       });
@@ -2315,13 +2411,28 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       if (!user) return res.status(401).json({ error: "Unauthorized" });
       const userId = user.id;
 
-      // Fetch cases created by this user
+      // 1. Fetch cases created by this user
       const casesSnapshot = await db.collection("cases")
         .where("user_id", "==", userId)
-        .orderBy("created_at", "desc")
         .get();
 
       let cases = casesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      // 2. Fetch cases synced to user's wallet/screen
+      try {
+        const syncedSnapshot = await db.collection("cases")
+          .where("synced_by_users", "array-contains", userId)
+          .get();
+        
+        syncedSnapshot.docs.forEach(doc => {
+          const syncedData = { id: doc.id, ...doc.data() };
+          if (!cases.some(existing => existing.id === syncedData.id)) {
+            cases.push(syncedData);
+          }
+        });
+      } catch (err) {
+        console.warn("[Cases Sync Query Warning]", err);
+      }
 
       if (user.user_type === 'client' && user.district) {
         const publicCasesSnapshot = await db.collection("cases")
@@ -2340,6 +2451,164 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: "Database error: " + error.message });
+    }
+  });
+
+  // Sync updated case info to user's wallet / screen for 1 Yellow Ball
+  app.post("/api/cases/sync-to-wallet", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { caseId } = req.body;
+      if (!caseId) {
+        return res.status(400).json({ error: "মামলার আইডি প্রদান করা হয়নি।" });
+      }
+
+      const adminDb = getAdminDb();
+      let newYellowCount = 0;
+      let caseNumber = "";
+
+      await adminDb.runTransaction(async (transaction: any) => {
+        const userRef = adminDb.collection("users").doc(userId);
+        const caseRef = adminDb.collection("cases").doc(String(caseId));
+
+        const userDoc = await transaction.get(userRef);
+        const caseDoc = await transaction.get(caseRef);
+
+        if (!userDoc.exists) throw new Error("USER_NOT_FOUND");
+        if (!caseDoc.exists) throw new Error("CASE_NOT_FOUND");
+
+        const userData = userDoc.data();
+        const caseData = caseDoc.data();
+        caseNumber = caseData?.caseNumber || "মামলা";
+
+        const syncedUsers = Array.isArray(caseData?.synced_by_users) ? caseData.synced_by_users : [];
+        if (syncedUsers.includes(userId) || caseData?.user_id === userId) {
+          throw new Error("ALREADY_ADDED");
+        }
+
+        const currentYellow = Number(userData.yellow_balls_count || 0);
+        if (currentYellow < 1) {
+          throw new Error("INSUFFICIENT_YELLOW_BALLS");
+        }
+
+        newYellowCount = currentYellow - 1;
+
+        // Deduct 1 yellow ball from user
+        transaction.update(userRef, {
+          yellow_balls_count: newYellowCount
+        });
+
+        // Add user ID to synced_by_users array on case
+        transaction.update(caseRef, {
+          synced_by_users: AdminFieldValue.arrayUnion(userId)
+        });
+
+        // Log transaction history
+        const historyRef = adminDb.collection("points_history").doc();
+        transaction.set(historyRef, {
+          user_id: userId,
+          type: "case_sync_yellow_ball",
+          amount: -1,
+          description: `মামলা নং ${caseNumber} এর আপডেট তথ্য নিজ ওয়ালেটে/স্ক্রিনে যুক্ত করতে ১টি হলুদ বল খরচ হয়েছে।`,
+          created_at: FieldValue.serverTimestamp()
+        });
+      });
+
+      res.json({
+        success: true,
+        yellowBallsCount: newYellowCount,
+        message: `মামলা নং ${caseNumber} এর আপডেট তথ্য ১টি হলুদ বল খরচে আপনার ওয়ালেটে/স্ক্রিনে সফলভাবে যুক্ত হয়েছে!`
+      });
+    } catch (error: any) {
+      console.error("[Sync to Wallet Error]", error);
+      let msg = "সার্ভার এরর। আবার চেষ্টা করুন।";
+      if (error.message === "INSUFFICIENT_YELLOW_BALLS") {
+        msg = "আপনার ওয়ালেটে পর্যাপ্ত হলুদ বল নেই! আপডেট তথ্য আপনার ওয়ালেটে/স্ক্রিনে যুক্ত করতে ১টি হলুদ বল প্রয়োজন। দয়া করে বল কনভার্ট বা রিচার্জ করুন।";
+      } else if (error.message === "ALREADY_ADDED") {
+        msg = "এই মামলার তথ্য ইতিমধ্যে আপনার ওয়ালেটে/স্ক্রিনে যুক্ত রয়েছে।";
+      } else if (error.message === "CASE_NOT_FOUND") {
+        msg = "মামলাটি পাওয়া যায়নি।";
+      }
+      res.status(400).json({ error: msg });
+    }
+  });
+
+  // Register warning complaint for conflicting case entry
+  app.post("/api/cases/warning-complaint", authenticate, async (req: any, res) => {
+    try {
+      const userId = req.profile?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { caseId, accusedUserId, accusedSide, conflictingDate, conflictingStep, note } = req.body;
+      if (!caseId) {
+        return res.status(400).json({ error: "মামলার আইডি প্রয়োজন।" });
+      }
+
+      const caseDoc = await db.collection("cases").doc(String(caseId)).get();
+      if (!caseDoc.exists) {
+        return res.status(404).json({ error: "মামলা পাওয়া যায়নি।" });
+      }
+
+      const caseData = caseDoc.data() as any;
+      const targetAccusedUserId = accusedUserId || caseData.user_id;
+
+      // Add warning complaint record
+      const complaintRef = await db.collection("case_complaints").add({
+        caseId: String(caseId),
+        caseNumber: caseData.caseNumber || "অজানা",
+        complainantId: userId,
+        complainantName: req.profile?.fullName || req.profile?.name || "আইনজীবী/মুহুরি",
+        complainantRole: req.profile?.userType || "user",
+        accusedUserId: targetAccusedUserId,
+        accusedSide: accusedSide || caseData.lastEditedBySide || "opposite_party",
+        conflictingDate: conflictingDate || caseData.nextDate,
+        conflictingStep: conflictingStep || caseData.order || caseData.status,
+        note: note || "তারিখ/পদক্ষেপ এন্ট্রি সংঘাত সংক্রান্ত ওয়ার্নিং কমপ্লেইন",
+        status: "pending",
+        created_at: FieldValue.serverTimestamp()
+      });
+
+      // Mark case as having conflict warning
+      await db.collection("cases").doc(String(caseId)).update({
+        hasConflictWarning: true
+      });
+
+      // Notify the accused user
+      if (targetAccusedUserId) {
+        await db.collection("notifications").add({
+          user_id: targetAccusedUserId,
+          title: "⚠️ মামলার তথ্যে অসঙ্গতির জন্য ওয়ার্নিং কমপ্লেইন!",
+          message: `মামলা নং ${caseData.caseNumber} এর তারিখ (${conflictingDate || caseData.nextDate}) বা পদক্ষেপের তথ্যে অসঙ্গতি রয়েছে বলে অপর পক্ষ ওয়ার্নিং কমপ্লেইন করেছে। ভুল এন্ট্রি সংশোধন করুন।`,
+          type: "case_update",
+          isRead: false,
+          created_at: FieldValue.serverTimestamp()
+        });
+      }
+
+      res.json({
+        success: true,
+        complaintId: complaintRef.id,
+        message: "অপর পক্ষের বিরুদ্ধে ওয়ার্নিং কমপ্লেইন জমা হয়েছে। ভুল তথ্য সংশোধন করলে অপর পক্ষের ব্যালেন্স থেকে ২টি হলুদ বল জরিমানা কাটা হবে।"
+      });
+    } catch (error: any) {
+      console.error("[Warning Complaint Error]", error);
+      res.status(500).json({ error: "কমপ্লেইন জমা করতে ব্যর্থ হয়েছে: " + error.message });
+    }
+  });
+
+  // Fetch complaints for a case
+  app.get("/api/cases/complaints/:caseId", authenticate, async (req: any, res) => {
+    try {
+      const { caseId } = req.params;
+      const snap = await db.collection("case_complaints")
+        .where("caseId", "==", String(caseId))
+        .get();
+      const complaints = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(complaints);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -2362,12 +2631,117 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const rAsstClerkMob = Array.isArray(c.respondentAsstClerkMobile) ? JSON.stringify(c.respondentAsstClerkMobile) : c.respondentAsstClerkMobile ? JSON.stringify([c.respondentAsstClerkMobile]) : null;
 
       if (c.id) {
-        await db.collection("cases").doc(c.id).set({
+        const caseRef = db.collection("cases").doc(String(c.id));
+
+        // Check if there are pending warning complaints against this user for this case
+        const complaintsSnap = await db.collection("case_complaints")
+          .where("caseId", "==", String(c.id))
+          .where("status", "==", "pending")
+          .get();
+
+        let fineApplied = false;
+        let fineDeducted = 0;
+        let addedPendingFine = 0;
+        let newYellowCount = 0;
+        let totalPendingFine = 0;
+
+        if (!complaintsSnap.empty) {
+          // Execute 2 Yellow Balls fine deduction
+          const adminDb = getAdminDb();
+          await adminDb.runTransaction(async (transaction: any) => {
+            const userRef = adminDb.collection("users").doc(userId);
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists) return;
+
+            const userData = userDoc.data();
+            const currentYellow = Number(userData?.yellow_balls_count || 0);
+            const currentPending = Number(userData?.pending_yellow_fine || 0);
+
+            // 2 yellow balls fine
+            if (currentYellow >= 2) {
+              fineDeducted = 2;
+              addedPendingFine = 0;
+              newYellowCount = currentYellow - 2;
+            } else if (currentYellow === 1) {
+              fineDeducted = 1;
+              addedPendingFine = 1;
+              newYellowCount = 0;
+            } else {
+              fineDeducted = 0;
+              addedPendingFine = 2;
+              newYellowCount = 0;
+            }
+
+            totalPendingFine = currentPending + addedPendingFine;
+
+            transaction.update(userRef, {
+              yellow_balls_count: newYellowCount,
+              pending_yellow_fine: totalPendingFine
+            });
+
+            // Mark all pending complaints as resolved
+            complaintsSnap.docs.forEach(compDoc => {
+              transaction.update(compDoc.ref, {
+                status: "resolved",
+                fineDeducted: fineDeducted,
+                pendingFineAmount: addedPendingFine,
+                resolvedAt: FieldValue.serverTimestamp()
+              });
+            });
+
+            // Log points history for fine
+            const histRef = adminDb.collection("points_history").doc();
+            transaction.set(histRef, {
+              user_id: userId,
+              type: "warning_complaint_fine",
+              amount: -2,
+              description: `ভুল মামলা এন্ট্রি (মামলা নং ${c.caseNumber || 'মামলা'}) সংশোধন করায় ২ টি হলুদ বল জরিমানা নির্ধারণ। (তাৎক্ষণিক কর্তন: ${fineDeducted} টি, বকেয়া জরিমানা: ${addedPendingFine} টি)`,
+              created_at: FieldValue.serverTimestamp()
+            });
+          });
+
+          fineApplied = true;
+
+          // Notify user about fine
+          const fineMsg = addedPendingFine > 0
+            ? `মামলার ভুল এন্ট্রি সংশোধন করায় ২ টি হলুদ বল জরিমানা ধরা হয়েছে। আপনার বল ব্যালেন্স ঘাটতি থাকায় ${addedPendingFine} টি হলুদ বল বকেয়া রাখা হয়েছে যা পরবর্তী বল রিচার্জ করা মাত্র কাটা হবে।`
+            : `মামলার ভুল এন্ট্রি সংশোধন করায় ২ টি হলুদ বল জরিমানা আপনার ব্যালেন্স থেকে কাটা হয়েছে।`;
+
+          await db.collection("notifications").add({
+            user_id: userId,
+            title: "⚖️ ভুল তথ্য সংশোধনের জরিমানা (২টি হলুদ বল)",
+            message: fineMsg,
+            type: "case_update",
+            isRead: false,
+            created_at: FieldValue.serverTimestamp()
+          });
+        }
+
+        await caseRef.set({
           ...c,
+          hasConflictWarning: false,
           updated_at: FieldValue.serverTimestamp()
         }, { merge: true });
+
         updateUserDataUsage(userId).catch(console.error);
-        res.json({ success: true, id: c.id });
+
+        let returnMsg = "মামলার তথ্য সফলভাবে আপডেট হয়েছে।";
+        if (fineApplied) {
+          returnMsg += addedPendingFine > 0
+            ? ` (ভুল তথ্য সংশোধন করায় ২ টি হলুদ বল জরিমানা ধরা হয়েছে। পর্যাপ্ত ব্যালেন্স না থাকায় ${addedPendingFine} টি বল বকেয়া রাখা হলো, যা পরে রিচার্জে কাটা হবে)`
+            : ` (ভুল তথ্য সংশোধন করায় ২ টি হলুদ বল জরিমানা কাটা হয়েছে)`;
+        }
+
+        res.json({
+          success: true,
+          id: c.id,
+          fineApplied,
+          fineDeducted,
+          addedPendingFine,
+          newYellowCount,
+          totalPendingFine,
+          message: returnMsg
+        });
       } else {
         const docRef = await db.collection("cases").add({
           ...c,
@@ -2923,15 +3297,19 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         const storageBucket = admin.storage().bucket(storageBucketName);
         const fileRef = storageBucket.file(fullPath);
 
+        const downloadToken = Math.random().toString(36).substring(2) + Date.now().toString(36);
+
         await fileRef.save(buffer, {
           metadata: {
-            contentType: req.body.contentType || "application/octet-stream"
-          },
-          public: true
+            contentType: req.body.contentType || "application/octet-stream",
+            metadata: {
+              firebaseStorageDownloadTokens: downloadToken
+            }
+          }
         });
 
         const encodedPath = encodeURIComponent(fullPath);
-        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storageBucketName}/o/${encodedPath}?alt=media`;
+        const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${storageBucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
         console.log(`[Upload Proxy] Server-side Firebase storage upload successful! URL: ${publicUrl}`);
         return res.json({ success: true, url: publicUrl });
 
@@ -3010,9 +3388,25 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           }
           const yellowEarned = numAmount / 3;
           const currentYellow = Number(userData.yellow_balls_count || 0);
+          const currentPendingFine = Number(userData.pending_yellow_fine || 0);
+
+          let finePaid = 0;
+          let remainingPendingFine = currentPendingFine;
+          let finalYellow = currentYellow;
+
+          if (currentPendingFine > 0) {
+            finePaid = Math.min(yellowEarned, currentPendingFine);
+            remainingPendingFine = currentPendingFine - finePaid;
+            const leftoverEarned = yellowEarned - finePaid;
+            finalYellow = currentYellow + leftoverEarned;
+          } else {
+            finalYellow = currentYellow + yellowEarned;
+          }
+
           updatedUser = {
             white_balls_count: white - requiredWhite,
-            yellow_balls_count: currentYellow + yellowEarned
+            yellow_balls_count: finalYellow,
+            pending_yellow_fine: remainingPendingFine
           };
         } else if (type === 'red_to_yellow') {
           const red = Number(userData.red_balls_count || 0);
@@ -3025,9 +3419,25 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           }
           const yellowEarned = numAmount / 10;
           const currentYellow = Number(userData.yellow_balls_count || 0);
+          const currentPendingFine = Number(userData.pending_yellow_fine || 0);
+
+          let finePaid = 0;
+          let remainingPendingFine = currentPendingFine;
+          let finalYellow = currentYellow;
+
+          if (currentPendingFine > 0) {
+            finePaid = Math.min(yellowEarned, currentPendingFine);
+            remainingPendingFine = currentPendingFine - finePaid;
+            const leftoverEarned = yellowEarned - finePaid;
+            finalYellow = currentYellow + leftoverEarned;
+          } else {
+            finalYellow = currentYellow + yellowEarned;
+          }
+
           updatedUser = {
             red_balls_count: red - requiredRed,
-            yellow_balls_count: currentYellow + yellowEarned
+            yellow_balls_count: finalYellow,
+            pending_yellow_fine: remainingPendingFine
           };
         } else {
           throw new Error("INVALID_CONVERSION_TYPE");
@@ -3148,6 +3558,88 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       let errorMsg = "সার্ভার এরর। আবার চেষ্টা করুন।";
       if (error.message === "INSUFFICIENT_RED_BALLS") errorMsg = "আপনার ওয়ালেট এ পর্যাপ্ত লাল বল নেই।";
       res.status(400).json({ error: errorMsg });
+    }
+  });
+
+  // Track ad view
+  app.post("/api/ads/track-view", async (req, res) => {
+    try {
+      const { userId, adNetwork, adId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+      
+      const db = _clientDb;
+      const now = new Date();
+      // Calculate start of day, week, month for YYYY-MM-DD
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      
+      // ISO week calculation
+      const getWeekNumber = (d: Date) => {
+        const date = new Date(d.getTime());
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+        const week1 = new Date(date.getFullYear(), 0, 4);
+        return 1 + Math.round(((date.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+      };
+      
+      const dailyKey = `${year}-${month}-${day}`;
+      const weeklyKey = `${year}-W${String(getWeekNumber(now)).padStart(2, '0')}`;
+      const monthlyKey = `${year}-${month}`;
+
+      // 1. Record daily ad stat for user
+      const dailyStatRef = doc(db, "ad_stats", `${userId}_${dailyKey}`);
+      await setDoc(dailyStatRef, {
+        userId,
+        date: dailyKey,
+        week: weeklyKey,
+        month: monthlyKey,
+        totalViews: AdminFieldValue.increment(1),
+        [`networks.${adNetwork || 'unknown'}`]: AdminFieldValue.increment(1),
+        lastViewedAt: AdminFieldValue.serverTimestamp()
+      }, { merge: true });
+
+      // 2. Also log the view itself (optional, but good for detailed tracking)
+      const viewLogRef = collection(db, "ad_view_logs");
+      await addDoc(viewLogRef, {
+        userId,
+        adNetwork: adNetwork || 'unknown',
+        adId: adId || 'unknown',
+        timestamp: AdminFieldValue.serverTimestamp(),
+        date: dailyKey,
+        week: weeklyKey,
+        month: monthlyKey
+      });
+
+      res.json({ success: true, message: "Ad view tracked" });
+    } catch (error: any) {
+      console.error("[Ad View Track Error]", error);
+      res.status(500).json({ error: "Failed to track ad view" });
+    }
+  });
+
+  // Get ad stats (for Super Admin)
+  app.get("/api/ads/stats", async (req, res) => {
+    try {
+      const db = _clientDb;
+      
+      // We'll just fetch all for now and aggregate in memory for simplicity,
+      // in production we should query by date range
+      const adStatsRef = collection(db, "ad_stats");
+      const q = firestoreQuery(adStatsRef, orderBy("date", "desc"), firestoreLimit(1000));
+      const snapshot = await getDocs(q);
+      
+      const stats: any[] = [];
+      snapshot.forEach(doc => {
+        stats.push({ id: doc.id, ...doc.data() });
+      });
+      
+      res.json({ success: true, data: stats });
+    } catch (error: any) {
+      console.error("[Ad Stats Error]", error);
+      res.status(500).json({ error: "Failed to get ad stats" });
     }
   });
 

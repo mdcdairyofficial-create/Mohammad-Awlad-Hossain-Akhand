@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { X, Plus, Trash2, Search } from 'lucide-react';
 import { translations } from '../../translations';
 import { Case } from '../../types';
-import { getPoliceStations } from '../../constants';
+import { getPoliceStations, CIVIL_CASE_STEPS, CRIMINAL_CASE_STEPS } from '../../constants';
 
 interface JoinCaseFormProps {
   onJoin: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string) => void;
@@ -314,19 +314,6 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
 
               {side === 'respondent' && (
                 <div className="space-y-4 pt-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {language === 'bn' ? 'মোট আসামী/বিবাদী সংখ্যা' : 'Total Accused/Respondents'}
-                    </label>
-                    <input
-                      type="number"
-                      value={totalRespondents}
-                      onChange={(e) => setTotalRespondents(e.target.value)}
-                      placeholder={language === 'bn' ? 'মোট সংখ্যা লিখুন' : 'Enter total number'}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
                       <label className="block text-sm font-medium text-slate-700">
@@ -413,24 +400,18 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
                 <select
                   value={order}
                   onChange={(e) => setOrder(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold text-sm"
                 >
                   <option value="">{language === 'bn' ? 'আদেশ নির্বাচন করুন' : 'Select Order'}</option>
-                  <optgroup label={language === 'bn' ? 'ফৌজদারী (Criminal)' : 'Criminal'}>
-                    <option value="তদন্ত">তদন্ত</option>
-                    <option value="চার্জশিট">চার্জশিট</option>
-                    <option value="সাক্ষ্য">সাক্ষ্য</option>
-                    <option value="রায়">রায়</option>
-                    <option value="হাজিরা">হাজিরা</option>
-                    <option value="সময়">সময়</option>
-                  </optgroup>
                   <optgroup label={language === 'bn' ? 'দেওয়ানী (Civil)' : 'Civil'}>
-                    <option value="সমন">সমন</option>
-                    <option value="জবাব">জবাব</option>
-                    <option value="ইস্যু গঠন">ইস্যু গঠন</option>
-                    <option value="শুনানি">শুনানি</option>
-                    <option value="রায়">রায়</option>
-                    <option value="সময়">সময়</option>
+                    {CIVIL_CASE_STEPS.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={language === 'bn' ? 'ফৌজদারী (Criminal)' : 'Criminal'}>
+                    {CRIMINAL_CASE_STEPS.map(st => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
                   </optgroup>
                 </select>
               </div>
@@ -518,15 +499,15 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={step === 2 ? () => setStep(1) : onCancel}
+              onClick={onCancel}
               className="px-6 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100 transition-colors"
             >
-              {step === 2 ? (language === 'bn' ? 'পিছনে' : 'Back') : 'Cancel'}
+              {language === 'bn' ? 'বাতিল' : 'Cancel'}
             </button>
             <button
               type="submit"
               disabled={!caseNumber.trim()}
-              className="px-6 py-2 rounded-xl font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 rounded-xl font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
             >
               {side === 'respondent' && step === 1 ? (language === 'bn' ? 'পরবর্তী' : 'Next') : (language === 'bn' ? 'মামলায় যুক্ত হোন' : 'Join Case')}
             </button>

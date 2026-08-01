@@ -55,6 +55,9 @@ interface HomeViewProps {
   onToggleShowAll?: () => void;
   warningsCount?: number;
   redBallsCount?: number;
+  allCasesCount?: number;
+  ownCasesCount?: number;
+  assignedCasesCount?: number;
 }
 
 export const HomeView = ({
@@ -79,7 +82,10 @@ export const HomeView = ({
   showAllCases = false,
   onToggleShowAll,
   warningsCount = 0,
-  redBallsCount = 0
+  redBallsCount = 0,
+  allCasesCount = 0,
+  ownCasesCount = 0,
+  assignedCasesCount = 0
 }: HomeViewProps) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
@@ -308,11 +314,12 @@ export const HomeView = ({
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {[
+        {([
           { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab('recharge') },
-          { label: t('total_cases'), value: cases.length, icon: FileText, color: 'bg-gradient-to-tr from-blue-600 to-indigo-600', shadow: 'shadow-indigo-500/5' },
+          { label: language === 'bn' ? 'আমার নিজের মামলা' : 'My Own Cases', value: `${ownCasesCount} টি`, icon: FileText, color: 'bg-gradient-to-tr from-indigo-550 to-indigo-700', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
+          { label: language === 'bn' ? 'আমার মোট মামলা সংখ্যা' : 'My Total Cases', value: `${cases.length} টি`, subtitle: language === 'bn' ? `(নিজের: ${ownCasesCount} | দায়িত্বপ্রাপ্ত: ${assignedCasesCount})` : `(Own: ${ownCasesCount} | Assigned: ${assignedCasesCount})`, icon: Briefcase, color: 'bg-gradient-to-tr from-blue-600 to-indigo-650', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
           ...(userType !== 'client' ? [
-            { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-gradient-to-tr from-indigo-500 to-purple-600', shadow: 'shadow-indigo-500/5' },
+            { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-gradient-to-tr from-purple-500 to-purple-650', shadow: 'shadow-indigo-500/5' },
             { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-gradient-to-tr from-amber-500 to-orange-600', shadow: 'shadow-amber-500/5' },
             { label: t('upcoming_dates'), value: cases.filter(c => {
                 if (!c.nextDate) return false;
@@ -329,13 +336,13 @@ export const HomeView = ({
               return d.toDateString() === today.toDateString();
             }).length, icon: Zap, color: 'bg-gradient-to-tr from-amber-500 to-yellow-600', shadow: 'shadow-amber-500/5' },
           ...(userType !== 'client' ? [{ label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-gradient-to-tr from-rose-500 to-red-650', shadow: 'shadow-rose-500/5' }] : []),
-        ].map((stat, idx) => (
+        ] as any[]).map((stat, idx) => (
           <motion.div
             key={idx}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 * idx }}
-            className={`bg-white dark:bg-slate-900 p-6 rounded-[20px] border border-slate-100/80 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/5 hover:border-indigo-100/50 dark:hover:border-slate-700 transition-all group cursor-pointer`}
+            className="bg-white dark:bg-slate-900 p-6 rounded-[20px] border border-slate-100/80 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/5 hover:border-indigo-100/50 dark:hover:border-slate-700 transition-all group cursor-pointer"
             onClick={stat.action}
           >
             <div className={`w-12 h-12 ${stat.color} text-white rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/10 group-hover:rotate-6 transition-transform duration-300`}>
@@ -343,6 +350,9 @@ export const HomeView = ({
             </div>
             <p className="text-slate-400 dark:text-slate-500 font-extrabold text-[10px] uppercase tracking-wider mb-1.5">{stat.label}</p>
             <h4 className="text-2.5xl font-black text-slate-800 dark:text-white tracking-tight">{stat.value}</h4>
+            {stat.subtitle && (
+              <p className="text-xs text-indigo-600 dark:text-indigo-400 font-extrabold mt-1.5">{stat.subtitle}</p>
+            )}
           </motion.div>
         ))}
       </div>

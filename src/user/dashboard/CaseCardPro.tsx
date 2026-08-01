@@ -14,16 +14,23 @@ import {
   Paperclip,
   X,
   Loader2,
-  Upload
+  Upload,
+  AlertTriangle,
+  Coins,
+  ShieldAlert,
+  UserPlus
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case } from '../../types';
+import { formatCourtNameWithNo } from '../../constants';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
+import { fetchWithAuth } from '../../lib/api';
 import { AdBanner } from './AdBanner';
+import { DocumentScannerModal } from '../../components/DocumentScannerModal';
 
 interface CaseCardProProps {
   caseData: Case;
-  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs?: {name: string, type: string, url: string}[], lastDate?: string) => void;
+  onUpdate: (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs?: {name: string, type: string, url: string}[], lastDate?: string, extraData?: Partial<Case>) => void;
   onCaseNumberClick?: (caseNumber: string) => void;
   onAddDocument: (id: string | number, document: { name: string; type: string; url: string }) => void;
   onDelete?: (id: string | number) => void;
@@ -58,6 +65,149 @@ export const CaseCardPro = ({
   const [showAd, setShowAd] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState('');
+
+  // Document Scanner State
+  const [showScannerModal, setShowScannerModal] = useState(false);
+
+  // Yellow Ball & Warning Complaint States
+  const [isSyncingWallet, setIsSyncingWallet] = useState(false);
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
+  const [complaintNote, setComplaintNote] = useState('');
+  const [conflictDateInput, setConflictDateInput] = useState(caseData.nextDate || '');
+  const [conflictStepInput, setConflictStepInput] = useState(caseData.order || caseData.status || '');
+  const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
+
+  // Lawyer & Clerk Edit Modal States
+  const [showLawyerModal, setShowLawyerModal] = useState(false);
+  const [targetSide, setTargetSide] = useState<'petitioner' | 'respondent'>('petitioner');
+  const [lawyerNameInput, setLawyerNameInput] = useState('');
+  const [lawyerMobileInput, setLawyerMobileInput] = useState('');
+  const [clerkNameInput, setClerkNameInput] = useState('');
+  const [clerkMobileInput, setClerkMobileInput] = useState('');
+  const [isSavingLawyerClerk, setIsSavingLawyerClerk] = useState(false);
+
+  const formatMobile = (m?: string[] | string) => {
+    if (!m) return '';
+    if (Array.isArray(m)) return m.filter(Boolean).join(', ');
+    return m;
+  };
+
+  const currentLawyerName = side === 'petitioner' 
+    ? (caseData.petitionerLawyer || caseData.respondentLawyer || '')
+    : (caseData.respondentLawyer || caseData.petitionerLawyer || '');
+
+  const currentLawyerMobile = side === 'petitioner'
+    ? formatMobile(caseData.petitionerLawyerMobile || caseData.respondentLawyerMobile)
+    : formatMobile(caseData.respondentLawyerMobile || caseData.petitionerLawyerMobile);
+
+  const currentClerkName = side === 'petitioner'
+    ? (caseData.petitionerClerk || caseData.respondentClerk || '')
+    : (caseData.respondentClerk || caseData.petitionerClerk || '');
+
+  const currentClerkMobile = side === 'petitioner'
+    ? formatMobile(caseData.petitionerClerkMobile || caseData.respondentClerkMobile)
+    : formatMobile(caseData.respondentClerkMobile || caseData.petitionerClerkMobile);
+
+  const handleOpenLawyerModal = () => {
+    const activeIsPet = side === 'petitioner';
+    const initialSide = activeIsPet ? 'petitioner' : 'respondent';
+    setTargetSide(initialSide);
+    setLawyerNameInput(activeIsPet ? (caseData.petitionerLawyer || '') : (caseData.respondentLawyer || ''));
+    setLawyerMobileInput(activeIsPet ? formatMobile(caseData.petitionerLawyerMobile) : formatMobile(caseData.respondentLawyerMobile));
+    setClerkNameInput(activeIsPet ? (caseData.petitionerClerk || '') : (caseData.respondentClerk || ''));
+    setClerkMobileInput(activeIsPet ? formatMobile(caseData.petitionerClerkMobile) : formatMobile(caseData.respondentClerkMobile));
+    setShowLawyerModal(true);
+  };
+
+  const handleSaveLawyerClerk = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingLawyerClerk(true);
+
+    const isPet = targetSide === 'petitioner';
+    const extraData: Partial<Case> = isPet ? {
+      petitionerLawyer: lawyerNameInput,
+      petitionerLawyerMobile: lawyerMobileInput,
+      petitionerClerk: clerkNameInput,
+      petitionerClerkMobile: clerkMobileInput,
+    } : {
+      respondentLawyer: lawyerNameInput,
+      respondentLawyerMobile: lawyerMobileInput,
+      respondentClerk: clerkNameInput,
+      respondentClerkMobile: clerkMobileInput,
+    };
+
+    if (isPet) {
+      caseData.petitionerLawyer = lawyerNameInput;
+      caseData.petitionerLawyerMobile = lawyerMobileInput;
+      caseData.petitionerClerk = clerkNameInput;
+      caseData.petitionerClerkMobile = clerkMobileInput;
+    } else {
+      caseData.respondentLawyer = lawyerNameInput;
+      caseData.respondentLawyerMobile = lawyerMobileInput;
+      caseData.respondentClerk = clerkNameInput;
+      caseData.respondentClerkMobile = clerkMobileInput;
+    }
+
+    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraData);
+
+    setShowLawyerModal(false);
+    setIsSavingLawyerClerk(false);
+    setConfirmMsg('নতুন উকিল/মুহুরির তথ্য সফলভাবে যোগ করা হয়েছে!');
+    setShowConfirm(true);
+    setTimeout(() => setShowConfirm(false), 3000);
+  };
+
+  const handleSyncToWallet = async () => {
+    setIsSyncingWallet(true);
+    try {
+      const res = await fetchWithAuth('/api/cases/sync-to-wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseId: caseData.id })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || 'মামলাটি ১টি হলুদ বল খরচে আপনার ওয়ালেটে/স্ক্রিনে যুক্ত হয়েছে!');
+      } else {
+        alert(data.error || 'ওয়ালেটে যুক্ত করা সম্ভব হয়নি।');
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।');
+    } finally {
+      setIsSyncingWallet(false);
+    }
+  };
+
+  const handleSubmitComplaint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingComplaint(true);
+    try {
+      const res = await fetchWithAuth('/api/cases/warning-complaint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId: caseData.id,
+          conflictingDate: conflictDateInput,
+          conflictingStep: conflictStepInput,
+          note: complaintNote
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || 'ওয়ার্নিং কমপ্লেইন সফলভাবে জমা হয়েছে!');
+        setShowComplaintModal(false);
+        setComplaintNote('');
+      } else {
+        alert(data.error || 'কমপ্লেইন জমা করতে ব্যর্থ হয়েছে।');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('নেটওয়ার্ক ত্রুটি। আবার চেষ্টা করুন।');
+    } finally {
+      setIsSubmittingComplaint(false);
+    }
+  };
 
   const isOwner = isPetitioner || isRespondent;
   const canCall = (isOwner || (userType === 'lawyer' ? caseData.lawyerCanCall : caseData.clerkCanCall));
@@ -215,6 +365,13 @@ export const CaseCardPro = ({
       )}
 
       <div className="p-6">
+        {caseData.hasConflictWarning && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-3 text-amber-800 text-xs font-bold">
+            <ShieldAlert size={18} className="text-amber-600 shrink-0" />
+            <p>⚠️ এই মামলায় তথ্যের অসঙ্গতি সংক্রান্ত ওয়ার্নিং কমপ্লেইন রয়েছে। তথ্য ভুল থাকলে সংশোধন করুন (ভুল সংশোধন করলে ২টি হলুদ বল জরিমানা প্রদেয়)।</p>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-start gap-4">
             <div className={`p-3 rounded-2xl ${caseData.caseType === 'Civil' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -234,12 +391,33 @@ export const CaseCardPro = ({
               </div>
               <p className="text-slate-500 font-medium text-sm flex items-center gap-1.5">
                 <Building2 size={14} className="text-slate-400" />
-                {caseData.courtNumber ? caseData.courtNumber + ' ' : ''}{caseData.courtName}
+                {formatCourtNameWithNo(caseData.courtName, caseData.courtNumber)}
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isSyncingWallet}
+              onClick={handleSyncToWallet}
+              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              title="মামলার তথ্য নিজ ওয়ালেটে/স্ক্রিনে যুক্ত করুন (১টি হলুদ বল)"
+            >
+              {isSyncingWallet ? <Loader2 className="animate-spin" size={14} /> : <Coins size={14} className="text-amber-500" />}
+              <span>স্ক্রিনে যুক্ত করুন (১টি 🟡)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowComplaintModal(true)}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              title="তারিখ বা পদক্ষেপ ভিন্ন হলে ওয়ার্নিং কমপ্লেইন করুন"
+            >
+              <AlertTriangle size={14} className="text-rose-500" />
+              <span>ওয়ার্নিং কমপ্লেইন</span>
+            </button>
+
             {onDelete && (
               <button 
                 onClick={() => onDelete(caseData.id)}
@@ -299,9 +477,52 @@ export const CaseCardPro = ({
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-1">আসামী সংখ্যা (Total Respondents)</p>
                 <p className="text-sm font-bold text-slate-700">{caseData.totalRespondents || '১'}</p>
               </div>
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 col-span-2">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">আইনজীবী (Lawyer)</p>
-                <p className="text-sm font-bold text-slate-700">{caseData.petitionerLawyer || caseData.respondentLawyer || 'নির্ধারিত নেই'}</p>
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 col-span-2 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    ⚖️ আইনজীবী ও মুহুরি (Lawyer & Clerk)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleOpenLawyerModal}
+                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm border border-indigo-100/80"
+                  >
+                    <UserPlus size={14} className="text-indigo-600" />
+                    <span>+ নতুন উকিল/মুহুরি যুক্ত করুন</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Lawyer Box */}
+                  <div className="p-2.5 bg-white rounded-xl border border-slate-100 shadow-2xs">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <p className="text-[10px] font-black text-slate-400 uppercase">আইনজীবী (Lawyer)</p>
+                      {currentLawyerMobile && (
+                        <a href={`tel:${currentLawyerMobile}`} className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 text-[10px] font-bold">
+                          <Smartphone size={12} /> {currentLawyerMobile}
+                        </a>
+                      )}
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">
+                      {currentLawyerName || 'নির্ধারিত নেই'}
+                    </p>
+                  </div>
+
+                  {/* Clerk Box */}
+                  <div className="p-2.5 bg-white rounded-xl border border-slate-100 shadow-2xs">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <p className="text-[10px] font-black text-slate-400 uppercase">মুহুরি (Clerk)</p>
+                      {currentClerkMobile && (
+                        <a href={`tel:${currentClerkMobile}`} className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 text-[10px] font-bold">
+                          <Smartphone size={12} /> {currentClerkMobile}
+                        </a>
+                      )}
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">
+                      {currentClerkName || 'নির্ধারিত নেই'}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -337,17 +558,27 @@ export const CaseCardPro = ({
                   <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <FileText size={16} className="text-slate-500" /> মামলা সম্পর্কিত ডকুমেন্ট (Case Documents)
                   </h4>
-                  <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                    {(() => {
-                      const caseDocs = caseData.documents || [];
-                      const historyDocs = caseData.history?.reduce<any[]>((acc, entry) => {
-                        if (entry.documents) acc.push(...entry.documents);
-                        return acc;
-                      }, []) || [];
-                      const uniqueUrls = new Set([...caseDocs.map(d => d.url), ...historyDocs.map(d => d.url)]);
-                      return uniqueUrls.size;
-                    })()} Files
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowScannerModal(true)}
+                      className="px-2.5 py-1 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-indigo-200"
+                    >
+                      <Camera size={13} />
+                      <span>ক্যামেরা স্ক্যান</span>
+                    </button>
+                    <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                      {(() => {
+                        const caseDocs = caseData.documents || [];
+                        const historyDocs = caseData.history?.reduce<any[]>((acc, entry) => {
+                          if (entry.documents) acc.push(...entry.documents);
+                          return acc;
+                        }, []) || [];
+                        const uniqueUrls = new Set([...caseDocs.map(d => d.url), ...historyDocs.map(d => d.url)]);
+                        return uniqueUrls.size;
+                      })()} Files
+                    </span>
+                  </div>
                 </div>
                 {(() => {
                   const caseDocs = caseData.documents || [];
@@ -503,15 +734,25 @@ export const CaseCardPro = ({
                         }
                       }}
                     />
-                    <button 
-                      type="button"
-                      disabled={isUploading}
-                      onClick={() => document.getElementById('update-doc-upload')?.click()}
-                      className="flex items-center gap-2 px-4 py-2 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all"
-                    >
-                      {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
-                      ডকুমেন্ট যোগ করুন
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button 
+                        type="button"
+                        disabled={isUploading}
+                        onClick={() => document.getElementById('update-doc-upload')?.click()}
+                        className="flex items-center gap-2 px-3 py-2 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:border-indigo-400 hover:text-indigo-600 transition-all"
+                      >
+                        {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Paperclip size={14} />}
+                        ডকুমেন্ট ফাইল
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => setShowScannerModal(true)}
+                        className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-xl text-xs font-bold hover:brightness-110 transition-all shadow-sm shadow-indigo-100"
+                      >
+                        <Camera size={14} />
+                        ক্যামেরা দিয়ে স্ক্যান
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -535,12 +776,18 @@ export const CaseCardPro = ({
         </div>
 
         <div className="mt-6 pt-6 border-t border-slate-50 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2">
             <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
+              onClick={() => setShowScannerModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200"
             >
               <Camera size={16} />
+              মোবাইল ক্যামেরা স্ক্যানার
+            </button>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
+            >
               ছবি থেকে PDF
             </button>
             <input 
@@ -603,6 +850,210 @@ export const CaseCardPro = ({
           </div>
         </div>
       </div>
+
+      {showComplaintModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                <AlertTriangle className="text-amber-500" size={20} />
+                ওয়ার্নিং কমপ্লেইন জমা দিন
+              </h3>
+              <button onClick={() => setShowComplaintModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium">
+              একই মামলার তারিখ বা পদক্ষেপ অন্য পক্ষ ভুল দিলে আপনি ওয়ার্নিং কমপ্লেইন জমা দিতে পারেন। অপর পক্ষ তথ্য সংশোধন করলে তার ব্যালেন্স থেকে <b>২ টি হলুদ বল জরিমানা</b> কাটা হবে।
+            </p>
+
+            <form onSubmit={handleSubmitComplaint} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">অসংগতিপূর্ণ তারিখ (Conflicting Date)</label>
+                <input 
+                  type="text" 
+                  value={conflictDateInput} 
+                  onChange={(e) => setConflictDateInput(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                  placeholder="YYYY-MM-DD"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">অসংগতিপূর্ণ পদক্ষেপ/আদেশ (Conflicting Step)</label>
+                <input 
+                  type="text" 
+                  value={conflictStepInput} 
+                  onChange={(e) => setConflictStepInput(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold"
+                  placeholder="যেমন: হাজিরা / জেরা / সমন"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">অভিযোগের তথ্য / বিবরণ</label>
+                <textarea 
+                  value={complaintNote} 
+                  onChange={(e) => setComplaintNote(e.target.value)}
+                  required
+                  placeholder="কেন এটি ভুল তারিখ বা পদক্ষেপ তা বিস্তারিত লিখুন..."
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium h-20 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowComplaintModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmittingComplaint}
+                  className="flex-1 py-2.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 shadow-md shadow-rose-200 flex justify-center items-center gap-2"
+                >
+                  {isSubmittingComplaint && <Loader2 className="animate-spin" size={14} />}
+                  কমপ্লেইন পাঠাল
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showLawyerModal && (
+        <div className="fixed inset-0 z-[300] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                <UserPlus className="text-indigo-600" size={20} />
+                নতুন উকিল / মুহুরি যোগ করুন
+              </h3>
+              <button onClick={() => setShowLawyerModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveLawyerClerk} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">পক্ষ নির্বাচন করুন (Select Side)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetSide('petitioner');
+                      setLawyerNameInput(caseData.petitionerLawyer || '');
+                      setLawyerMobileInput(formatMobile(caseData.petitionerLawyerMobile));
+                      setClerkNameInput(caseData.petitionerClerk || '');
+                      setClerkMobileInput(formatMobile(caseData.petitionerClerkMobile));
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                      targetSide === 'petitioner'
+                        ? 'bg-sky-50 text-sky-700 border-sky-300'
+                        : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    বাদী পক্ষ (Petitioner)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetSide('respondent');
+                      setLawyerNameInput(caseData.respondentLawyer || '');
+                      setLawyerMobileInput(formatMobile(caseData.respondentLawyerMobile));
+                      setClerkNameInput(caseData.respondentClerk || '');
+                      setClerkMobileInput(formatMobile(caseData.respondentClerkMobile));
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                      targetSide === 'respondent'
+                        ? 'bg-rose-50 text-rose-700 border-rose-300'
+                        : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    বিবাদী/আসামী পক্ষ (Respondent)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">উকিলের নাম (Lawyer Name)</label>
+                <input 
+                  type="text" 
+                  value={lawyerNameInput} 
+                  onChange={(e) => setLawyerNameInput(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="যেমন: অ্যাডভোকেট কায়সার আহমেদ"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">উকিলের মোবাইল নম্বর (Lawyer Mobile)</label>
+                <input 
+                  type="tel" 
+                  value={lawyerMobileInput} 
+                  onChange={(e) => setLawyerMobileInput(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="যেমন: 01711000000"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">মুহুরির নাম (Clerk Name)</label>
+                <input 
+                  type="text" 
+                  value={clerkNameInput} 
+                  onChange={(e) => setClerkNameInput(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="যেমন: আব্দুর রহিম"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">মুহুরির মোবাইল নম্বর (Clerk Mobile)</label>
+                <input 
+                  type="tel" 
+                  value={clerkMobileInput} 
+                  onChange={(e) => setClerkMobileInput(e.target.value)}
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="যেমন: 01811000000"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowLawyerModal(false)}
+                  className="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSavingLawyerClerk}
+                  className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-md shadow-indigo-200 flex justify-center items-center gap-2"
+                >
+                  {isSavingLawyerClerk && <Loader2 className="animate-spin" size={14} />}
+                  সংরক্ষণ করুন
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <DocumentScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        caseNumber={caseData.caseNumber}
+        onDocumentScanned={(doc) => {
+          onAddDocument(caseData.id, doc);
+          setConfirmMsg('নথি সফলভাবে স্ক্যান করে মামলায় যুক্ত করা হয়েছে!');
+          setShowConfirm(true);
+          setTimeout(() => setShowConfirm(false), 3500);
+        }}
+        language="bn"
+      />
     </div>
   );
 };

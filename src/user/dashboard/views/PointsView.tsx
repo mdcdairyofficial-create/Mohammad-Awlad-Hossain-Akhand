@@ -48,6 +48,7 @@ export const PointsView = ({ language, userPoints, onPointsUpdate, userType }: P
   const [redBalls, setRedBalls] = useState(0);
   const [whiteBalls, setWhiteBalls] = useState(0);
   const [yellowBalls, setYellowBalls] = useState(0);
+  const [pendingYellowFine, setPendingYellowFine] = useState(0);
 
   const [lastCheckIn, setLastCheckIn] = useState<any>(null);
   const [canCheckIn, setCanCheckIn] = useState(false);
@@ -88,6 +89,7 @@ export const PointsView = ({ language, userPoints, onPointsUpdate, userType }: P
         setRedBalls(data.red_balls_count || 0);
         setWhiteBalls(data.white_balls_count || 0);
         setYellowBalls(data.yellow_balls_count || 0);
+        setPendingYellowFine(data.pending_yellow_fine || 0);
         
         // Check-In Status
         const lastDate = data.lastCheckIn?.toDate();
@@ -470,6 +472,17 @@ export const PointsView = ({ language, userPoints, onPointsUpdate, userType }: P
           <div>
             <p className="text-xs text-amber-300 font-bold uppercase tracking-widest mb-1">{t('হলুদ বল ব্যালেন্স', 'YELLOW BALLS')}</p>
             <p className="text-3xl font-black text-amber-100">{yellowBalls} <span className="text-xs font-normal opacity-70">🟡</span></p>
+            {pendingYellowFine > 0 && (
+              <div className="mt-3 p-2.5 bg-rose-950/80 border border-rose-800 rounded-xl text-xs font-bold text-rose-200 flex items-center gap-2">
+                <AlertCircle size={16} className="text-rose-400 shrink-0" />
+                <div>
+                  <p className="text-rose-300 font-extrabold text-[11px]">⚠️ বকেয়া জরিমানা: {pendingYellowFine} টি 🟡</p>
+                  <p className="text-[9px] text-rose-300/80 font-normal">
+                    সংশোধনের বকেয়া জরিমানা। নতুন বল রিচার্জ বা কনভার্ট হলে স্বয়ংক্রিয়ভাবে কাটা হবে।
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -99,6 +99,22 @@ export const FullscreenAdViewer = ({ language, userType, onClose, onPointsEarned
           points: increment(points),
           updatedAt: serverTimestamp()
         }, { merge: true });
+        
+        // Track ad view on the backend
+        try {
+          await fetch('/api/ads/track-view', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: auth.currentUser.uid,
+              adNetwork: ad?.type || 'in-app',
+              adId: ad?.id
+            })
+          });
+        } catch (e) {
+          console.error('Failed to track ad view:', e);
+        }
+
         onPointsEarned(points);
       } catch (error) {
         console.error('Error updating points:', error);

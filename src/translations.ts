@@ -407,6 +407,7 @@ export const translations = {
     professional_docs: 'পেশাদার নথিপত্র ও সোশ্যাল',
     referral_status: 'রেফারেল ও পয়েন্ট স্ট্যাটাস',
     name_label: 'নাম',
+    email_address: 'ইমেইল',
     mobile_label: 'মোবাইল',
     district_label: 'জেলা',
     country_label: 'দেশ',
