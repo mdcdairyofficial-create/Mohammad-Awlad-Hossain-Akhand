@@ -221,3 +221,109 @@ input:checked + .slider {
 .animate-blink {
   animation: blink 1s infinite ease-in-out;
 }
+
+/* --- PRINTABLE SHEET (আদেশনামা) STYLES --- */
+.sheet {
+  width: 95%;
+  margin: 20px auto;
+  border: 2px solid #1e3a8a;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  font-family: "Noto Serif Bengali", serif, "Noto Sans Bengali";
+}
+
+/* Header */
+.sheet-title {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  padding: 18px;
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+}
+
+/* Date */
+.sheet-date {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+  color: #1e3a8a;
+  background: #eff6ff;
+  padding: 14px;
+  border-bottom: 2px solid #bfdbfe;
+}
+
+.order-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.order-table th,
+.order-table td {
+  border: 1px solid #cbd5e1;
+  text-align: center;
+  padding: 12px 10px;
+}
+
+.order-table th {
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 19px;
+  font-weight: 600;
+  padding: 10px;
+}
+
+.order-table tbody td {
+  height: 120px; /* Reduced slightly from 180px for better vertical density of records, but stays prominent */
+  background: #ffffff;
+  transition: background 0.3s;
+}
+
+.order-table tbody tr:hover td {
+  background: #f8fbff;
+}
+
+/* Print Overrides */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  body * {
+    visibility: hidden;
+  }
+  
+  .print-area-wrapper, .print-area-wrapper * {
+    visibility: visible;
+  }
+  
+  .print-area-wrapper {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  
+  .sheet {
+    width: 100% !important;
+    margin: 0 !important;
+    border: 2px solid #1e3a8a !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .order-table th {
+    background: #eff6ff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+

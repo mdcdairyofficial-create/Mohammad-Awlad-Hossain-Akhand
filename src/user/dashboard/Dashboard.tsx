@@ -67,7 +67,8 @@ import {
   Award,
   Landmark,
   ShieldAlert,
-  RefreshCw
+  RefreshCw,
+  Printer
 } from 'lucide-react';
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -169,6 +170,13 @@ const handleDownloadFile = (dataUri: string, defaultName: string) => {
 const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boolean, onClose: () => void, caseData: Case | null, language: 'bn' | 'en' | 'hi' | 'ur' }) => {
   if (!caseData) return null;
   const t = (key: keyof typeof translations.bn) => translations[language]?.[key] || translations.bn[key] || key;
+  const [viewMode, setViewMode] = useState<'timeline' | 'sheet'>('timeline');
+
+  const toBnNum = (num: number | string) => {
+    if (language !== 'bn') return String(num);
+    const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    return String(num).replace(/[0-9]/g, (w) => bnDigits[parseInt(w)]);
+  };
 
   return (
     <AnimatePresence>
@@ -178,185 +186,286 @@ const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boo
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-[2rem] shadow-2xl flex flex-col"
+            className="bg-white w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-[2rem] shadow-2xl flex flex-col"
           >
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-900 text-white">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-900 text-white no-print">
               <div>
                 <h3 className="text-xl font-bold">{t('case_history_title')}</h3>
                 <p className="text-indigo-200 text-sm">{caseData.caseNumber}</p>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-all">
+              <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-all modal-close-btn">
                 <X size={20} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              {caseData.history && caseData.history.length > 0 ? (
-                <div className="relative border-l-2 border-indigo-100 ml-4 pl-8 space-y-8">
-                  {caseData.history.map((entry, idx) => (
-                    <div key={idx} className="relative">
-                      <div className="absolute -left-[41px] top-0 w-4 h-4 rounded-full bg-indigo-600 border-4 border-white shadow-sm"></div>
-                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-black text-indigo-600 uppercase">{entry.date}</span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            entry.actionBy === 'court' ? 'bg-amber-100 text-amber-700' : 
-                            entry.actionBy === 'petitioner' || entry.actionBy === 'lawyer' ? 'bg-emerald-100 text-emerald-700' : 
-                            entry.actionBy === 'clerk' ? 'bg-indigo-100 text-indigo-700' :
-                            'bg-rose-100 text-rose-700'
-                          }`}>
-                            {entry.actionBy === 'court' ? t('court_label') : 
-                             entry.actionBy === 'petitioner' ? t('petitioner_label') : 
-                             entry.actionBy === 'lawyer' ? t('lawyer_label') :
-                             entry.actionBy === 'clerk' ? t('clerk_label') :
-                             entry.actionBy === 'respondent' ? t('respondent_label') :
-                             entry.actionBy === 'accused' ? t('accused_label') :
-                             entry.actionBy === 'admin' ? t('admin_label') : t('client_label')}
-                          </span>
-                        </div>
-                        <p className="text-slate-700 text-sm font-medium leading-relaxed mb-3">{entry.description}</p>
-                        
-                        {entry.order && (
-                          <div className="mb-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                             <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'আদেশ' : 'Order'}</p>
-                             <p className="text-sm font-bold text-slate-800">{entry.order}</p>
-                          </div>
-                        )}
 
-                        <div className="flex flex-wrap gap-4 mb-3">
-                          {entry.petitionerPhoto && (
-                            <div>
-                               <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'বাদীপক্ষের ছবি' : 'Petitioner Photo'}</p>
-                               {entry.petitionerPhoto.startsWith('data:application/pdf') || entry.petitionerPhoto.includes('.pdf') ? (
-                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
-                                   <FileText className="w-8 h-8 text-red-500 mb-1" />
-                                   <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
-                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
-                                     <a 
-                                       href={entry.petitionerPhoto} 
-                                       target="_blank" 
-                                       rel="noreferrer"
-                                       className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
-                                     >
-                                       {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
-                                     </a>
-                                     <button 
-                                       onClick={() => handleDownloadFile(entry.petitionerPhoto!, `petitioner_${entry.date || 'hearing'}`)}
-                                       className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
-                                     >
-                                       <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
-                                     </button>
-                                   </div>
-                                 </div>
-                               ) : (
-                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-                                   <img 
-                                     src={entry.petitionerPhoto} 
-                                     alt="Petitioner" 
-                                     referrerPolicy="no-referrer"
-                                     className="w-full h-full object-cover"
-                                   />
-                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
-                                     <a 
-                                       href={entry.petitionerPhoto} 
-                                       target="_blank" 
-                                       rel="noreferrer"
-                                       className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
-                                     >
-                                       {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
-                                     </a>
-                                     <button 
-                                       onClick={() => handleDownloadFile(entry.petitionerPhoto!, `petitioner_${entry.date || 'hearing'}`)}
-                                       className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
-                                     >
-                                       <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
-                                     </button>
-                                   </div>
-                                 </div>
-                               )}
+            {/* View Mode Switcher */}
+            <div className="flex bg-slate-100 p-1.5 gap-1.5 mx-6 mt-4 rounded-xl no-print">
+              <button 
+                onClick={() => setViewMode('timeline')} 
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${viewMode === 'timeline' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                🕒 {language === 'bn' ? 'টাইমলাইন ভিউ' : 'Timeline View'}
+              </button>
+              <button 
+                onClick={() => setViewMode('sheet')} 
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${viewMode === 'sheet' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                📄 {language === 'bn' ? 'আদেশনামা শিট (Printable)' : 'Order Sheet (Printable)'}
+              </button>
+            </div>
+
+            {viewMode === 'sheet' && (
+              <div className="flex justify-end px-6 pt-4 no-print">
+                <button 
+                  onClick={() => window.print()} 
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100"
+                >
+                  <Printer size={14} />
+                  {language === 'bn' ? 'প্রিন্ট করুন' : 'Print Order Sheet'}
+                </button>
+              </div>
+            )}
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {viewMode === 'timeline' ? (
+                <div className="space-y-4">
+                  {caseData.history && caseData.history.length > 0 ? (
+                    <div className="relative border-l-2 border-indigo-100 ml-4 pl-8 space-y-8">
+                      {caseData.history.map((entry, idx) => (
+                        <div key={idx} className="relative">
+                          <div className="absolute -left-[41px] top-0 w-4 h-4 rounded-full bg-indigo-600 border-4 border-white shadow-sm"></div>
+                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-black text-indigo-600 uppercase">{entry.date}</span>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                entry.actionBy === 'court' ? 'bg-amber-100 text-amber-700' : 
+                                entry.actionBy === 'petitioner' || entry.actionBy === 'lawyer' ? 'bg-emerald-100 text-emerald-700' : 
+                                entry.actionBy === 'clerk' ? 'bg-indigo-100 text-indigo-700' :
+                                'bg-rose-100 text-rose-700'
+                              }`}>
+                                {entry.actionBy === 'court' ? t('court_label') : 
+                                 entry.actionBy === 'petitioner' ? t('petitioner_label') : 
+                                 entry.actionBy === 'lawyer' ? t('lawyer_label') :
+                                 entry.actionBy === 'clerk' ? t('clerk_label') :
+                                 entry.actionBy === 'respondent' ? t('respondent_label') :
+                                 entry.actionBy === 'accused' ? t('accused_label') :
+                                 entry.actionBy === 'admin' ? t('admin_label') : t('client_label')}
+                              </span>
                             </div>
-                          )}
+                            <p className="text-slate-700 text-sm font-medium leading-relaxed mb-3">{entry.description}</p>
+                            
+                            {entry.order && (
+                              <div className="mb-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                                 <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'আদেশ' : 'Order'}</p>
+                                 <p className="text-sm font-bold text-slate-800">{entry.order}</p>
+                              </div>
+                            )}
 
-                          {entry.accusedPhoto && (
-                            <div>
-                               <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'আসামির ছবি' : 'Accused Photo'}</p>
-                               {entry.accusedPhoto.startsWith('data:application/pdf') || entry.accusedPhoto.includes('.pdf') ? (
-                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
-                                   <FileText className="w-8 h-8 text-red-500 mb-1" />
-                                   <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
-                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
-                                     <a 
-                                       href={entry.accusedPhoto} 
-                                       target="_blank" 
-                                       rel="noreferrer"
-                                       className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
-                                     >
-                                       {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
-                                     </a>
-                                     <button 
-                                       onClick={() => handleDownloadFile(entry.accusedPhoto!, `accused_${entry.date || 'hearing'}`)}
-                                       className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
-                                     >
-                                       <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
-                                     </button>
-                                   </div>
-                                 </div>
-                               ) : (
-                                 <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
-                                   <img 
-                                     src={entry.accusedPhoto} 
-                                     alt="Accused" 
-                                     referrerPolicy="no-referrer"
-                                     className="w-full h-full object-cover"
-                                   />
-                                   <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
-                                      <a 
-                                        href={entry.accusedPhoto} 
-                                        target="_blank" 
-                                        rel="noreferrer" 
-                                        className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
-                                      >
-                                        {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
-                                      </a>
-                                      <button 
-                                        onClick={() => handleDownloadFile(entry.accusedPhoto!, `accused_${entry.date || 'hearing'}`)}
-                                        className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
-                                      >
-                                        <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
-                                      </button>
-                                    </div>
-                                 </div>
-                               )}
+                            <div className="flex flex-wrap gap-4 mb-3">
+                              {entry.petitionerPhoto && (
+                                <div>
+                                   <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'বাদীপক্ষের ছবি' : 'Petitioner Photo'}</p>
+                                   {entry.petitionerPhoto.startsWith('data:application/pdf') || entry.petitionerPhoto.includes('.pdf') ? (
+                                     <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                                       <FileText className="w-8 h-8 text-red-500 mb-1" />
+                                       <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
+                                       <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                         <a 
+                                           href={entry.petitionerPhoto} 
+                                           target="_blank" 
+                                           rel="noreferrer"
+                                           className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                         >
+                                           {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                         </a>
+                                         <button 
+                                           onClick={() => handleDownloadFile(entry.petitionerPhoto!, `petitioner_${entry.date || 'hearing'}`)}
+                                           className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                         >
+                                           <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                         </button>
+                                       </div>
+                                     </div>
+                                   ) : (
+                                     <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                       <img 
+                                         src={entry.petitionerPhoto} 
+                                         alt="Petitioner" 
+                                         referrerPolicy="no-referrer"
+                                         className="w-full h-full object-cover"
+                                       />
+                                       <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                         <a 
+                                           href={entry.petitionerPhoto} 
+                                           target="_blank" 
+                                           rel="noreferrer"
+                                           className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                         >
+                                           {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                         </a>
+                                         <button 
+                                           onClick={() => handleDownloadFile(entry.petitionerPhoto!, `petitioner_${entry.date || 'hearing'}`)}
+                                           className="text-white text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                         >
+                                           <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                         </button>
+                                       </div>
+                                     </div>
+                                   )}
+                                </div>
+                              )}
+
+                              {entry.accusedPhoto && (
+                                <div>
+                                   <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">{language === 'bn' ? 'আসামির ছবি' : 'Accused Photo'}</p>
+                                   {entry.accusedPhoto.startsWith('data:application/pdf') || entry.accusedPhoto.includes('.pdf') ? (
+                                     <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-red-50 dark:bg-red-950/20 flex flex-col items-center justify-center shadow-sm text-center p-2">
+                                       <FileText className="w-8 h-8 text-red-500 mb-1" />
+                                       <span className="text-[10px] font-bold text-red-700 dark:text-red-400">পিডিএফ ডকুমেন্ট</span>
+                                       <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                         <a 
+                                           href={entry.accusedPhoto} 
+                                           target="_blank" 
+                                           rel="noreferrer"
+                                           className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                         >
+                                           {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                         </a>
+                                         <button 
+                                           onClick={() => handleDownloadFile(entry.accusedPhoto!, `accused_${entry.date || 'hearing'}`)}
+                                           className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                         >
+                                           <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                         </button>
+                                       </div>
+                                     </div>
+                                   ) : (
+                                     <div className="relative group w-32 h-24 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm">
+                                       <img 
+                                         src={entry.accusedPhoto} 
+                                         alt="Accused" 
+                                         referrerPolicy="no-referrer"
+                                         className="w-full h-full object-cover"
+                                       />
+                                       <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex flex-col items-center justify-center gap-1.5 transition-opacity z-10 p-1 text-center">
+                                          <a 
+                                            href={entry.accusedPhoto} 
+                                            target="_blank" 
+                                            rel="noreferrer" 
+                                            className="text-white text-[11px] font-bold bg-white/20 hover:bg-white/35 px-2 py-0.5 rounded transition-colors w-24 block text-center"
+                                          >
+                                            {language === 'bn' ? 'বড় করে দেখুন' : 'View Full'}
+                                          </a>
+                                          <button 
+                                            onClick={() => handleDownloadFile(entry.accusedPhoto!, `accused_${entry.date || 'hearing'}`)}
+                                            className="text-white text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded flex items-center justify-center gap-1 transition-colors w-24"
+                                          >
+                                            <Download size={11} /> {language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                                          </button>
+                                        </div>
+                                     </div>
+                                   )}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
 
-                        {entry.documents && entry.documents.length > 0 && (
-                          <div className="space-y-2">
-                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'সংযুক্ত ডকুমেন্ট' : 'Attached Documents'}</p>
-                             <div className="flex flex-wrap gap-2">
-                               {entry.documents.map((doc, dIdx) => (
-                                 <a 
-                                   key={dIdx}
-                                   href={doc.url} 
-                                   target="_blank" 
-                                   rel="noopener noreferrer"
-                                   className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-all"
-                                 >
-                                   <FileText size={14} />
-                                   <span className="truncate max-w-[120px]">{doc.name}</span>
-                                 </a>
-                               ))}
-                             </div>
+                            {entry.documents && entry.documents.length > 0 && (
+                              <div className="space-y-2">
+                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'সংযুক্ত ডকুমেন্ট' : 'Attached Documents'}</p>
+                                 <div className="flex flex-wrap gap-2">
+                                   {entry.documents.map((doc, dIdx) => (
+                                     <a 
+                                       key={dIdx}
+                                       href={doc.url} 
+                                       target="_blank" 
+                                       rel="noopener noreferrer"
+                                       className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-all"
+                                     >
+                                       <FileText size={14} />
+                                       <span className="truncate max-w-[120px]">{doc.name}</span>
+                                     </a>
+                                   ))}
+                                 </div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="text-center py-12">
+                      <Clock className="mx-auto text-slate-300 mb-4" size={48} />
+                      <p className="text-slate-500 font-bold">{t('no_history_found')}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-12">
-                  <Clock className="mx-auto text-slate-300 mb-4" size={48} />
-                  <p className="text-slate-500 font-bold">{t('no_history_found')}</p>
+                /* PRINTABLE ORDER SHEET VIEW (আদেশনামা) */
+                <div className="print-area-wrapper overflow-x-auto pb-8">
+                  <div className="sheet">
+                    <div className="sheet-title">
+                      {language === 'bn' ? 'আদেশনামা (Order Sheet)' : 'Order Sheet'}
+                      <div className="text-sm font-normal mt-1 opacity-90">
+                        {language === 'bn' ? 'আদালত: ' : 'Court: '}{caseData.courtName} {caseData.courtNumber || ''} | {language === 'bn' ? 'মামলা নং: ' : 'Case No: '}{caseData.caseNumber}
+                      </div>
+                    </div>
+                    <div className="sheet-date">
+                      {language === 'bn' ? 'পরবর্তী ধার্য্য তারিখ: ' : 'Next Scheduled Date: '}{toBnNum(caseData.nextDate || '-')}
+                    </div>
+                    
+                    <table className="order-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '15%' }}>{language === 'bn' ? 'আদেশ নম্বর ও তারিখ' : 'Order No & Date'}</th>
+                          <th style={{ width: '65%' }}>{language === 'bn' ? 'আদেশ এবং কার্যক্রম' : 'Order & Proceedings'}</th>
+                          <th style={{ width: '20%' }}>{language === 'bn' ? 'স্বাক্ষর / মন্তব্য' : 'Signature / Remarks'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {caseData.history && caseData.history.length > 0 ? (
+                          caseData.history.map((entry, idx) => (
+                            <tr key={idx}>
+                              <td className="font-bold text-slate-800">
+                                <div className="text-base text-indigo-900 mb-1">
+                                  {language === 'bn' ? 'আদেশ নং ' : 'Order #'}{toBnNum(idx + 1)}
+                                </div>
+                                <div className="text-xs text-slate-500 font-mono">
+                                  {toBnNum(entry.date)}
+                                </div>
+                              </td>
+                              <td className="text-left font-medium text-slate-800 leading-relaxed px-6 py-4">
+                                <div className="font-bold text-indigo-950 mb-1.5 flex items-center gap-2">
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    entry.actionBy === 'court' ? 'bg-amber-500' : 'bg-indigo-500'
+                                  }`} />
+                                  {entry.actionBy === 'court' ? (language === 'bn' ? 'আদালতের আদেশ' : 'Court Order') : (language === 'bn' ? 'পদক্ষেপ/কার্যক্রম' : 'Action/Step')}
+                                </div>
+                                <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-line">
+                                  {entry.order || entry.description}
+                                </p>
+                                {entry.order && entry.description && (
+                                  <p className="text-xs text-slate-500 mt-2 italic">
+                                    {language === 'bn' ? 'বিবরণ: ' : 'Details: '}{entry.description}
+                                  </p>
+                                )}
+                              </td>
+                              <td className="text-slate-400 text-xs italic font-medium">
+                                <div className="border-t border-dashed border-slate-300 pt-16 mt-4 mx-4">
+                                  {entry.actionBy === 'court' ? (language === 'bn' ? 'सहকারী / হাকিম' : 'Officer/Judge') : (language === 'bn' ? 'আইনজীবী / মুহুরী' : 'Lawyer/Clerk')}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={3} className="text-center text-slate-400 py-12 italic">
+                              {language === 'bn' ? 'কোনো আদেশনামা বিবরণী পাওয়া যায়নি।' : 'No order sheet records found.'}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

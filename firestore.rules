@@ -159,5 +159,13 @@ service cloud.firestore {
     match /points_history/{historyId} {
       allow list, read, create, update, delete: if isSignedIn() || request.auth == null || isAdmin();
     }
+
+    match /ad_stats/{statId} {
+      allow list, read, create, update, delete: if isSignedIn() || request.auth == null || isAdmin();
+    }
+
+    match /ad_view_logs/{logId} {
+      allow list, read, create, update, delete: if isSignedIn() || request.auth == null || isAdmin();
+    }
   }
 }

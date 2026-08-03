@@ -1301,6 +1301,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         const data = doc.data();
         return {
           id: doc.id,
+          firebase_uid: data.firebase_uid || null,
           name: data.name,
           mobile: data.mobile,
           user_type: data.user_type,
