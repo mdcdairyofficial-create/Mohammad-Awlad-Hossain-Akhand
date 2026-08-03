@@ -444,6 +444,7 @@ export default function Dashboard({
     return <BarAdminDashboard userId={initialFirebaseUid || (userId ? String(userId) : undefined)} userName={userName} />;
   }
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeCallDropdownCaseId, setActiveCallDropdownCaseId] = useState<string | number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentViewMode, setCurrentViewMode] = useState<string>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType);
   const isSubscribed = subscriptionPackage && subscriptionPackage !== 'free';
@@ -1672,7 +1673,7 @@ export default function Dashboard({
   };
 
   const handleUpdateCaseFull = (id: string | number, nextDate: string, order: string, selectedParty: 'petitioner' | 'respondent' | 'accused', clerkCanCall?: boolean, lawyerCanCall?: boolean, visibility?: 'private' | 'public', attachedDocs: {name: string, type: string, url: string}[] = [], lastDate?: string, extraCaseData?: Partial<Case>) => {
-    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraCaseData);
+    handleUpdateCaseOrder(id, nextDate, order, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, { ...extraCaseData, selectedParty });
     handleUpdateSelectedParty(id, selectedParty);
   };
 
@@ -1752,8 +1753,9 @@ export default function Dashboard({
     });
   };
 
-  const handleUpdateSelectedParty = (caseId: string | number, selectedParty: 'petitioner' | 'respondent' | 'accused') => {
+  const handleUpdateSelectedParty = async (caseId: string | number, selectedParty: 'petitioner' | 'respondent' | 'accused') => {
     setCases(cases.map(c => c.id === caseId ? { ...c, selectedParty } : c));
+    await updateCase(caseId.toString(), { selectedParty });
   };
 
   const handleLookupAndAssign = () => {
@@ -1919,6 +1921,9 @@ export default function Dashboard({
   });
 
   const isUserPetitioner = (c: Case) => {
+    if (c.selectedParty) {
+      return c.selectedParty === 'petitioner';
+    }
     if (!userMobile) return false;
     return c.petitionerMobile === userMobile ||
       (Array.isArray(c.petitionerLawyerMobile) ? c.petitionerLawyerMobile.includes(userMobile) : c.petitionerLawyerMobile === userMobile) ||
@@ -1928,6 +1933,9 @@ export default function Dashboard({
   };
 
   const isUserRespondent = (c: Case) => {
+    if (c.selectedParty) {
+      return c.selectedParty === 'respondent' || c.selectedParty === 'accused';
+    }
     if (!userMobile) return false;
     return c.respondentMobile === userMobile ||
       (Array.isArray(c.respondentLawyerMobile) ? c.respondentLawyerMobile.includes(userMobile) : c.respondentLawyerMobile === userMobile) ||
@@ -4586,6 +4594,7 @@ export default function Dashboard({
                               {t('reset')}
                             </button>
                             <button 
+                              onClick={() => setIsCaseSearchOpen(false)}
                               className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-100"
                             >
                               {t('search')}
@@ -4675,15 +4684,20 @@ export default function Dashboard({
                                       <th>{t('clerk_name')}</th>
                                       <th>{t('call')}</th>
                                       <th>{t('party')}</th>
+                                      <th>{t('call')}</th>
                                       <th>{t('history')}</th>
                                       <th>{t('result')}</th>
                                       <th>{t('action')}</th>
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {sortedCases.map((c, i) => (
-                                      <tr key={c.id}>
-                                        <td>{i + 1}</td>
+                                    {sortedCases.map((c, i) => {
+                                      const isPet = isUserPetitioner(c);
+                                      const isRes = isUserRespondent(c);
+                                      const rowClass = isPet ? 'plaintiff-row' : isRes ? 'defendant-row' : '';
+                                      return (
+                                        <tr key={c.id} className={rowClass}>
+                                          <td>{i + 1}</td>
                                         <td>{c.caseNumber}</td>
                                         <td>
                                           {c.order ? (
@@ -4723,9 +4737,150 @@ export default function Dashboard({
                                           })()}
                                         </td>
                                         <td>
-                                          <span className={isUserPetitioner(c) ? 'text-emerald-600' : 'text-rose-600'}>
-                                            {isUserPetitioner(c) ? t('petitioner') : t('respondent')}
-                                          </span>
+                                          {(() => {
+                                            const isPet = isUserPetitioner(c);
+                                            const isRes = isUserRespondent(c);
+                                            
+                                            if (isPet) {
+                                              return (
+                                                <div className="flex flex-col gap-0.5 max-w-[150px]">
+                                                  <span className="font-bold text-emerald-600 text-xs truncate" title={c.petitioner || t('petitioner')}>
+                                                    {c.petitioner || t('petitioner')}
+                                                  </span>
+                                                  {c.petitionerMobile && (
+                                                    <span className="text-[10px] text-slate-500 font-medium font-sans">
+                                                      {c.petitionerMobile}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              );
+                                            } else if (isRes) {
+                                              const respondentsToShow = c.respondentDetails && c.respondentDetails.length > 0 
+                                                ? c.respondentDetails 
+                                                : [{ name: c.respondent || t('respondent'), phone: c.respondentMobile }];
+                                                
+                                              return (
+                                                <div className="flex flex-col gap-1 max-w-[150px]">
+                                                  {respondentsToShow.map((resp, rIdx) => (
+                                                    <div key={rIdx} className="flex flex-col gap-0.5 border-b border-dashed border-slate-100 last:border-0 pb-1 last:pb-0">
+                                                      <span className="font-bold text-rose-600 text-xs truncate" title={resp.name}>
+                                                        {resp.name}
+                                                      </span>
+                                                      {resp.phone && (
+                                                        <span className="text-[10px] text-slate-500 font-medium font-sans">
+                                                          {resp.phone}
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              );
+                                            } else {
+                                              return (
+                                                <div className="flex flex-col gap-0.5 max-w-[150px]">
+                                                  <span className="font-bold text-slate-600 text-xs truncate" title={c.petitioner || t('petitioner')}>
+                                                    {c.petitioner || t('petitioner')}
+                                                  </span>
+                                                  {c.petitionerMobile && (
+                                                    <span className="text-[10px] text-slate-500 font-medium font-sans">
+                                                      {c.petitionerMobile}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              );
+                                            }
+                                          })()}
+                                        </td>
+                                        <td>
+                                          {(() => {
+                                            const isPet = isUserPetitioner(c);
+                                            const isRes = isUserRespondent(c);
+                                            
+                                            if (isPet) {
+                                              return c.petitionerMobile ? (
+                                                <a href={`tel:${c.petitionerMobile}`} className="call-btn animate-bounce-subtle" title={c.petitionerMobile}>
+                                                  <PhoneCall size={16} />
+                                                </a>
+                                              ) : '-';
+                                            } else if (isRes) {
+                                              const respondentsToShow = c.respondentDetails && c.respondentDetails.length > 0 
+                                                ? c.respondentDetails 
+                                                : [{ name: c.respondent || t('respondent'), phone: c.respondentMobile }];
+                                                
+                                              const withPhones = respondentsToShow.filter(r => r.phone);
+                                              if (withPhones.length === 0) return '-';
+                                              
+                                              if (withPhones.length === 1) {
+                                                const resp = withPhones[0];
+                                                return (
+                                                  <a href={`tel:${resp.phone}`} className="call-btn" title={`${resp.name}: ${resp.phone}`}>
+                                                    <PhoneCall size={16} />
+                                                  </a>
+                                                );
+                                              }
+                                              
+                                              const isOpen = activeCallDropdownCaseId === c.id;
+                                              return (
+                                                <div className="relative inline-block">
+                                                  <button 
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setActiveCallDropdownCaseId(isOpen ? null : c.id);
+                                                    }}
+                                                    className="call-btn text-rose-600 hover:bg-rose-50"
+                                                    title="কল করুন"
+                                                  >
+                                                    <PhoneCall size={16} />
+                                                  </button>
+                                                  
+                                                  {isOpen && (
+                                                    <>
+                                                      <div 
+                                                        className="fixed inset-0 z-[140]" 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          setActiveCallDropdownCaseId(null);
+                                                        }}
+                                                      />
+                                                      <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-[150] p-3 text-left">
+                                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 pb-1.5 border-b border-slate-100">
+                                                          বিবাদী/আসামী তালিকা
+                                                        </div>
+                                                        <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+                                                          {withPhones.map((resp, rIdx) => (
+                                                            <a 
+                                                              key={rIdx} 
+                                                              href={`tel:${resp.phone}`}
+                                                              onClick={() => setActiveCallDropdownCaseId(null)}
+                                                              className="flex items-center justify-between p-2 rounded-xl hover:bg-rose-50/50 transition-colors group"
+                                                            >
+                                                              <div className="flex flex-col min-w-0 pr-2">
+                                                                <span className="text-xs font-bold text-slate-700 group-hover:text-rose-600 transition-colors truncate">
+                                                                  {resp.name}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-sans font-medium">
+                                                                  {resp.phone}
+                                                                </span>
+                                                              </div>
+                                                              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm">
+                                                                <PhoneCall size={12} />
+                                                              </div>
+                                                            </a>
+                                                          ))}
+                                                        </div>
+                                                      </div>
+                                                    </>
+                                                  )}
+                                                </div>
+                                              );
+                                            } else {
+                                              return c.petitionerMobile ? (
+                                                <a href={`tel:${c.petitionerMobile}`} className="call-btn" title={c.petitionerMobile}>
+                                                  <PhoneCall size={16} />
+                                                </a>
+                                              ) : '-';
+                                            }
+                                          })()}
                                         </td>
                                         <td>
                                           <button 
@@ -4765,7 +4920,8 @@ export default function Dashboard({
                                           </div>
                                         </td>
                                       </tr>
-                                    ))}
+                                    );
+                                   })}
                                   </tbody>
                                 </table>
                               </div>
@@ -5327,6 +5483,7 @@ export default function Dashboard({
                   onDelete={handleDeleteCase}
                   userType={currentViewMode}
                   userMobile={userMobile || ''}
+                  language={language}
                 />
               </div>
             </motion.div>

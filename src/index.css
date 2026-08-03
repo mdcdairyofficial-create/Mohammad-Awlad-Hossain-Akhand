@@ -43,6 +43,22 @@
     font-weight: 600;
 }
 
+.court-table tr.plaintiff-row td {
+    background-color: #f0fdf4; /* light green (bg-emerald-50) */
+}
+
+.court-table tr.plaintiff-row:hover td {
+    background-color: #dcfce7; /* bg-emerald-100 */
+}
+
+.court-table tr.defendant-row td {
+    background-color: #fff1f2; /* light red (bg-rose-50) */
+}
+
+.court-table tr.defendant-row:hover td {
+    background-color: #ffe4e6; /* bg-rose-100 */
+}
+
 .court-table th {
     background: #f8fafc;
 }

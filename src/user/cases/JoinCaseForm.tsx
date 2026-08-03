@@ -6,7 +6,7 @@ import { Case } from '../../types';
 import { getPoliceStations, CIVIL_CASE_STEPS, CRIMINAL_CASE_STEPS } from '../../constants';
 
 interface JoinCaseFormProps {
-  onJoin: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string) => void;
+  onJoin: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string, addedByMobile?: string, addedByName?: string, addedByRole?: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string) => void;
   onCancel: () => void;
   language: 'en' | 'bn' | 'hi' | 'ur';
   existingCases?: Case[];
@@ -131,7 +131,16 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
       onJoin(
         caseNumber.trim(), 
         side, 
-        side === 'respondent' ? respondents.filter(r => r.name.trim() !== '') : undefined, 
+        side === 'respondent' 
+          ? respondents
+              .filter(r => r.name.trim() !== '')
+              .map(r => ({
+                ...r,
+                addedByMobile: userMobile,
+                addedByName: userName,
+                addedByRole: userType
+              }))
+          : undefined, 
         side === 'respondent' ? totalRespondents : undefined,
         order,
         additionalOrder,
@@ -164,42 +173,35 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
           {step === 1 ? (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    {language === 'bn' ? 'মামলার ধরন (বিভাগ)' : 'Case Category'}
-                  </label>
-                  <select
-                    value={caseCategory}
-                    onChange={(e) => {
-                      setCaseCategory(e.target.value);
-                      setCaseType('');
-                    }}
-                    required
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
-                    <option value="Criminal">Criminal</option>
-                    <option value="Civil">Civil</option>
-                  </select>
-                </div>
-                <div>
+                <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     {language === 'bn' ? 'মামলার ধরন' : 'Case Type'}
                   </label>
                   <select
                     value={caseType}
-                    onChange={(e) => setCaseType(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCaseType(val);
+                      if (criminalTypes.includes(val)) {
+                        setCaseCategory('Criminal');
+                      } else if (civilTypes.includes(val)) {
+                        setCaseCategory('Civil');
+                      }
+                    }}
                     required
-                    disabled={!caseCategory}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                   >
                     <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
-                    {caseCategory === 'Criminal' && criminalTypes.map(type => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
-                    {caseCategory === 'Civil' && civilTypes.map(type => (
-                      <option key={type} value={type}>{type}</option>
-                    ))}
+                    <optgroup label={language === 'bn' ? 'ফৌজদারী (Criminal)' : 'Criminal'}>
+                      {criminalTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label={language === 'bn' ? 'দেওয়ানী (Civil)' : 'Civil'}>
+                      {civilTypes.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </optgroup>
                   </select>
                 </div>
                 <div>
@@ -315,14 +317,28 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
               {side === 'respondent' && (
                 <div className="space-y-4 pt-2">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <label className="block text-sm font-medium text-slate-700">
-                        {language === 'bn' ? 'আসামী/বিবাদীর বিবরণ' : 'Respondent/Accused Details'}
-                      </label>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <label className="block text-sm font-medium text-slate-700">
+                          {language === 'bn' ? 'আসামী/বিবাদীর বিবরণ' : 'Respondent/Accused Details'}
+                        </label>
+                        <div className="flex items-center gap-1.5 ml-2">
+                          <span className="text-xs text-slate-500 whitespace-nowrap">
+                            ({language === 'bn' ? 'মোট:' : 'Total:'})
+                          </span>
+                          <input
+                            type="number"
+                            value={totalRespondents}
+                            onChange={(e) => setTotalRespondents(e.target.value)}
+                            placeholder="?"
+                            className="w-14 px-2 py-0.5 text-xs rounded-md border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-center bg-white"
+                          />
+                        </div>
+                      </div>
                       <button
                         type="button"
                         onClick={handleAddRespondent}
-                        className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-100 transition-colors"
+                        className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition-colors font-bold self-end sm:self-auto"
                       >
                         <Plus size={14} /> {language === 'bn' ? 'নতুন যোগ করুন' : 'Add New'}
                       </button>

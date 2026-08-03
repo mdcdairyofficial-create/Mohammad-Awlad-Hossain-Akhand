@@ -20,7 +20,7 @@ interface CaseFormProps {
   userName?: string;
   userMobile?: string;
   existingCases?: Case[];
-  onJoin?: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string, authorityHolder?: 'lawyer' | 'clerk') => void;
+  onJoin?: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string, addedByMobile?: string, addedByName?: string, addedByRole?: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string, authorityHolder?: 'lawyer' | 'clerk') => void;
   initialMode?: 'detailed' | 'quick' | 'join';
 }
 
@@ -28,6 +28,9 @@ interface PartyRow {
   name: string;
   phone: string;
   serial?: number;
+  addedByMobile?: string;
+  addedByName?: string;
+  addedByRole?: string;
 }
 
 export default function CaseForm({
@@ -89,6 +92,10 @@ export default function CaseForm({
   const [showScannerModal, setShowScannerModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [detailedTotalRespondents, setDetailedTotalRespondents] = useState(initialData?.totalRespondents || '');
+  const [quickTotalRespondents, setQuickTotalRespondents] = useState(initialData?.totalRespondents || '');
+  const [joinTotalRespondents, setJoinTotalRespondents] = useState(initialData?.totalRespondents || '');
+
   const [plaintiffs, setPlaintiffs] = useState<PartyRow[]>([{ name: '', phone: '' }]);
   const [defendants, setDefendants] = useState<PartyRow[]>([{ name: '', phone: '', serial: 1 }]);
   const [lawyers, setLawyers] = useState<PartyRow[]>([{ name: '', phone: '' }]);
@@ -136,6 +143,10 @@ export default function CaseForm({
         caseSection: initialData.caseSection || ''
       });
       
+      setDetailedTotalRespondents(initialData.totalRespondents || '');
+      setQuickTotalRespondents(initialData.totalRespondents || '');
+      setJoinTotalRespondents(initialData.totalRespondents || '');
+      
       // Set case category based on caseType
       if (criminalTypes.includes(initialData.caseType || '')) {
         setCaseCategory('Criminal');
@@ -153,7 +164,14 @@ export default function CaseForm({
       
       // Parse Respondent/Defendants
       if (initialData.respondentDetails && initialData.respondentDetails.length > 0) {
-        setDefendants(initialData.respondentDetails.map(d => ({ name: d.name, phone: d.phone, serial: Number(d.serial) || 1 })));
+        setDefendants(initialData.respondentDetails.map(d => ({ 
+          name: d.name, 
+          phone: d.phone, 
+          serial: Number(d.serial) || 1,
+          addedByMobile: d.addedByMobile,
+          addedByName: d.addedByName,
+          addedByRole: d.addedByRole
+        })));
       } else if (initialData.respondent) {
         const names = initialData.respondent.split(', ');
         setDefendants(names.map((name, i) => ({ name, phone: initialData.respondentMobile || '', serial: i + 1 })));
@@ -271,8 +289,19 @@ export default function CaseForm({
       onJoin(
         caseNumber.trim(), 
         side, 
-        side === 'respondent' ? defendants.map(d => ({ name: d.name, serial: String(d.serial), phone: d.phone })).filter(r => r.name.trim() !== '') : undefined, 
-        side === 'respondent' ? formData.totalRespondents : undefined,
+        side === 'respondent' 
+          ? defendants
+              .filter(r => r.name.trim() !== '')
+              .map(d => ({ 
+                name: d.name, 
+                serial: String(d.serial), 
+                phone: d.phone,
+                addedByMobile: d.addedByMobile || userMobile,
+                addedByName: d.addedByName || userName,
+                addedByRole: d.addedByRole || userType
+              })) 
+          : undefined, 
+        side === 'respondent' ? joinTotalRespondents : undefined,
         formData.order,
         formData.additionalOrder,
         { name: lawyers[0]?.name || '', phone: lawyers[0]?.phone || '' },
@@ -312,6 +341,7 @@ export default function CaseForm({
     // Combine data for saving
     const finalData = {
       ...formData,
+      totalRespondents: mode === 'detailed' ? detailedTotalRespondents : quickTotalRespondents,
       caseNumber: formattedCaseNumber,
       rawCaseNumber: rawNumber,
       court: formData.courtName, // Ensure court is updated
@@ -319,7 +349,16 @@ export default function CaseForm({
       petitionerMobile: plaintiffs[0]?.phone || '',
       respondent: defendants.map(d => d.name).filter(Boolean).join(', '),
       respondentMobile: defendants[0]?.phone || '',
-      respondentDetails: defendants.map(d => ({ name: d.name, phone: d.phone, serial: d.serial })),
+      respondentDetails: defendants
+        .filter(d => d.name.trim() !== '')
+        .map(d => ({ 
+          name: d.name, 
+          phone: d.phone, 
+          serial: d.serial,
+          addedByMobile: d.addedByMobile || userMobile,
+          addedByName: d.addedByName || userName,
+          addedByRole: d.addedByRole || userType
+        })),
       petitionerLawyer: lawyers.map(l => l.name).filter(Boolean).join(', '),
       petitionerLawyerMobile: lawyers.map(l => l.phone).filter(Boolean),
       petitionerClerk: clerks.map(c => c.name).filter(Boolean).join(', '),
@@ -391,13 +430,45 @@ export default function CaseForm({
 
     return (
       <div className="space-y-3 mb-6">
-        <div className="flex justify-between items-center">
-          <h4 className="font-bold text-slate-700">{title}</h4>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <h4 className="font-bold text-slate-700">{title}</h4>
+            {isDefendant && (
+              <div className="flex items-center gap-1.5 ml-2">
+                <span className="text-xs text-slate-500 whitespace-nowrap">
+                  ({language === 'bn' ? 'মোট:' : 'Total:'})
+                </span>
+                <input
+                  type="number"
+                  name="totalRespondents"
+                  value={
+                    mode === 'detailed'
+                      ? detailedTotalRespondents
+                      : mode === 'quick'
+                      ? quickTotalRespondents
+                      : joinTotalRespondents
+                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (mode === 'detailed') {
+                      setDetailedTotalRespondents(val);
+                    } else if (mode === 'quick') {
+                      setQuickTotalRespondents(val);
+                    } else if (mode === 'join') {
+                      setJoinTotalRespondents(val);
+                    }
+                  }}
+                  placeholder="?"
+                  className="w-14 px-2 py-0.5 text-xs rounded-md border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold text-center bg-white"
+                />
+              </div>
+            )}
+          </div>
           {!hideAddButton && (
             <button
               type="button"
               onClick={() => addRow(setter, isDefendant)}
-              className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2 py-1 rounded-lg hover:bg-indigo-100 transition-colors"
+              className="text-xs flex items-center gap-1 bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition-colors font-bold self-end sm:self-auto"
             >
               <Plus size={14} /> {language === 'bn' ? 'নতুন যোগ করুন' : 'Add New'}
             </button>
@@ -813,38 +884,33 @@ export default function CaseForm({
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6 bg-slate-50 rounded-3xl border border-slate-100">
                       <div>
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মামলার বিভাগ' : 'Case Category'}</label>
-                        <select
-                          value={caseCategory}
-                          onChange={(e) => {
-                            setCaseCategory(e.target.value);
-                            setFormData(prev => ({ ...prev, caseType: '' }));
-                          }}
-                          required
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        >
-                          <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
-                          <option value="Criminal">Criminal</option>
-                          <option value="Civil">Civil</option>
-                        </select>
-                      </div>
-                      <div>
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'মামলার ধরন' : 'Case Type'}</label>
                         <select
                           name="caseType"
                           value={formData.caseType}
-                          onChange={handleChange}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleChange(e);
+                            if (criminalTypes.includes(val)) {
+                              setCaseCategory('Criminal');
+                            } else if (civilTypes.includes(val)) {
+                              setCaseCategory('Civil');
+                            }
+                          }}
                           required
-                          disabled={!caseCategory}
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
                         >
                           <option value="">{language === 'bn' ? 'নির্বাচন করুন' : 'Select'}</option>
-                          {caseCategory === 'Criminal' && criminalTypes.map(type => (
-                            <option key={type} value={type}>{type}</option>
-                          ))}
-                          {caseCategory === 'Civil' && civilTypes.map(type => (
-                            <option key={type} value={type}>{type}</option>
-                          ))}
+                          <optgroup label={language === 'bn' ? 'ফৌজদারী (Criminal)' : 'Criminal'}>
+                            {criminalTypes.map(type => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </optgroup>
+                          <optgroup label={language === 'bn' ? 'দেওয়ানী (Civil)' : 'Civil'}>
+                            {civilTypes.map(type => (
+                              <option key={type} value={type}>{type}</option>
+                            ))}
+                          </optgroup>
                         </select>
                       </div>
                       <div>
@@ -1123,47 +1189,42 @@ export default function CaseForm({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৭. মামলার ধরন (বিভাগ)</label>
-                    <select
-                      value={caseCategory}
-                      onChange={(e) => {
-                        setCaseCategory(e.target.value);
-                        setFormData(prev => ({ ...prev, caseType: '' }));
-                      }}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                    >
-                      <option value="">নির্বাচন করুন</option>
-                      <option value="Criminal">ফৌজদারী</option>
-                      <option value="Civil">দেওয়ানী</option>
-                      <option value="Other">অন্যান্য</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৮. {t('case_type')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৭. {t('case_type')}</label>
                     <select
                       name="caseType"
                       value={formData.caseType}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                      disabled={!caseCategory}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handleChange(e);
+                        if (criminalTypes.includes(val)) {
+                          setCaseCategory('Criminal');
+                        } else if (civilTypes.includes(val)) {
+                          setCaseCategory('Civil');
+                        } else {
+                          setCaseCategory('Other');
+                        }
+                      }}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-bold"
                     >
                       <option value="">নির্বাচন করুন</option>
-                      {caseCategory === 'Criminal' && criminalTypes.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                      {caseCategory === 'Civil' && civilTypes.map(type => (
-                        <option key={type} value={type}>{type}</option>
-                      ))}
-                      {caseCategory === 'Other' && (
-                        <>
-                          <option value="Writ">Writ</option>
-                          <option value="Other">Other</option>
-                        </>
-                      )}
+                      <optgroup label={language === 'bn' ? 'ফৌজদারী (Criminal)' : 'Criminal'}>
+                        {criminalTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={language === 'bn' ? 'দেওয়ানী (Civil)' : 'Civil'}>
+                        {civilTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label={language === 'bn' ? 'অন্যান্য' : 'Other'}>
+                        <option value="Writ">Writ</option>
+                        <option value="Other">Other</option>
+                      </optgroup>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">৯. {t('case_number')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৮. {t('case_number')}</label>
                     <input
                       type="text"
                       name="rawCaseNumber"
@@ -1183,7 +1244,7 @@ export default function CaseForm({
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">১০. {t('section')}</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">৯. {t('section')}</label>
                     <input
                       type="text"
                       name="caseSection"
@@ -1194,7 +1255,7 @@ export default function CaseForm({
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">১১. মামলা পরিচালনার পূর্ণ অধিকার কার?</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">১০. মামলা পরিচালনার পূর্ণ অধিকার কার?</label>
                     <select
                       name="authorityHolder"
                       value={formData.authorityHolder || 'lawyer'}
@@ -1234,20 +1295,7 @@ export default function CaseForm({
                 {renderPartySection(language === 'bn' ? '👨‍⚖️ বাদী' : '👨‍⚖️ Plaintiff', plaintiffs, setPlaintiffs, language === 'bn' ? 'বাদীর নাম' : 'Plaintiff Name', false, caseCategory === 'Criminal')}
                 
                 <div className="mb-6">
-                  <div className="mb-4 p-3 border border-slate-100 rounded-xl bg-slate-50/50">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      {language === 'bn' ? 'মোট আসামী সংখ্যা' : 'Total Defendants'}
-                    </label>
-                    <input
-                      type="number"
-                      name="totalRespondents"
-                      value={formData.totalRespondents || ''}
-                      onChange={handleChange}
-                      placeholder={language === 'bn' ? 'মোট আসামী সংখ্যা লিখুন' : 'Enter total defendants'}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                    />
-                  </div>
-                  {renderPartySection(language === 'bn' ? '👨‍⚖️ বিবাদী / আসামী' : '👨‍⚖️ Defendant / Accused', defendants, setDefendants, language === 'bn' ? 'আসামীর নাম' : 'Defendant Name', true, true)}
+                  {renderPartySection(language === 'bn' ? '👨‍⚖️ বিবাদী / আসামী' : '👨‍⚖️ Defendant / Accused', defendants, setDefendants, language === 'bn' ? 'আসামীর নাম' : 'Defendant Name', true, false)}
                 </div>
 
                 {userType !== 'lawyer' && renderPartySection(language === 'bn' ? '⚖️ উকিল' : '⚖️ Lawyer', lawyers, setLawyers, language === 'bn' ? 'উকিলের নাম' : 'Lawyer Name', false, false, 'lawyer')}

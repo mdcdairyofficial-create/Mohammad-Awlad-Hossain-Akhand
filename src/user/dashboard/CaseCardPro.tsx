@@ -38,6 +38,7 @@ interface CaseCardProProps {
   isRespondent?: boolean;
   userType: string;
   userMobile: string;
+  language?: 'bn' | 'en' | 'hi' | 'ur';
 }
 
 export const CaseCardPro = ({ 
@@ -49,12 +50,17 @@ export const CaseCardPro = ({
   isPetitioner, 
   isRespondent, 
   userType, 
-  userMobile 
+  userMobile,
+  language = 'bn'
 }: CaseCardProProps) => {
   const [side, setSide] = useState<'petitioner' | 'respondent' | 'accused'>(caseData.selectedParty || 'petitioner');
   const [nextDate, setNextDate] = useState(caseData.nextDate);
   const [lastDate, setLastDate] = useState(caseData.lastDate || '');
   const [order, setOrder] = useState(caseData.order || '');
+  const standardSteps = ["হাজিরা", "সময় পিটিশন", "নথি তলব", "দরখাস্ত পেশ", "শুনানী", "স্বাক্ষী", "জেরা", "জবাব দাখিল", "অন্যান্য"];
+  const initialStep = caseData.status && standardSteps.includes(caseData.status) ? caseData.status : 'হাজিরা';
+  const [step, setStep] = useState(initialStep);
+  const [customStep, setCustomStep] = useState(caseData.status && !standardSteps.includes(caseData.status) ? caseData.status : '');
   const [clerkCanCall, setClerkCanCall] = useState(caseData.clerkCanCall || false);
   const [lawyerCanCall, setLawyerCanCall] = useState(caseData.lawyerCanCall || false);
   const [visibility, setVisibility] = useState<'private' | 'public'>(caseData.visibility as any || 'private');
@@ -297,11 +303,17 @@ export const CaseCardPro = ({
 
   const handleAction = (msg: string, update: boolean = false) => {
     if (update) {
-      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
+      const finalStep = step === 'অন্যান্য' ? (customStep || 'অন্যান্য') : step;
+      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, { status: finalStep });
       setAttachedDocs([]);
     }
     setConfirmMsg(msg);
+    setShowConfirm(true);
     setShowAd(true);
+    setTimeout(() => {
+      setShowConfirm(false);
+      setShowAd(false);
+    }, 4000);
   };
 
   const handleAllPartiesUpdate = () => {
@@ -309,8 +321,6 @@ export const CaseCardPro = ({
       handleAction('ধন্যবাদ, আপনার আগেই তথ্য আপলোড করা হয়েছে। আপনি অন্যত্র চেষ্টা করুন।', false);
       return;
     }
-    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate);
-    setAttachedDocs([]);
     handleAction('সকল পক্ষের ক্যালেন্ডারে তথ্য আপডেট করা হয়েছে।', true);
   };
 
@@ -385,6 +395,20 @@ export const CaseCardPro = ({
                 >
                   {caseData.caseNumber}
                 </h3>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(caseData.caseNumber);
+                    setConfirmMsg('মামলা নম্বর কপি করা হয়েছে!');
+                    setShowConfirm(true);
+                    setTimeout(() => setShowConfirm(false), 2500);
+                  }}
+                  className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                  title="মামলা নম্বর কপি করুন"
+                >
+                  <Copy size={15} />
+                </button>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${caseData.caseType === 'Civil' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>
                   {caseData.caseType}
                 </span>
@@ -467,6 +491,80 @@ export const CaseCardPro = ({
                 </div>
               </div>
             </div>
+
+            {/* Respondent List & Assignment */}
+            {caseData.respondentDetails && caseData.respondentDetails.length > 0 && (
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    👥 {language === 'bn' ? 'বিবাদী/আসামী তালিকা ও দায়িত্বপ্রাপ্ত' : 'Defendants & Assigned Users'}
+                  </p>
+                  <span className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">
+                    {caseData.respondentDetails.length} {language === 'bn' ? 'জন আসামী' : 'Defendants'}
+                  </span>
+                </div>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {caseData.respondentDetails.map((resp, index) => {
+                    const normalizeMobileNum = (num?: string) => {
+                      if (!num) return '';
+                      let cleaned = num.trim().replace(/[^\d]/g, '');
+                      if (cleaned.startsWith('880')) cleaned = cleaned.substring(2);
+                      else if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+                      return cleaned;
+                    };
+                    const userNorm = normalizeMobileNum(userMobile);
+                    const respAddedNorm = normalizeMobileNum(resp.addedByMobile);
+                    const isAssignedToMe = userNorm && respAddedNorm && userNorm === respAddedNorm;
+                    
+                    return (
+                      <div key={index} className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${isAssignedToMe ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-slate-100'}`}>
+                        <div className="flex items-start gap-2.5">
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${isAssignedToMe ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                            {resp.serial || (index + 1)}
+                          </span>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                              {resp.name}
+                              {isAssignedToMe && (
+                                <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                                  {language === 'bn' ? 'আমার দায়িত্বে' : 'My Responsibility'}
+                                </span>
+                              )}
+                            </p>
+                            {resp.phone && (
+                              <p className="text-[10px] text-slate-500 font-medium mt-0.5">📱 {resp.phone}</p>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="text-left sm:text-right shrink-0">
+                          {resp.addedByName ? (
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-700 flex items-center gap-1 sm:justify-end">
+                                ⚖️ {resp.addedByName}
+                              </p>
+                              <p className="text-[9px] font-black text-slate-400 uppercase">
+                                {resp.addedByRole === 'lawyer' 
+                                  ? (language === 'bn' ? 'আইনজীবী' : 'Lawyer') 
+                                  : resp.addedByRole === 'clerk' 
+                                  ? (language === 'bn' ? 'মুহুরি' : 'Clerk') 
+                                  : (language === 'bn' ? 'ইউজার' : 'User')}
+                                {resp.addedByMobile && ` • ${resp.addedByMobile}`}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-slate-400 italic">
+                              {language === 'bn' ? 'কোনো নির্দিষ্ট দায়িত্বপ্রাপ্ত নেই' : 'No specific assignment'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
@@ -692,13 +790,57 @@ export const CaseCardPro = ({
                 </div>
 
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">পদক্ষেপ / আদেশ (Step / Order)</p>
-                  <textarea 
-                    value={order}
-                    onChange={(e) => setOrder(e.target.value)}
-                    placeholder="হাজিরা, সময়, স্বাক্ষী, জেরা অথবা আজকের আদেশ লিখুন..."
-                    className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-24 mb-3"
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">পদক্ষেপ (Step)</p>
+                      <select 
+                        value={step}
+                        onChange={(e) => setStep(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
+                      >
+                        <option value="হাজিরা">হাজিরা (Attendance)</option>
+                        <option value="সময় পিটিশন">সময় পিটিশন (Time Petition)</option>
+                        <option value="নথি তলব">নথি তলব (Requisition of Files)</option>
+                        <option value="দরখাস্ত পেশ">দরখাস্ত পেশ (Submit Application)</option>
+                        <option value="শুনানী">শুনানী (Hearing)</option>
+                        <option value="স্বাক্ষী">স্বাক্ষী (Witness)</option>
+                        <option value="জেরা">জেরা (Cross Examination)</option>
+                        <option value="জবাব দাখিল">জবাব দাখিল (Submission of Reply)</option>
+                        <option value="অন্যান্য">অন্যান্য (Others)</option>
+                      </select>
+                      
+                      {step === 'অন্যান্য' && (
+                        <input 
+                          type="text"
+                          value={customStep}
+                          onChange={(e) => setCustomStep(e.target.value)}
+                          placeholder="পদক্ষেপের নাম লিখুন..."
+                          className="w-full mt-2 px-4 py-2.5 bg-white border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm animate-in slide-in-from-top-1 duration-200"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 mb-1 ml-1">আদেশ (Order)</p>
+                      <textarea 
+                        value={order}
+                        onChange={(e) => setOrder(e.target.value)}
+                        placeholder="আজকের আদেশ বা প্রয়োজনীয় বিবরণ লিখুন..."
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none h-12 md:h-24"
+                      />
+                    </div>
+                  </div>
+
+                  {step === 'নথি তলব' && (
+                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-xs font-medium text-indigo-700 space-y-1 animate-in fade-in duration-300 mb-4">
+                      <p className="font-bold flex items-center gap-1">
+                        <span>ℹ️</span> নথি তলব করার আদেশ দেওয়া হয়েছে
+                      </p>
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
+                        পূর্বের আগামী তারিখ <span className="font-bold text-indigo-600 font-sans">{caseData.nextDate || 'নির্ধারিত নয়'}</span> বহাল রাখা হয়েছে। নতুন তারিখ ধার্য করা হলে উপরে আগামী তারিখের ঘরে তা পরিবর্তন করে দিতে পারেন।
+                      </p>
+                    </div>
+                  )}
                   
                   <div className="mb-4">
                     <p className="text-[10px] font-bold text-slate-400 mb-2 ml-1">সংযুক্ত ডকুমেন্ট (Attached Documents)</p>
@@ -844,7 +986,25 @@ export const CaseCardPro = ({
                 <Smartphone size={20} />
               </a>
             )}
-            <button className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-slate-100 transition-all">
+            <button 
+              onClick={() => {
+                const textToShare = `মামলা নং: ${caseData.caseNumber}\nআদালত: ${formatCourtNameWithNo(caseData.courtName, caseData.courtNumber)}\nপরবর্তী তারিখ: ${caseData.nextDate || 'N/A'}\nআদেশ/পদক্ষেপ: ${caseData.order || caseData.status || 'N/A'}`;
+                if (navigator.share) {
+                  navigator.share({
+                    title: `মামলার তথ্য: ${caseData.caseNumber}`,
+                    text: textToShare,
+                    url: window.location.href,
+                  }).catch(() => {});
+                } else {
+                  navigator.clipboard.writeText(textToShare);
+                  setConfirmMsg('মামলার বিবরণ ক্লিপবোর্ডে কপি করা হয়েছে!');
+                  setShowConfirm(true);
+                  setTimeout(() => setShowConfirm(false), 3000);
+                }
+              }}
+              className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all"
+              title="মামলার বিবরণ শেয়ার / কপি করুন"
+            >
               <Share2 size={20} />
             </button>
           </div>

@@ -54,7 +54,7 @@ export interface Case {
   caseSection?: string;
   history?: CaseHistoryEntry[];
   totalRespondents?: string;
-  respondentDetails?: { name: string; phone: string; serial: string | number }[];
+  respondentDetails?: { name: string; phone: string; serial: string | number; addedByMobile?: string; addedByName?: string; addedByRole?: string }[];
   additionalOrder?: string;
   documents?: { name: string; type: string; url: string }[];
   clerkCanCall?: boolean;
