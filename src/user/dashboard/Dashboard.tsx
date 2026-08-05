@@ -68,7 +68,9 @@ import {
   Landmark,
   ShieldAlert,
   RefreshCw,
-  Printer
+  Printer,
+  Unlock,
+  Upload
 } from 'lucide-react';
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -167,15 +169,61 @@ const handleDownloadFile = (dataUri: string, defaultName: string) => {
   document.body.removeChild(link);
 };
 
-const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boolean, onClose: () => void, caseData: Case | null, language: 'bn' | 'en' | 'hi' | 'ur' }) => {
+const CaseHistoryModal = ({ 
+  isOpen, 
+  onClose, 
+  caseData, 
+  language, 
+  userType,
+  onUpdateCaseHistory 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  caseData: Case | null, 
+  language: 'bn' | 'en' | 'hi' | 'ur',
+  userType?: string,
+  onUpdateCaseHistory?: (updatedCase: Case) => void
+}) => {
   if (!caseData) return null;
   const t = (key: keyof typeof translations.bn) => translations[language]?.[key] || translations.bn[key] || key;
-  const [viewMode, setViewMode] = useState<'timeline' | 'sheet'>('timeline');
+  const [viewMode, setViewMode] = useState<'sheet' | 'timeline'>('sheet');
+  const [activeSide, setActiveSide] = useState<'petitioner' | 'respondent'>(
+    caseData.selectedParty === 'respondent' ? 'respondent' : 'petitioner'
+  );
+  const [isUploadingIdx, setIsUploadingIdx] = useState<number | null>(null);
+
+  const isClientUser = userType === 'client';
 
   const toBnNum = (num: number | string) => {
     if (language !== 'bn') return String(num);
     const bnDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
     return String(num).replace(/[0-9]/g, (w) => bnDigits[parseInt(w)]);
+  };
+
+  const handleUploadEntryPhoto = (idx: number, file: File, targetField: 'petitionerPhoto' | 'accusedPhoto') => {
+    if (!caseData || !caseData.history) return;
+    setIsUploadingIdx(idx);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const photoUrl = reader.result as string;
+      const updatedHistory = [...caseData.history!];
+      updatedHistory[idx] = {
+        ...updatedHistory[idx],
+        [targetField]: photoUrl
+      };
+      const updatedCase: Case = { ...caseData, history: updatedHistory };
+      if (onUpdateCaseHistory) {
+        onUpdateCaseHistory(updatedCase);
+      }
+      try {
+        await updateCase(caseData.id.toString(), { history: updatedHistory });
+      } catch (e) {
+        console.error("Failed to persist case history photo:", e);
+      } finally {
+        setIsUploadingIdx(null);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -186,47 +234,134 @@ const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boo
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-[2rem] shadow-2xl flex flex-col"
+            className="bg-white w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-[2rem] shadow-2xl flex flex-col"
           >
+            {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-900 text-white no-print">
               <div>
-                <h3 className="text-xl font-bold">{t('case_history_title')}</h3>
-                <p className="text-indigo-200 text-sm">{caseData.caseNumber}</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold">{t('case_history_title')}</h3>
+                  <span className="text-[10px] bg-indigo-700 text-indigo-100 font-extrabold px-2.5 py-0.5 rounded-full border border-indigo-500/30">
+                    {language === 'bn' ? 'আদেশনামা ও নথি' : 'Order Sheet'}
+                  </span>
+                </div>
+                <p className="text-indigo-200 text-sm mt-0.5">
+                  {caseData.caseNumber} {caseData.courtName ? `| ${caseData.courtName}` : ''}
+                </p>
               </div>
               <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-all modal-close-btn">
                 <X size={20} />
               </button>
             </div>
 
-            {/* View Mode Switcher */}
-            <div className="flex bg-slate-100 p-1.5 gap-1.5 mx-6 mt-4 rounded-xl no-print">
-              <button 
-                onClick={() => setViewMode('timeline')} 
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${viewMode === 'timeline' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-              >
-                🕒 {language === 'bn' ? 'টাইমলাইন ভিউ' : 'Timeline View'}
-              </button>
-              <button 
-                onClick={() => setViewMode('sheet')} 
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${viewMode === 'sheet' ? 'bg-white text-indigo-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-              >
-                📄 {language === 'bn' ? 'আদেশনামা শিট (Printable)' : 'Order Sheet (Printable)'}
-              </button>
-            </div>
-
-            {viewMode === 'sheet' && (
-              <div className="flex justify-end px-6 pt-4 no-print">
+            {/* Client Role Guard Warning */}
+            {isClientUser ? (
+              <div className="p-8 text-center my-auto max-w-xl mx-auto">
+                <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-amber-200 shadow-inner">
+                  <ShieldAlert size={40} />
+                </div>
+                <h4 className="text-xl font-bold text-slate-900 mb-2">
+                  {language === 'bn' ? 'আদেশনামা ও ক্লায়েন্ট সীমাবদ্ধতা' : 'Order Sheet Access Restricted'}
+                </h4>
+                <p className="text-sm text-slate-600 leading-relaxed mb-6">
+                  {language === 'bn' 
+                    ? 'এই মামলার গোপন আদেশনামা, শুনানি নথি ও আইনজীবী/মুহুরীদের দ্বিপাক্ষিক পদক্ষেপ শুধুমাত্র নিবন্ধিত আইনজীবী (Lawyer) ও মুহুরী (Clerk) গণের জন্য সংরক্ষিত। ক্লায়েন্ট বা সাধারণ বিচারপ্রার্থীদের জন্য ডাটাবেজের এই সংবেদনশীল তথ্য গোপন রাখা হয়।'
+                    : 'Detailed order sheet documents and bilateral lawyer/clerk case steps are restricted to registered Lawyers and Clerks.'}
+                </p>
                 <button 
-                  onClick={() => window.print()} 
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100"
+                  onClick={onClose} 
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all shadow-md"
                 >
-                  <Printer size={14} />
-                  {language === 'bn' ? 'প্রিন্ট করুন' : 'Print Order Sheet'}
+                  {language === 'bn' ? 'বুঝেছি, বন্ধ করুন' : 'Got it, Close'}
                 </button>
               </div>
-            )}
+            ) : (
+              <>
+                {/* Lawyer / Clerk Controls Bar */}
+                <div className="p-4 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 no-print">
+                  {/* Side Selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">
+                      {language === 'bn' ? 'আপনার পক্ষ:' : 'Your Side:'}
+                    </span>
+                    <div className="flex bg-slate-200/80 p-1 rounded-xl gap-1">
+                      <button 
+                        onClick={() => setActiveSide('petitioner')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          activeSide === 'petitioner' 
+                            ? 'bg-emerald-600 text-white shadow-sm' 
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        👨‍⚖️ {language === 'bn' ? 'বাদী পক্ষ (Petitioner)' : 'Petitioner'}
+                      </button>
+                      <button 
+                        onClick={() => setActiveSide('respondent')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          activeSide === 'respondent' 
+                            ? 'bg-indigo-600 text-white shadow-sm' 
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        🛡️ {language === 'bn' ? 'বিবাদী পক্ষ (Respondent)' : 'Respondent'}
+                      </button>
+                    </div>
+                  </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+                  {/* View Mode Switcher */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex bg-slate-200/80 p-1 rounded-xl gap-1">
+                      <button 
+                        onClick={() => setViewMode('sheet')} 
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          viewMode === 'sheet' 
+                            ? 'bg-white text-indigo-900 shadow-sm' 
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        📄 {language === 'bn' ? 'আদেশনামা ছক (Printable)' : 'Order Sheet Table'}
+                      </button>
+                      <button 
+                        onClick={() => setViewMode('timeline')} 
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          viewMode === 'timeline' 
+                            ? 'bg-white text-indigo-900 shadow-sm' 
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        🕒 {language === 'bn' ? 'টাইমলাইন ভিউ' : 'Timeline View'}
+                      </button>
+                    </div>
+
+                    {viewMode === 'sheet' && (
+                      <button 
+                        onClick={() => window.print()} 
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      >
+                        <Printer size={14} />
+                        {language === 'bn' ? 'প্রিন্ট' : 'Print'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reciprocity Banner Notice */}
+                <div className="bg-amber-50/80 border-b border-amber-200/60 px-6 py-2.5 text-xs text-amber-900 flex items-center justify-between gap-2 no-print">
+                  <div className="flex items-center gap-2 font-medium">
+                    <Lock size={15} className="text-amber-600 shrink-0" />
+                    <span>
+                      {language === 'bn' 
+                        ? 'নীতিমালা: প্রতিপক্ষের পদক্ষেপের ছবি দেখতে হলে আপনার স্বীয় পক্ষের ওই তারিখের ছবি/নথি আপলোড থাকা বাধ্যতামূলক।' 
+                        : 'Rule: Upload your side photo for a date to unlock opponent photo.'}
+                    </span>
+                  </div>
+                  <span className="font-extrabold text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md uppercase">
+                    {language === 'bn' ? 'দ্বিপাক্ষিক আনলক' : 'Mutual Lock'}
+                  </span>
+                </div>
+
+                {/* Modal Main Content Area */}
+                <div className="flex-1 overflow-y-auto p-6">
               {viewMode === 'timeline' ? (
                 <div className="space-y-4">
                   {caseData.history && caseData.history.length > 0 ? (
@@ -400,75 +535,222 @@ const CaseHistoryModal = ({ isOpen, onClose, caseData, language }: { isOpen: boo
                   )}
                 </div>
               ) : (
-                /* PRINTABLE ORDER SHEET VIEW (আদেশনামা) */
-                <div className="print-area-wrapper overflow-x-auto pb-8">
-                  <div className="sheet">
-                    <div className="sheet-title">
-                      {language === 'bn' ? 'আদেশনামা (Order Sheet)' : 'Order Sheet'}
-                      <div className="text-sm font-normal mt-1 opacity-90">
-                        {language === 'bn' ? 'আদালত: ' : 'Court: '}{caseData.courtName} {caseData.courtNumber || ''} | {language === 'bn' ? 'মামলা নং: ' : 'Case No: '}{caseData.caseNumber}
+                /* PRINTABLE 4-COLUMN ORDER SHEET TABLE VIEW (আদেশনামা) */
+                    <div className="print-area-wrapper overflow-x-auto pb-8">
+                      <div className="sheet">
+                        <div className="sheet-title">
+                          {language === 'bn' ? 'আদেশনামা (Order Sheet)' : 'Order Sheet'}
+                          <div className="text-sm font-normal mt-1 opacity-90">
+                            {language === 'bn' ? 'আদালত: ' : 'Court: '}{caseData.courtName || '-'} {caseData.courtNumber || ''} | {language === 'bn' ? 'মামলা নং: ' : 'Case No: '}{caseData.caseNumber}
+                          </div>
+                        </div>
+                        <div className="sheet-date">
+                          {language === 'bn' ? 'পরবর্তী ধার্য্য তারিখ: ' : 'Next Scheduled Date: '}{toBnNum(caseData.nextDate || '-')}
+                        </div>
+                        
+                        <table className="order-table w-full border-collapse">
+                          <thead>
+                            <tr>
+                              <th style={{ width: '12%' }}>{language === 'bn' ? 'আদেশ নং ও তারিখ' : 'Order No & Date'}</th>
+                              <th style={{ width: '30%' }}>
+                                {activeSide === 'petitioner' 
+                                  ? (language === 'bn' ? '১. বাদীপক্ষের পদক্ষেপ ও ছবি (স্বীয়)' : '1. Petitioner Step & Photo (Own)') 
+                                  : (language === 'bn' ? '১. বিবাদীপক্ষের পদক্ষেপ ও ছবি (স্বীয়)' : '1. Respondent Step & Photo (Own)')}
+                              </th>
+                              <th style={{ width: '30%' }}>
+                                {activeSide === 'petitioner' 
+                                  ? (language === 'bn' ? '২. বিবাদীপক্ষের পদক্ষেপ ও ছবি (প্রতিপক্ষ)' : '2. Respondent Step & Photo (Opponent)') 
+                                  : (language === 'bn' ? '২. বাদীপক্ষের পদক্ষেপ ও ছবি (প্রতিপক্ষ)' : '2. Petitioner Step & Photo (Opponent)')}
+                              </th>
+                              <th style={{ width: '28%' }}>{language === 'bn' ? 'আদালতের আদেশ ও পরবর্তী তারিখ' : 'Court Order & Next Date'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {caseData.history && caseData.history.length > 0 ? (
+                              caseData.history.map((entry, idx) => {
+                                const ownSidePhoto = activeSide === 'petitioner' ? entry.petitionerPhoto : entry.accusedPhoto;
+                                const oppSidePhoto = activeSide === 'petitioner' ? entry.accusedPhoto : entry.petitionerPhoto;
+                                const hasOwnPhoto = !!(ownSidePhoto && ownSidePhoto.trim().length > 0);
+                                const hasOppPhoto = !!(oppSidePhoto && oppSidePhoto.trim().length > 0);
+                                const targetUploadField = activeSide === 'petitioner' ? 'petitionerPhoto' : 'accusedPhoto';
+
+                                return (
+                                  <tr key={idx} className="align-top">
+                                    {/* Column 1: Order No & Date */}
+                                    <td className="font-bold text-slate-800 text-center p-3 border border-slate-300">
+                                      <div className="text-sm font-black text-indigo-900 mb-1">
+                                        {language === 'bn' ? 'আদেশ নং ' : 'Order #'}{toBnNum(idx + 1)}
+                                      </div>
+                                      <div className="text-xs text-slate-600 font-mono">
+                                        {toBnNum(entry.date)}
+                                      </div>
+                                    </td>
+
+                                    {/* Column 2: Own Side Step & Photo */}
+                                    <td className="p-3 border border-slate-300 text-left bg-emerald-50/20">
+                                      <div className="font-bold text-emerald-900 text-xs mb-1.5 flex items-center gap-1">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        {activeSide === 'petitioner' ? (language === 'bn' ? 'বাদীপক্ষের পদক্ষেপ' : 'Petitioner Step') : (language === 'bn' ? 'বিবাদীপক্ষের পদক্ষেপ' : 'Respondent Step')}
+                                      </div>
+                                      
+                                      <p className="text-xs text-slate-800 mb-3 font-medium whitespace-pre-line">
+                                        {entry.description || (language === 'bn' ? 'কোন বিবরণ লেখা হয়নি।' : 'No description provided.')}
+                                      </p>
+
+                                      {/* Own Side Photo Container */}
+                                      {hasOwnPhoto ? (
+                                        <div className="mt-2 border border-emerald-200 rounded-xl overflow-hidden bg-white p-2 shadow-xs">
+                                          {ownSidePhoto!.startsWith('data:application/pdf') || ownSidePhoto!.includes('.pdf') ? (
+                                            <div className="flex items-center justify-between bg-red-50 p-2 rounded-lg text-xs font-bold text-red-700">
+                                              <div className="flex items-center gap-1.5">
+                                                <FileText size={16} />
+                                                <span>পিডিএফ নথি</span>
+                                              </div>
+                                              <a href={ownSidePhoto} target="_blank" rel="noreferrer" className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded">
+                                                দেখুন
+                                              </a>
+                                            </div>
+                                          ) : (
+                                            <div className="relative group w-full h-28 rounded-lg overflow-hidden bg-slate-100">
+                                              <img src={ownSidePhoto} alt="Own Step Photo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                              <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex items-center justify-center gap-2 transition-opacity p-2">
+                                                <a href={ownSidePhoto} target="_blank" rel="noreferrer" className="text-white text-[10px] font-bold bg-white/20 px-2 py-1 rounded">
+                                                  বড় করে দেখুন
+                                                </a>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="mt-2 p-2.5 bg-white rounded-xl border border-dashed border-emerald-300 text-center no-print">
+                                          <p className="text-[11px] text-emerald-800 font-semibold mb-2">
+                                            {language === 'bn' ? 'আপনার পক্ষের ছবি/প্রমাণ নেই' : 'No photo uploaded yet'}
+                                          </p>
+                                          <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all">
+                                            <Upload size={13} />
+                                            {language === 'bn' ? 'ছবি আপলোড করুন' : 'Upload Photo'}
+                                            <input 
+                                              type="file" 
+                                              accept="image/*,application/pdf" 
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const f = e.target.files?.[0];
+                                                if (f) handleUploadEntryPhoto(idx, f, targetUploadField);
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )}
+                                    </td>
+
+                                    {/* Column 3: Opponent Side Step & Photo (Mutual Photo Lock) */}
+                                    <td className="p-3 border border-slate-300 text-left bg-indigo-50/20">
+                                      <div className="font-bold text-indigo-900 text-xs mb-1.5 flex items-center justify-between">
+                                        <div className="flex items-center gap-1">
+                                          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                                          {activeSide === 'petitioner' ? (language === 'bn' ? 'বিবাদীপক্ষের পদক্ষেপ' : 'Respondent Step') : (language === 'bn' ? 'বাদীপক্ষের পদক্ষেপ' : 'Petitioner Step')}
+                                        </div>
+                                        {hasOwnPhoto ? (
+                                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                                            <Unlock size={11} /> Unlocked
+                                          </span>
+                                        ) : (
+                                          <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                                            <Lock size={11} /> Locked
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Check if Own side uploaded photo to unlock Opponent side */}
+                                      {hasOwnPhoto ? (
+                                        hasOppPhoto ? (
+                                          <div className="mt-2 border border-indigo-200 rounded-xl overflow-hidden bg-white p-2 shadow-xs">
+                                            {oppSidePhoto!.startsWith('data:application/pdf') || oppSidePhoto!.includes('.pdf') ? (
+                                              <div className="flex items-center justify-between bg-red-50 p-2 rounded-lg text-xs font-bold text-red-700">
+                                                <div className="flex items-center gap-1.5">
+                                                  <FileText size={16} />
+                                                  <span>পিডিএফ নথি</span>
+                                                </div>
+                                                <a href={oppSidePhoto} target="_blank" rel="noreferrer" className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded">
+                                                  দেখুন
+                                                </a>
+                                              </div>
+                                            ) : (
+                                              <div className="relative group w-full h-28 rounded-lg overflow-hidden bg-slate-100">
+                                                <img src={oppSidePhoto} alt="Opponent Step Photo" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 flex items-center justify-center gap-2 transition-opacity p-2">
+                                                  <a href={oppSidePhoto} target="_blank" rel="noreferrer" className="text-white text-[10px] font-bold bg-white/20 px-2 py-1 rounded">
+                                                    বড় করে দেখুন
+                                                  </a>
+                                                  <button onClick={() => handleDownloadFile(oppSidePhoto!, `opponent_${entry.date}`)} className="text-white text-[10px] font-bold bg-indigo-600 px-2 py-1 rounded">
+                                                    ডাউনলোড
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p className="text-xs text-slate-500 italic p-3 bg-white/60 rounded-xl border border-slate-200 text-center">
+                                            {language === 'bn' ? 'প্রতিপক্ষ এখনও এই তারিখের ছবি আপলোড করেনি।' : 'Opponent has not uploaded a photo for this date.'}
+                                          </p>
+                                        )
+                                      ) : (
+                                        /* Locked Opponent Photo Notice */
+                                        <div className="p-3 bg-amber-100/60 rounded-xl border border-amber-300/80 text-center space-y-2">
+                                          <div className="flex items-center justify-center gap-1 text-amber-900 font-extrabold text-xs">
+                                            <Lock size={14} className="text-amber-700" />
+                                            {language === 'bn' ? 'প্রতিপক্ষের নথি/ছবি লক করা' : 'Opponent Photo Locked'}
+                                          </div>
+                                          <p className="text-[11px] text-amber-800 leading-tight">
+                                            {language === 'bn' 
+                                              ? 'প্রতিপক্ষের পদক্ষেপের ছবি দেখতে হলে কলাম ১-এ আপনার স্বীয় পক্ষের একটি ছবি/প্রমাণ আপলোড করুন।' 
+                                              : 'Upload your side photo to unlock opponent photo.'}
+                                          </p>
+                                          <label className="cursor-pointer inline-flex items-center gap-1 px-3 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all no-print">
+                                            <Upload size={12} />
+                                            {language === 'bn' ? 'ছবি দিয়ে আনলক করুন' : 'Upload to Unlock'}
+                                            <input 
+                                              type="file" 
+                                              accept="image/*,application/pdf" 
+                                              className="hidden"
+                                              onChange={(e) => {
+                                                const f = e.target.files?.[0];
+                                                if (f) handleUploadEntryPhoto(idx, f, targetUploadField);
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )}
+                                    </td>
+
+                                    {/* Column 4: Court Order & Next Hearing Date */}
+                                    <td className="p-3 border border-slate-300 text-left bg-slate-50/50">
+                                      <div className="font-bold text-amber-800 text-xs mb-1 flex items-center gap-1">
+                                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                        {language === 'bn' ? 'আদালতের আদেশ' : 'Court Order'}
+                                      </div>
+                                      <p className="text-xs font-bold text-slate-800 bg-white p-2.5 rounded-lg border border-slate-200 mb-2 leading-relaxed">
+                                        {entry.order || (language === 'bn' ? 'কোন নির্দিষ্ট আদেশ নেই' : 'No specific order')}
+                                      </p>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan={4} className="text-center text-slate-400 py-12 italic">
+                                  {language === 'bn' ? 'কোনো আদেশনামা রেকর্ড পাওয়া যায়নি।' : 'No order sheet records found.'}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                    <div className="sheet-date">
-                      {language === 'bn' ? 'পরবর্তী ধার্য্য তারিখ: ' : 'Next Scheduled Date: '}{toBnNum(caseData.nextDate || '-')}
-                    </div>
-                    
-                    <table className="order-table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: '15%' }}>{language === 'bn' ? 'আদেশ নম্বর ও তারিখ' : 'Order No & Date'}</th>
-                          <th style={{ width: '65%' }}>{language === 'bn' ? 'আদেশ এবং কার্যক্রম' : 'Order & Proceedings'}</th>
-                          <th style={{ width: '20%' }}>{language === 'bn' ? 'স্বাক্ষর / মন্তব্য' : 'Signature / Remarks'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {caseData.history && caseData.history.length > 0 ? (
-                          caseData.history.map((entry, idx) => (
-                            <tr key={idx}>
-                              <td className="font-bold text-slate-800">
-                                <div className="text-base text-indigo-900 mb-1">
-                                  {language === 'bn' ? 'আদেশ নং ' : 'Order #'}{toBnNum(idx + 1)}
-                                </div>
-                                <div className="text-xs text-slate-500 font-mono">
-                                  {toBnNum(entry.date)}
-                                </div>
-                              </td>
-                              <td className="text-left font-medium text-slate-800 leading-relaxed px-6 py-4">
-                                <div className="font-bold text-indigo-950 mb-1.5 flex items-center gap-2">
-                                  <span className={`w-2 h-2 rounded-full ${
-                                    entry.actionBy === 'court' ? 'bg-amber-500' : 'bg-indigo-500'
-                                  }`} />
-                                  {entry.actionBy === 'court' ? (language === 'bn' ? 'আদালতের আদেশ' : 'Court Order') : (language === 'bn' ? 'পদক্ষেপ/কার্যক্রম' : 'Action/Step')}
-                                </div>
-                                <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-100 whitespace-pre-line">
-                                  {entry.order || entry.description}
-                                </p>
-                                {entry.order && entry.description && (
-                                  <p className="text-xs text-slate-500 mt-2 italic">
-                                    {language === 'bn' ? 'বিবরণ: ' : 'Details: '}{entry.description}
-                                  </p>
-                                )}
-                              </td>
-                              <td className="text-slate-400 text-xs italic font-medium">
-                                <div className="border-t border-dashed border-slate-300 pt-16 mt-4 mx-4">
-                                  {entry.actionBy === 'court' ? (language === 'bn' ? 'सहকারী / হাকিম' : 'Officer/Judge') : (language === 'bn' ? 'আইনজীবী / মুহুরী' : 'Lawyer/Clerk')}
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={3} className="text-center text-slate-400 py-12 italic">
-                              {language === 'bn' ? 'কোনো আদেশনামা বিবরণী পাওয়া যায়নি।' : 'No order sheet records found.'}
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </motion.div>
         </div>
       )}
@@ -5544,6 +5826,11 @@ export default function Dashboard({
         onClose={() => setSelectedCaseForHistory(null)}
         caseData={selectedCaseForHistory}
         language={language}
+        userType={currentViewMode}
+        onUpdateCaseHistory={(updatedCase) => {
+          setSelectedCaseForHistory(updatedCase);
+          setCases(prev => prev.map(c => c.id === updatedCase.id ? updatedCase : c));
+        }}
       />
 
       <AnimatePresence>
