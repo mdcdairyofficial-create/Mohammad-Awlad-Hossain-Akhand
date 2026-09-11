@@ -66,6 +66,35 @@ export interface Case {
   date?: string;
   details?: string;
   authorityHolder?: 'lawyer' | 'clerk';
+  assignedAssociateId?: string;
+  assignedAssociateName?: string;
+  assignedAssociateMobile?: string;
+  assignedAssociateRole?: string;
+  caseNotes?: CaseNote[];
+}
+
+export interface CaseNote {
+  id: string;
+  text: string;
+  authorName: string;
+  authorMobile?: string;
+  authorRole?: string;
+  date: string;
+  createdAt?: any;
+}
+
+export interface ChamberAssociate {
+  id: string;
+  name: string;
+  mobile: string;
+  role?: string;
+  barRegNo?: string;
+  email?: string;
+  notes?: string;
+  status?: 'active' | 'inactive';
+  addedAt?: string;
+  createdAt?: string;
+  photoURL?: string;
 }
 
 export interface CaseComplaint {

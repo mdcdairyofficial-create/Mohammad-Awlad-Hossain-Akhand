@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, Trash2, ChevronRight, ChevronLeft, Save, Search, Zap, FileText, UserPlus, Upload, Paperclip, Eye, Loader2, Camera } from 'lucide-react';
-import { Case } from '../../types';
+import { X, Plus, Trash2, ChevronRight, ChevronLeft, Save, Search, Zap, FileText, UserPlus, Upload, Paperclip, Eye, Loader2, Camera, Briefcase } from 'lucide-react';
+import { Case, ChamberAssociate } from '../../types';
 import { translations } from '../../translations';
 import { BANGLADESH_DISTRICTS, getPoliceStations, getCourtsForDistrict, CIVIL_CASE_STEPS, CRIMINAL_CASE_STEPS } from '../../constants';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
@@ -22,6 +22,7 @@ interface CaseFormProps {
   existingCases?: Case[];
   onJoin?: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string, addedByMobile?: string, addedByName?: string, addedByRole?: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string, authorityHolder?: 'lawyer' | 'clerk') => void;
   initialMode?: 'detailed' | 'quick' | 'join';
+  chamberAssociates?: ChamberAssociate[];
 }
 
 interface PartyRow {
@@ -47,7 +48,8 @@ export default function CaseForm({
   userMobile,
   existingCases = [],
   onJoin,
-  initialMode = 'detailed'
+  initialMode = 'detailed',
+  chamberAssociates = []
 }: CaseFormProps) {
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
   const [mode, setMode] = useState<'detailed' | 'quick' | 'join'>(initialMode);
@@ -76,6 +78,9 @@ export default function CaseForm({
     respondentClerk: '',
     petitionerClerkMobile: [],
     respondentClerkMobile: [],
+    assignedAssociateName: initialData?.assignedAssociateName || '',
+    assignedAssociateMobile: initialData?.assignedAssociateMobile || '',
+    assignedAssociateRole: initialData?.assignedAssociateRole || '',
     filingDate: '',
     visibility: 'private',
     isUpdated: false,
@@ -232,14 +237,8 @@ export default function CaseForm({
     });
   };
 
-  const removeRow = (index: number, setter: React.Dispatch<React.SetStateAction<PartyRow[]>>, isDefendant = false) => {
-    setter(prev => {
-      const updated = prev.filter((_, i) => i !== index);
-      if (isDefendant) {
-        return updated.map((row, i) => ({ ...row, serial: i + 1 }));
-      }
-      return updated;
-    });
+  const removeRow = (index: number, setter: React.Dispatch<React.SetStateAction<PartyRow[]>>) => {
+    setter(prev => prev.filter((_, i) => i !== index));
   };
 
   const caseNumberPreview = useMemo(() => {
@@ -508,7 +507,7 @@ export default function CaseForm({
           {rows.length > 1 && (
             <button
               type="button"
-              onClick={() => removeRow(index, setter, isDefendant)}
+              onClick={() => removeRow(index, setter)}
               className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
             >
               <Trash2 size={14} />
@@ -755,6 +754,47 @@ export default function CaseForm({
                       ))}
                     </div>
                   </div>
+
+                  {/* Chamber Associate for Quick Mode */}
+                  {userType === 'lawyer' && chamberAssociates && chamberAssociates.length > 0 && (
+                    <div className="md:col-span-2 p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Briefcase size={16} className="text-amber-600" />
+                        <span className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                          {language === 'bn' ? 'ল’ চেম্বার দায়িত্বপ্রাপ্ত অ্যাসোসিয়েট' : 'Chamber Assigned Associate'}
+                        </span>
+                      </div>
+                      <select
+                        value={formData.assignedAssociateName || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (!val) {
+                            setFormData(prev => ({ ...prev, assignedAssociateName: '', assignedAssociateMobile: '', assignedAssociateRole: '' }));
+                          } else {
+                            const found = chamberAssociates.find(a => a.name === val);
+                            if (found) {
+                              setFormData(prev => ({
+                                ...prev,
+                                assignedAssociateName: found.name,
+                                assignedAssociateMobile: found.mobile,
+                                assignedAssociateRole: found.role || 'Associate'
+                              }));
+                            } else {
+                              setFormData(prev => ({ ...prev, assignedAssociateName: val }));
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">-- {language === 'bn' ? 'চেম্বার প্রধানের প্রত্যক্ষ দায়িত্বে (Lead)' : 'Directly Under Lead Advocate'} --</option>
+                        {chamberAssociates.map(a => (
+                          <option key={a.id} value={a.name}>
+                            ⚖️ {a.name} ({a.role || 'Associate'}) - {a.mobile}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div className="md:col-span-2">
                     <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">{language === 'bn' ? 'ডকুমেন্ট আপলোড' : 'Document Upload'}</label>
@@ -1300,6 +1340,52 @@ export default function CaseForm({
 
                 {userType !== 'lawyer' && renderPartySection(language === 'bn' ? '⚖️ উকিল' : '⚖️ Lawyer', lawyers, setLawyers, language === 'bn' ? 'উকিলের নাম' : 'Lawyer Name', false, false, 'lawyer')}
                 {userType !== 'clerk' && renderPartySection(language === 'bn' ? '📋 মুহুরি' : '📋 Clerk', clerks, setClerks, language === 'bn' ? 'মুহুরির নাম' : 'Clerk Name', false, false, 'clerk')}
+
+                {/* Chamber Associate for Detailed Mode */}
+                {userType === 'lawyer' && chamberAssociates && chamberAssociates.length > 0 && (
+                  <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Briefcase size={16} className="text-amber-600" />
+                      <span className="text-xs font-black text-amber-900 uppercase tracking-wider">
+                        {language === 'bn' ? 'ল’ চেম্বার দায়িত্বপ্রাপ্ত অ্যাসোসিয়েট' : 'Chamber Assigned Associate'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {language === 'bn' 
+                        ? 'এই মামলাটি চেম্বারের কোন সহযোগী আইনজীবী পরিচালনা করবেন তা নির্বাচন করুন:' 
+                        : 'Select which associate lawyer in your chamber will manage this case:'}
+                    </p>
+                    <select
+                      value={formData.assignedAssociateName || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) {
+                          setFormData(prev => ({ ...prev, assignedAssociateName: '', assignedAssociateMobile: '', assignedAssociateRole: '' }));
+                        } else {
+                          const found = chamberAssociates.find(a => a.name === val);
+                          if (found) {
+                            setFormData(prev => ({
+                              ...prev,
+                              assignedAssociateName: found.name,
+                              assignedAssociateMobile: found.mobile,
+                              assignedAssociateRole: found.role || 'Associate'
+                            }));
+                          } else {
+                            setFormData(prev => ({ ...prev, assignedAssociateName: val }));
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2.5 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="">-- {language === 'bn' ? 'চেম্বার প্রধানের প্রত্যক্ষ দায়িত্বে (Lead)' : 'Directly Under Lead Advocate'} --</option>
+                      {chamberAssociates.map(a => (
+                        <option key={a.id} value={a.name}>
+                          ⚖️ {a.name} ({a.role || 'Associate'}) - {a.mobile}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div className="flex justify-between pt-4">
                   <button

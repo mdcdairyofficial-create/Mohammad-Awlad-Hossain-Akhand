@@ -401,7 +401,16 @@ export const HomeView = ({
                         </div>
                       </td>
                       <td className="py-4">
-                        <p className="text-xs font-medium text-slate-600">{c.petitioner} vs {c.respondent}</p>
+                        <p className="text-xs font-medium text-slate-600">
+                          {c.petitioner} vs {c.respondentDetails && c.respondentDetails.length > 0 ? (
+                            `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
+                          ) : (
+                            c.respondent ? (
+                              c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                                `${c.respondent.split(',')[0].trim()} গং` : c.respondent
+                            ) : ''
+                          )}
+                        </p>
                       </td>
                       <td className="py-4">
                         <div className="flex items-center gap-2">

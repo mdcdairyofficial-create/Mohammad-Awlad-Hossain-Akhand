@@ -92,7 +92,16 @@ const CasesView: React.FC<CasesViewProps> = ({
                     <div className="text-xs mt-2 flex flex-wrap gap-2 items-center">
                       <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg font-bold border border-emerald-100">{c.petitioner}</span>
                       <span className="text-slate-400 font-black">VS</span>
-                      <span className="px-2 py-1 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-100">{c.respondent}</span>
+                      <span className="px-2 py-1 bg-rose-50 text-rose-700 rounded-lg font-bold border border-rose-100">
+                        {c.respondentDetails && c.respondentDetails.length > 0 ? (
+                          `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
+                        ) : (
+                          c.respondent ? (
+                            c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                              `${c.respondent.split(',')[0].trim()} গং` : c.respondent
+                          ) : ''
+                        )}
+                      </span>
                     </div>
                     {(c.petitionerLawyer || c.petitionerClerk || c.respondentLawyer || c.respondentClerk) && (
                       <div className="mt-3 flex flex-wrap gap-2">

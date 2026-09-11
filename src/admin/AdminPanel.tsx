@@ -1825,7 +1825,20 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                   {filteredUsers.map(user => (
                     <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-4 text-slate-800 font-medium">{user.name}</td>
-                      <td className="p-4 text-slate-600">{user.mobile}</td>
+                      <td className="p-4 text-slate-600">
+                        <div className="flex items-center gap-1.5 font-sans">
+                          <span>{user.mobile}</span>
+                          {user.mobile && (
+                            <a 
+                              href={`tel:${user.mobile}`} 
+                              className="p-1 text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors inline-flex items-center justify-center"
+                              title="কল করুন"
+                            >
+                              <Smartphone size={14} />
+                            </a>
+                          )}
+                        </div>
+                      </td>
                       <td className="p-4 text-slate-500 text-sm">{user.thana || 'N/A'}</td>
                       <td className="p-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${

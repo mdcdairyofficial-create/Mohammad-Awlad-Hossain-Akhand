@@ -18,10 +18,12 @@ import {
   AlertTriangle,
   Coins,
   ShieldAlert,
-  UserPlus
+  UserPlus,
+  Phone,
+  Briefcase
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
-import { Case } from '../../types';
+import { Case, ChamberAssociate } from '../../types';
 import { formatCourtNameWithNo } from '../../constants';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
 import { fetchWithAuth } from '../../lib/api';
@@ -39,6 +41,7 @@ interface CaseCardProProps {
   userType: string;
   userMobile: string;
   language?: 'bn' | 'en' | 'hi' | 'ur';
+  chamberAssociates?: ChamberAssociate[];
 }
 
 export const CaseCardPro = ({ 
@@ -51,7 +54,8 @@ export const CaseCardPro = ({
   isRespondent, 
   userType, 
   userMobile,
-  language = 'bn'
+  language = 'bn',
+  chamberAssociates = []
 }: CaseCardProProps) => {
   const [side, setSide] = useState<'petitioner' | 'respondent' | 'accused'>(caseData.selectedParty || 'petitioner');
   const [nextDate, setNextDate] = useState(caseData.nextDate);
@@ -72,6 +76,12 @@ export const CaseCardPro = ({
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState('');
 
+  // Associate States
+  const [assignedAssociateInput, setAssignedAssociateInput] = useState(caseData.assignedAssociateName || '');
+  const [assignedAssociateMobileInput, setAssignedAssociateMobileInput] = useState(caseData.assignedAssociateMobile || '');
+  const [assignedAssociateRoleInput, setAssignedAssociateRoleInput] = useState(caseData.assignedAssociateRole || '');
+  const [showAssignAssociateModal, setShowAssignAssociateModal] = useState(false);
+
   // Document Scanner State
   const [showScannerModal, setShowScannerModal] = useState(false);
 
@@ -82,6 +92,11 @@ export const CaseCardPro = ({
   const [conflictDateInput, setConflictDateInput] = useState(caseData.nextDate || '');
   const [conflictStepInput, setConflictStepInput] = useState(caseData.order || caseData.status || '');
   const [isSubmittingComplaint, setIsSubmittingComplaint] = useState(false);
+  const [showCardRespondentDropdown, setShowCardRespondentDropdown] = useState(false);
+  const [showAddRespondentInput, setShowAddRespondentInput] = useState(false);
+  const [newRespondentName, setNewRespondentName] = useState('');
+  const [newRespondentPhone, setNewRespondentPhone] = useState('');
+  const [newRespondentSerial, setNewRespondentSerial] = useState('');
 
   // Lawyer & Clerk Edit Modal States
   const [showLawyerModal, setShowLawyerModal] = useState(false);
@@ -135,11 +150,17 @@ export const CaseCardPro = ({
       petitionerLawyerMobile: lawyerMobileInput,
       petitionerClerk: clerkNameInput,
       petitionerClerkMobile: clerkMobileInput,
+      assignedAssociateName: assignedAssociateInput,
+      assignedAssociateMobile: assignedAssociateMobileInput,
+      assignedAssociateRole: assignedAssociateRoleInput,
     } : {
       respondentLawyer: lawyerNameInput,
       respondentLawyerMobile: lawyerMobileInput,
       respondentClerk: clerkNameInput,
       respondentClerkMobile: clerkMobileInput,
+      assignedAssociateName: assignedAssociateInput,
+      assignedAssociateMobile: assignedAssociateMobileInput,
+      assignedAssociateRole: assignedAssociateRoleInput,
     };
 
     if (isPet) {
@@ -153,6 +174,9 @@ export const CaseCardPro = ({
       caseData.respondentClerk = clerkNameInput;
       caseData.respondentClerkMobile = clerkMobileInput;
     }
+    caseData.assignedAssociateName = assignedAssociateInput;
+    caseData.assignedAssociateMobile = assignedAssociateMobileInput;
+    caseData.assignedAssociateRole = assignedAssociateRoleInput;
 
     onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraData);
 
@@ -470,21 +494,66 @@ export const CaseCardPro = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center shadow-sm">
                   <User size={20} className="text-sky-600" />
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase">বাদী/আবেদনকারী (Petitioner)</p>
-                  <p className="font-bold text-slate-800">{caseData.petitioner}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    {caseData.petitionerMobile && (
+                      <a 
+                        href={`tel:${caseData.petitionerMobile}`} 
+                        className="w-7 h-7 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border-2 border-slate-300 shadow-[0_3px_8px_rgba(34,197,94,0.4)] relative overflow-hidden active:scale-95 transition-all group shrink-0" 
+                        title="কল করুন"
+                      >
+                        {/* Glossy Overlay */}
+                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
+                        <Phone size={11} className="text-white fill-white relative z-10" />
+                      </a>
+                    )}
+                    <p className="font-bold text-slate-800">{caseData.petitioner}</p>
+                    {caseData.petitionerMobile && (
+                      <div className="flex items-center gap-1.5 bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-100">
+                        <span className="text-[11px] text-slate-600 font-medium font-sans">{caseData.petitionerMobile}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              <span className="text-xs font-black text-slate-300">VS</span>
-              <div className="flex items-center gap-3 text-right">
-                <div>
+              <span className="text-xs font-black text-slate-300 self-center">VS</span>
+              <div className="flex items-center gap-3 text-right justify-end">
+                <div className="text-right">
                   <p className="text-[10px] font-black text-slate-400 uppercase">বিবাদী/আসামী (Respondent)</p>
-                  <p className="font-bold text-slate-800">{caseData.respondent}</p>
+                  <div className="flex flex-wrap items-center justify-end gap-2 mt-1">
+                    {caseData.respondentMobile && (
+                      <a 
+                        href={`tel:${caseData.respondentMobile}`} 
+                        className="w-7 h-7 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border-2 border-slate-300 shadow-[0_3px_8px_rgba(34,197,94,0.4)] relative overflow-hidden active:scale-95 transition-all group shrink-0" 
+                        title="কল করুন"
+                      >
+                        {/* Glossy Overlay */}
+                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
+                        <Phone size={11} className="text-white fill-white relative z-10" />
+                      </a>
+                    )}
+                    <p className="font-bold text-slate-800">
+                      {caseData.respondentDetails && caseData.respondentDetails.length > 0 ? (
+                        `${caseData.respondentDetails[0].name}${caseData.respondentDetails.length > 1 ? ' গং' : ''}`
+                      ) : (
+                        caseData.respondent ? (
+                          caseData.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                            `${caseData.respondent.split(',')[0].trim()} গং` : caseData.respondent
+                        ) : ''
+                      )}
+                    </p>
+                    {caseData.respondentMobile && (
+                      <div className="flex items-center gap-1.5 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-100">
+                        <span className="text-[11px] text-slate-600 font-medium font-sans">{caseData.respondentMobile}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center shadow-sm">
                   <User size={20} className="text-rose-600" />
@@ -493,78 +562,234 @@ export const CaseCardPro = ({
             </div>
 
             {/* Respondent List & Assignment */}
-            {caseData.respondentDetails && caseData.respondentDetails.length > 0 && (
-              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    👥 {language === 'bn' ? 'বিবাদী/আসামী তালিকা ও দায়িত্বপ্রাপ্ত' : 'Defendants & Assigned Users'}
-                  </p>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">
-                    {caseData.respondentDetails.length} {language === 'bn' ? 'জন আসামী' : 'Defendants'}
-                  </span>
-                </div>
-                
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {caseData.respondentDetails.map((resp, index) => {
-                    const normalizeMobileNum = (num?: string) => {
-                      if (!num) return '';
-                      let cleaned = num.trim().replace(/[^\d]/g, '');
-                      if (cleaned.startsWith('880')) cleaned = cleaned.substring(2);
-                      else if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
-                      return cleaned;
-                    };
-                    const userNorm = normalizeMobileNum(userMobile);
-                    const respAddedNorm = normalizeMobileNum(resp.addedByMobile);
-                    const isAssignedToMe = userNorm && respAddedNorm && userNorm === respAddedNorm;
-                    
-                    return (
-                      <div key={index} className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${isAssignedToMe ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-slate-100'}`}>
-                        <div className="flex items-start gap-2.5">
-                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${isAssignedToMe ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            {resp.serial || (index + 1)}
-                          </span>
-                          <div>
-                            <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-                              {resp.name}
-                              {isAssignedToMe && (
-                                <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                                  {language === 'bn' ? 'আমার দায়িত্বে' : 'My Responsibility'}
-                                </span>
-                              )}
-                            </p>
-                            {resp.phone && (
-                              <p className="text-[10px] text-slate-500 font-medium mt-0.5">📱 {resp.phone}</p>
-                            )}
-                          </div>
+            {(() => {
+              const respondentsList = caseData.respondentDetails && caseData.respondentDetails.length > 0 
+                ? caseData.respondentDetails 
+                : (caseData.respondent ? caseData.respondent.split(',').map((name, i) => ({
+                    name: name.trim(),
+                    phone: i === 0 ? (caseData.respondentMobile || '') : '',
+                    serial: i + 1,
+                    addedByName: '',
+                    addedByRole: '',
+                    addedByMobile: ''
+                  })).filter(r => r.name) : []);
+
+              return (
+                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                      👥 {language === 'bn' ? 'বিবাদী/আসামী তালিকা ও দায়িত্বপ্রাপ্ত' : 'Defendants & Assigned Users'}
+                      <button 
+                        onClick={() => setShowAddRespondentInput(prev => !prev)}
+                        className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all shadow-sm shrink-0"
+                        title={language === 'bn' ? 'নতুন আসামী যুক্ত করুন' : 'Add New Defendant'}
+                      >
+                        +
+                      </button>
+                    </p>
+                    <span className="text-[9px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-bold">
+                      {respondentsList.length} {language === 'bn' ? 'জন আসামী' : 'Defendants'}
+                    </span>
+                  </div>
+
+                  {showAddRespondentInput && (
+                    <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2.5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-indigo-600 uppercase">নতুন আসামী যুক্ত করুন</span>
+                        <span className="text-[10px] text-slate-400 font-medium">ক্রমিক অনুযায়ী সেট হবে</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-500 mb-0.5">আসামী ক্রমিক নং</label>
+                          <input 
+                            type="text"
+                            placeholder="যেমন: ১, ৩, ৫, ১৩"
+                            value={newRespondentSerial}
+                            onChange={(e) => setNewRespondentSerial(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 font-sans"
+                          />
                         </div>
-                        
-                        <div className="text-left sm:text-right shrink-0">
-                          {resp.addedByName ? (
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-700 flex items-center gap-1 sm:justify-end">
-                                ⚖️ {resp.addedByName}
-                              </p>
-                              <p className="text-[9px] font-black text-slate-400 uppercase">
-                                {resp.addedByRole === 'lawyer' 
-                                  ? (language === 'bn' ? 'আইনজীবী' : 'Lawyer') 
-                                  : resp.addedByRole === 'clerk' 
-                                  ? (language === 'bn' ? 'মুহুরি' : 'Clerk') 
-                                  : (language === 'bn' ? 'ইউজার' : 'User')}
-                                {resp.addedByMobile && ` • ${resp.addedByMobile}`}
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-[10px] text-slate-400 italic">
-                              {language === 'bn' ? 'কোনো নির্দিষ্ট দায়িত্বপ্রাপ্ত নেই' : 'No specific assignment'}
-                            </p>
-                          )}
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-500 mb-0.5">আসামীর নাম *</label>
+                          <input 
+                            type="text"
+                            placeholder="আসামীর নাম লিখুন"
+                            value={newRespondentName}
+                            onChange={(e) => setNewRespondentName(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 font-sans"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-500 mb-0.5">মোবাইল নম্বর (ঐচ্ছিক)</label>
+                          <input 
+                            type="text"
+                            placeholder="০১XXXXXXXXX"
+                            value={newRespondentPhone}
+                            onChange={(e) => setNewRespondentPhone(e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 font-sans"
+                          />
                         </div>
                       </div>
-                    );
-                  })}
+                      <div className="flex justify-end gap-1.5 pt-1">
+                        <button 
+                          onClick={() => {
+                            setShowAddRespondentInput(false);
+                            setNewRespondentName('');
+                            setNewRespondentPhone('');
+                            setNewRespondentSerial('');
+                          }}
+                          className="px-2.5 py-1 text-[10px] font-bold text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                        >
+                          বাতিল
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (!newRespondentName.trim()) return;
+                            const updatedList = [...respondentsList];
+                            const serialVal = newRespondentSerial.trim() !== '' 
+                              ? newRespondentSerial.trim() 
+                              : String(updatedList.length + 1);
+
+                            updatedList.push({
+                              name: newRespondentName.trim(),
+                              phone: newRespondentPhone.trim(),
+                              serial: serialVal,
+                              addedByMobile: userMobile,
+                              addedByName: userType === 'lawyer' ? 'Lawyer' : 'Clerk',
+                              addedByRole: userType
+                            });
+
+                            const updatedRespondentString = updatedList.map(d => d.name).filter(Boolean).join(', ');
+                            const updatedRespondentMobile = updatedList[0]?.phone || '';
+
+                            onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, {
+                              respondentDetails: updatedList,
+                              respondent: updatedRespondentString,
+                              respondentMobile: updatedRespondentMobile
+                            });
+
+                            setNewRespondentName('');
+                            setNewRespondentPhone('');
+                            setNewRespondentSerial('');
+                            setShowAddRespondentInput(false);
+                          }}
+                          className="px-3 py-1 text-[10px] font-bold bg-indigo-600 text-white hover:bg-indigo-700 rounded-md transition-all shadow-sm"
+                        >
+                          সংরক্ষণ করুন
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {respondentsList.length > 0 ? (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {respondentsList.map((resp, index) => {
+                        const normalizeMobileNum = (num?: string) => {
+                          if (!num) return '';
+                          let cleaned = num.trim().replace(/[^\d]/g, '');
+                          if (cleaned.startsWith('880')) cleaned = cleaned.substring(2);
+                          else if (cleaned.startsWith('0')) cleaned = cleaned.substring(1);
+                          return cleaned;
+                        };
+                        const userNorm = normalizeMobileNum(userMobile);
+                        const respAddedNorm = normalizeMobileNum(resp.addedByMobile);
+                        const isAssignedToMe = userNorm && respAddedNorm && userNorm === respAddedNorm;
+                        
+                        const serialNumber = resp.serial !== undefined && resp.serial !== null && String(resp.serial).trim() !== ''
+                          ? String(resp.serial).trim()
+                          : String(index + 1);
+                        
+                        return (
+                          <div key={index} className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${isAssignedToMe ? 'bg-indigo-50/50 border-indigo-200' : 'bg-white border-slate-100'}`}>
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <span 
+                                className={`min-w-7 px-1.5 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 shadow-xs ${
+                                  isAssignedToMe ? 'bg-indigo-600 text-white' : 'bg-rose-50 text-rose-700 border border-rose-100'
+                                }`}
+                                title={`${serialNumber} নং আসামী`}
+                              >
+                                {serialNumber}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-rose-600 font-bold text-[10px] bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 shrink-0">
+                                    {serialNumber} নং আসামী:
+                                  </span>
+                                  <span className="truncate">{resp.name}</span>
+                                  {isAssignedToMe && (
+                                    <span className="bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                      {language === 'bn' ? 'আমার দায়িত্বে' : 'My Responsibility'}
+                                    </span>
+                                  )}
+                                </p>
+                                {resp.phone && (
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] text-slate-500 font-medium font-sans">📱 {resp.phone}</span>
+                                    <a 
+                                      href={`tel:${resp.phone}`} 
+                                      className="p-1 text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                                      title="কল করুন"
+                                    >
+                                      <Smartphone size={12} />
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 justify-between sm:justify-end shrink-0">
+                              <div className="text-left sm:text-right">
+                                {resp.addedByName ? (
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-700 flex items-center gap-1 sm:justify-end">
+                                      ⚖️ {resp.addedByName}
+                                    </p>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase">
+                                      {resp.addedByRole === 'lawyer' 
+                                        ? (language === 'bn' ? 'আইনজীবী' : 'Lawyer') 
+                                        : resp.addedByRole === 'clerk' 
+                                        ? (language === 'bn' ? 'মুহুরি' : 'Clerk') 
+                                        : (language === 'bn' ? 'ইউজার' : 'User')}
+                                      {resp.addedByMobile && ` • ${resp.addedByMobile}`}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <p className="text-[10px] text-slate-400 italic">
+                                    {language === 'bn' ? 'কোনো নির্দিষ্ট দায়িত্বপ্রাপ্ত নেই' : 'No specific assignment'}
+                                  </p>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updatedList = respondentsList.filter((_, idx) => idx !== index);
+                                  const updatedRespondentString = updatedList.map(d => d.name).filter(Boolean).join(', ');
+                                  const updatedRespondentMobile = updatedList[0]?.phone || '';
+                                  onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, {
+                                    respondentDetails: updatedList,
+                                    respondent: updatedRespondentString,
+                                    respondentMobile: updatedRespondentMobile
+                                  });
+                                }}
+                                className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+                                title="এই আসামী মুছুন"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-xs text-slate-400">
+                      কোনো আসামী তালিকাভুক্ত নেই। উপরে (+) এ ক্লিক করে আসামী যুক্ত করুন।
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
@@ -578,19 +803,29 @@ export const CaseCardPro = ({
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 col-span-2 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    ⚖️ আইনজীবী ও মুহুরি (Lawyer & Clerk)
+                    ⚖️ চেম্বার টিম, আইনজীবী ও মুহুরি
                   </p>
-                  <button
-                    type="button"
-                    onClick={handleOpenLawyerModal}
-                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm border border-indigo-100/80"
-                  >
-                    <UserPlus size={14} className="text-indigo-600" />
-                    <span>+ নতুন উকিল/মুহুরি যুক্ত করুন</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAssignAssociateModal(true)}
+                      className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs border border-amber-200"
+                    >
+                      <Briefcase size={13} className="text-amber-600" />
+                      <span>{caseData.assignedAssociateName ? 'অ্যাসোসিয়েট পরিবর্তন' : '+ অ্যাসোসিয়েট অর্পণ'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenLawyerModal}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs border border-indigo-100/80"
+                    >
+                      <UserPlus size={14} className="text-indigo-600" />
+                      <span>+ উকিল/মুহুরি</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {/* Lawyer Box */}
                   <div className="p-2.5 bg-white rounded-xl border border-slate-100 shadow-2xs">
                     <div className="flex items-center justify-between mb-0.5">
@@ -601,9 +836,50 @@ export const CaseCardPro = ({
                         </a>
                       )}
                     </div>
-                    <p className="text-xs font-bold text-slate-800">
+                    <p className="text-xs font-bold text-slate-800 truncate">
                       {currentLawyerName || 'নির্ধারিত নেই'}
                     </p>
+                  </div>
+
+                  {/* Assigned Associate Box */}
+                  <div className={`p-2.5 rounded-xl border shadow-2xs ${caseData.assignedAssociateName ? 'bg-amber-50/70 border-amber-200' : 'bg-white border-slate-100'}`}>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <p className="text-[10px] font-black text-amber-800 uppercase flex items-center gap-1">
+                        <Briefcase size={11} className="text-amber-600" /> দায়িত্বপ্রাপ্ত অ্যাসোসিয়েট
+                      </p>
+                      {caseData.assignedAssociateMobile && !caseData.assignedAssociateMobile.includes(',') && (
+                        <a href={`tel:${caseData.assignedAssociateMobile}`} className="text-amber-700 hover:text-amber-900 flex items-center gap-1 text-[10px] font-bold">
+                          <Smartphone size={12} /> {caseData.assignedAssociateMobile}
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      {(() => {
+                        const assignedAssoc = chamberAssociates.find(a => a.id === caseData.assignedAssociateId || (a.name === caseData.assignedAssociateName && a.mobile === caseData.assignedAssociateMobile));
+                        if (assignedAssoc?.photoURL) {
+                          return (
+                            <img src={assignedAssoc.photoURL} alt={caseData.assignedAssociateName} className="w-6 h-6 rounded-full object-cover border border-amber-200 shadow-xs shrink-0" />
+                          );
+                        } else if (caseData.assignedAssociateName) {
+                          return (
+                            <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 font-bold text-[10px] flex items-center justify-center border border-amber-200 shrink-0 font-mono">
+                              {caseData.assignedAssociateName.charAt(0)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">
+                          {caseData.assignedAssociateName || 'চেম্বার প্রধানের দায়িত্বে'}
+                        </p>
+                        {caseData.assignedAssociateRole && (
+                          <p className="text-[9px] text-amber-700 font-semibold truncate mt-0.5">
+                            {caseData.assignedAssociateRole}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Clerk Box */}
@@ -616,7 +892,7 @@ export const CaseCardPro = ({
                         </a>
                       )}
                     </div>
-                    <p className="text-xs font-bold text-slate-800">
+                    <p className="text-xs font-bold text-slate-800 truncate">
                       {currentClerkName || 'নির্ধারিত নেই'}
                     </p>
                   </div>
@@ -978,13 +1254,104 @@ export const CaseCardPro = ({
 
           <div className="flex items-center gap-2">
             {canCall && (
-              <a 
-                href={`tel:${caseData.petitionerMobile}`}
-                className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-all"
-                title="কল করুন"
-              >
-                <Smartphone size={20} />
-              </a>
+              <div className="flex items-center gap-2 relative">
+                {caseData.petitionerMobile && (
+                  <a 
+                    href={`tel:${caseData.petitionerMobile}`}
+                    className="p-2.5 bg-sky-50 text-sky-600 hover:bg-sky-100 rounded-xl transition-all flex items-center gap-1.5 font-bold text-xs"
+                    title={`বাদী কল করুন: ${caseData.petitioner}`}
+                  >
+                    <Smartphone size={16} />
+                    <span>বাদী</span>
+                  </a>
+                )}
+                
+                {(() => {
+                  const respondentsToShow: Array<{ name: string; phone?: string; serial?: number | string }> = caseData.respondentDetails && caseData.respondentDetails.length > 0 
+                    ? caseData.respondentDetails 
+                    : (caseData.respondentMobile ? [{ name: caseData.respondent || '', phone: caseData.respondentMobile, serial: 1 }] : []);
+                  const withPhones = respondentsToShow.filter((r): r is { name: string; phone: string; serial?: number | string } => Boolean(r.phone));
+                  
+                  if (withPhones.length === 0) return null;
+                  if (withPhones.length === 1) {
+                    return (
+                      <a 
+                        href={`tel:${withPhones[0].phone}`}
+                        className="p-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl transition-all flex items-center gap-1.5 font-bold text-xs"
+                        title={`বিবাদী কল করুন: ${withPhones[0].name}`}
+                      >
+                        <Smartphone size={16} />
+                        <span>বিবাদী</span>
+                      </a>
+                    );
+                  }
+                  
+                  return (
+                    <div className="relative inline-block">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowCardRespondentDropdown(prev => !prev);
+                        }}
+                        className="p-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl transition-all flex items-center gap-1.5 font-bold text-xs"
+                        title="বিবাদী তালিকা"
+                      >
+                        <Smartphone size={16} />
+                        <span>বিবাদী ({withPhones.length})</span>
+                      </button>
+                      
+                      {showCardRespondentDropdown && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-[140]" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowCardRespondentDropdown(false);
+                            }}
+                          />
+                          <div className="absolute right-0 bottom-full mb-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl z-[150] p-3 text-left">
+                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 pb-1.5 border-b border-slate-100">
+                              বিবাদী/আসামী তালিকা
+                            </div>
+                            <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
+                              {withPhones.map((resp, rIdx) => {
+                                const respSerial = resp.serial !== undefined && resp.serial !== null && String(resp.serial).trim() !== ''
+                                  ? String(resp.serial).trim()
+                                  : String(rIdx + 1);
+                                return (
+                                  <a 
+                                    key={rIdx} 
+                                    href={`tel:${resp.phone}`}
+                                    onClick={() => setShowCardRespondentDropdown(false)}
+                                    className="flex items-center justify-between p-2 rounded-xl hover:bg-rose-50/50 transition-colors group"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0 pr-2">
+                                      <span className="min-w-5 px-1 h-5 rounded-md bg-rose-50 text-rose-600 border border-rose-100 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                        {respSerial}
+                                      </span>
+                                      <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-bold text-slate-700 group-hover:text-rose-600 transition-colors truncate">
+                                          {resp.name}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-sans font-medium">
+                                          {resp.phone}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm shrink-0">
+                                      <Smartphone size={12} />
+                                    </div>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
             )}
             <button 
               onClick={() => {
@@ -1180,6 +1547,57 @@ export const CaseCardPro = ({
                 />
               </div>
 
+              {/* Chamber Associate Section in Modal */}
+              <div className="pt-2 border-t border-slate-100">
+                <label className="text-[11px] font-bold text-amber-900 block mb-1 flex items-center gap-1">
+                  <Briefcase size={13} className="text-amber-600" /> চেম্বারের দায়িত্বপ্রাপ্ত অ্যাসোসিয়েট (Assigned Associate)
+                </label>
+                {chamberAssociates && chamberAssociates.length > 0 && (
+                  <select
+                    value={assignedAssociateInput}
+                    onChange={(e) => {
+                      const selectedVal = e.target.value;
+                      if (!selectedVal) {
+                        setAssignedAssociateInput('');
+                        setAssignedAssociateMobileInput('');
+                        setAssignedAssociateRoleInput('');
+                      } else {
+                        const found = chamberAssociates.find(a => a.name === selectedVal);
+                        if (found) {
+                          setAssignedAssociateInput(found.name);
+                          setAssignedAssociateMobileInput(found.mobile);
+                          setAssignedAssociateRoleInput(found.role || 'Associate');
+                        } else {
+                          setAssignedAssociateInput(selectedVal);
+                        }
+                      }
+                    }}
+                    className="w-full p-2.5 bg-amber-50/60 border border-amber-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 mb-2"
+                  >
+                    <option value="">-- চেম্বার প্রধানের প্রত্যক্ষ দায়িত্বে (Lead) --</option>
+                    {chamberAssociates.map(a => (
+                      <option key={a.id} value={a.name}>{a.name} ({a.role || 'Associate'}) - {a.mobile}</option>
+                    ))}
+                  </select>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <input 
+                    type="text" 
+                    value={assignedAssociateInput} 
+                    onChange={(e) => setAssignedAssociateInput(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="অ্যাসোসিয়েটের নাম"
+                  />
+                  <input 
+                    type="tel" 
+                    value={assignedAssociateMobileInput} 
+                    onChange={(e) => setAssignedAssociateMobileInput(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="মোবাইল নম্বর"
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button 
                   type="button" 
@@ -1214,6 +1632,165 @@ export const CaseCardPro = ({
         }}
         language="bn"
       />
+
+      {/* Quick Assign Associate Modal */}
+      {showAssignAssociateModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                <Briefcase className="text-amber-600" size={18} />
+                <span>মামলার দায়িত্ব অর্পণ (Assign Case)</span>
+              </h3>
+              <button onClick={() => setShowAssignAssociateModal(false)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium">
+              মামলা নম্বর: <span className="font-bold text-slate-800">{caseData.caseNumber}</span>
+              <br />
+              কোন সহযোগী বা জুনিয়র আইনজীবীকে এই মামলার দায়িত্ব দিতে চান নির্বাচন করুন:
+            </p>
+
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+              {/* Option: Lead Advocate */}
+              <button
+                type="button"
+                onClick={() => {
+                  const extraData: Partial<Case> = {
+                    assignedAssociateId: '',
+                    assignedAssociateName: '',
+                    assignedAssociateMobile: '',
+                    assignedAssociateRole: '',
+                  };
+                  caseData.assignedAssociateId = '';
+                  caseData.assignedAssociateName = '';
+                  caseData.assignedAssociateMobile = '';
+                  caseData.assignedAssociateRole = '';
+                  setAssignedAssociateInput('');
+                  setAssignedAssociateMobileInput('');
+                  setAssignedAssociateRoleInput('');
+                  onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraData);
+                  setShowAssignAssociateModal(false);
+                  setConfirmMsg('মামলাটি চেম্বার প্রধানের প্রত্যক্ষ দায়িত্বে রাখা হয়েছে।');
+                  setShowConfirm(true);
+                  setTimeout(() => setShowConfirm(false), 3000);
+                }}
+                className={`w-full p-3 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                  !caseData.assignedAssociateName ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
+                }`}
+              >
+                <div>
+                  <p className="text-xs font-bold text-slate-900">👑 চেম্বার প্রধান (Lead Advocate)</p>
+                  <p className="text-[10px] text-slate-500">প্রধান আইনজীবীর প্রত্যক্ষ তত্ত্বাবধানে</p>
+                </div>
+                {!caseData.assignedAssociateName && (
+                  <CheckCircle2 size={16} className="text-indigo-600" />
+                )}
+              </button>
+
+              {/* Option: All Chamber Members */}
+              {chamberAssociates.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const mobilesList = chamberAssociates.map(a => a.mobile).filter(Boolean).join(', ');
+                    const extraData: Partial<Case> = {
+                      assignedAssociateId: 'all_associates',
+                      assignedAssociateName: 'চেম্বার অ্যাসোসিয়েটস (All Members)',
+                      assignedAssociateMobile: mobilesList,
+                      assignedAssociateRole: 'Chamber Team',
+                    };
+                    caseData.assignedAssociateId = 'all_associates';
+                    caseData.assignedAssociateName = 'চেম্বার অ্যাসোসিয়েটস (All Members)';
+                    caseData.assignedAssociateMobile = mobilesList;
+                    caseData.assignedAssociateRole = 'Chamber Team';
+                    setAssignedAssociateInput('চেম্বার অ্যাসোসিয়েটস (All Members)');
+                    setAssignedAssociateMobileInput(mobilesList);
+                    setAssignedAssociateRoleInput('Chamber Team');
+                    onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraData);
+                    setShowAssignAssociateModal(false);
+                    setConfirmMsg('মামলাটিতে চেম্বারের সকল সদস্যকে সফলভাবে যুক্ত করা হয়েছে!');
+                    setShowConfirm(true);
+                    setTimeout(() => setShowConfirm(false), 3000);
+                  }}
+                  className={`w-full p-3 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                    caseData.assignedAssociateId === 'all_associates' ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
+                  }`}
+                >
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">👥 চেম্বার অ্যাসোসিয়েটস (All Members)</p>
+                    <p className="text-[10px] text-emerald-700 font-semibold">চেম্বারের সকল জুনিয়র ও অ্যাসোসিয়েটকে এক ক্লিকে যুক্ত করুন</p>
+                  </div>
+                  {caseData.assignedAssociateId === 'all_associates' && (
+                    <CheckCircle2 size={16} className="text-emerald-600" />
+                  )}
+                </button>
+              )}
+
+              {/* Chamber Associates list */}
+              {chamberAssociates.map((assoc) => {
+                const isSelected = caseData.assignedAssociateName === assoc.name;
+                return (
+                  <button
+                    key={assoc.id}
+                    type="button"
+                    onClick={() => {
+                      const extraData: Partial<Case> = {
+                        assignedAssociateId: assoc.id,
+                        assignedAssociateName: assoc.name,
+                        assignedAssociateMobile: assoc.mobile,
+                        assignedAssociateRole: assoc.role || 'Associate',
+                      };
+                      caseData.assignedAssociateId = assoc.id;
+                      caseData.assignedAssociateName = assoc.name;
+                      caseData.assignedAssociateMobile = assoc.mobile;
+                      caseData.assignedAssociateRole = assoc.role || 'Associate';
+                      setAssignedAssociateInput(assoc.name);
+                      setAssignedAssociateMobileInput(assoc.mobile);
+                      setAssignedAssociateRoleInput(assoc.role || 'Associate');
+                      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, extraData);
+                      setShowAssignAssociateModal(false);
+                      setConfirmMsg(`মামলার দায়িত্ব ${assoc.name}-কে দেওয়া হয়েছে!`);
+                      setShowConfirm(true);
+                      setTimeout(() => setShowConfirm(false), 3000);
+                    }}
+                    className={`w-full p-3 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                      isSelected ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">{assoc.name}</p>
+                      <p className="text-[10px] text-amber-700 font-semibold">{assoc.role || 'Associate'} • {assoc.mobile}</p>
+                    </div>
+                    {isSelected && (
+                      <CheckCircle2 size={16} className="text-amber-600" />
+                    )}
+                  </button>
+                );
+              })}
+
+              {chamberAssociates.length === 0 && (
+                <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-200 text-center">
+                  <p className="text-xs text-amber-800 font-bold">চেম্বারে এখনো কোনো সহযোগী আইনজীবী যোগ করা হয়নি।</p>
+                  <p className="text-[10px] text-amber-600 mt-1">ল’ চেম্বার ও অ্যাসোসিয়েট মেন্যু থেকে অ্যাসোসিয়েট যোগ করতে পারবেন।</p>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAssignAssociateModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+              >
+                বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

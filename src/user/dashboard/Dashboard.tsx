@@ -70,11 +70,12 @@ import {
   RefreshCw,
   Printer,
   Unlock,
-  Upload
+  Upload,
+  UserCheck
 } from 'lucide-react';
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
-import { doc, updateDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import Markdown from 'react-markdown';
 import { emergencyData } from '../../data/emergencyData';
 import CaseTimeline from '../cases/CaseTimeline';
@@ -89,7 +90,7 @@ import AdminPanel from '../../admin/AdminPanel';
 import LawyerDirectory from '../profile/LawyerDirectory';
 import ClerkDirectory from '../profile/ClerkDirectory';
 import ArchiveCaseHistory from '../cases/ArchiveCaseHistory';
-import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry } from '../../types';
+import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry, ChamberAssociate } from '../../types';
 import CaseForm from '../cases/CaseForm';
 import NotificationPanel from './NotificationPanel';
 import { Logo } from '../../components/Logo';
@@ -138,6 +139,8 @@ import { LegalDraftsView } from './views/LegalDraftsView';
 import { LibraryView } from './views/LibraryView';
 import { SubscriptionView } from './views/SubscriptionView';
 import { LotteryView } from './views/LotteryView';
+import { ChamberAssociatesView } from './views/ChamberAssociatesView';
+import { AssociatesAssignmentView } from './views/AssociatesAssignmentView';
 import { NotificationsView } from './views/NotificationsView';
 import SocialView from './views/SocialView';
 import SynchronizeView from './views/SynchronizeView';
@@ -843,8 +846,26 @@ export default function Dashboard({
   const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
+  const [chamberAssociates, setChamberAssociates] = useState<ChamberAssociate[]>(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) {
+        const cached = localStorage.getItem(`chamber_associates_${uid}`);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [chamberName, setChamberName] = useState(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) return localStorage.getItem(`chamber_name_${uid}`) || '';
+    } catch (e) {}
+    return '';
+  });
+  const [associateFilter, setAssociateFilter] = useState('all');
   const [cases, setCases] = useState<Case[]>(() => {
     try {
       const uid = initialFirebaseUid || auth.currentUser?.uid || null;
@@ -1223,33 +1244,73 @@ export default function Dashboard({
   const [selectedCaseForHistory, _setSelectedCaseForHistory] = useState<Case | null>(null);
   const [selectedCaseForCard, _setSelectedCaseForCard] = useState<Case | null>(null);
 
-  const isCaseOwnedByClient = (c: Case | null): boolean => {
-    if (!c) return true;
-    if (currentViewMode !== 'client') return true;
+  const normalizeMobile = (m?: string | null) => {
+    if (!m) return '';
+    let clean = m.trim();
+    if (clean.startsWith('+88')) clean = clean.substring(3);
+    if (clean.startsWith('88')) clean = clean.substring(2);
+    if (clean.startsWith('0')) clean = clean.substring(1);
+    return clean;
+  };
 
-    // Users always own/can access cases they personally created
+  const normalizedUserMobile = normalizeMobile(userMobile);
+
+  const isUserAssociatedWithCase = (c: Case) => {
+    // 1. Created by current user -> always visible
     const isCreatedByUser = c.user_id !== undefined && (
       String(c.user_id) === String(userId) || 
       (firebaseUid && String(c.user_id) === String(firebaseUid))
     );
     if (isCreatedByUser) return true;
 
-    if (!userMobile) return false;
-    
-    const norm = (m?: string | null) => {
-      if (!m) return '';
-      let clean = m.trim();
-      if (clean.startsWith('+88')) clean = clean.substring(3);
-      if (clean.startsWith('88')) clean = clean.substring(2);
-      if (clean.startsWith('0')) clean = clean.substring(1);
-      return clean;
+    // Helper to check mobile array or string field
+    const checkMobileMatch = (field?: string | string[] | null) => {
+      if (!field || !normalizedUserMobile) return false;
+      if (Array.isArray(field)) {
+        return field.some(m => normalizeMobile(m) === normalizedUserMobile);
+      }
+      if (typeof field === 'string' && (field.includes(',') || field.includes(' '))) {
+        const parts = field.split(/[\s,]+/);
+        return parts.some(m => normalizeMobile(m) === normalizedUserMobile);
+      }
+      return normalizeMobile(field) === normalizedUserMobile;
     };
-    
-    const normUser = norm(userMobile);
-    const pMobile = norm(c.petitionerMobile);
-    const rMobile = norm(c.respondentMobile);
-    return (pMobile !== '' && pMobile === normUser) || 
-           (rMobile !== '' && rMobile === normUser);
+
+    // 2. Check Mobile matches (Lawyers, Clerks, Parties, and Assigned Associates)
+    if (normalizedUserMobile) {
+      if (normalizeMobile(c.petitionerMobile) === normalizedUserMobile) return true;
+      if (normalizeMobile(c.respondentMobile) === normalizedUserMobile) return true;
+      if (checkMobileMatch(c.petitionerLawyerMobile)) return true;
+      if (checkMobileMatch(c.respondentLawyerMobile)) return true;
+      if (checkMobileMatch(c.petitionerClerkMobile)) return true;
+      if (checkMobileMatch(c.respondentClerkMobile)) return true;
+      if (checkMobileMatch(c.petitionerAsstLawyerMobile)) return true;
+      if (checkMobileMatch(c.respondentAsstLawyerMobile)) return true;
+      if (checkMobileMatch(c.petitionerAsstClerkMobile)) return true;
+      if (checkMobileMatch(c.respondentAsstClerkMobile)) return true;
+      if (checkMobileMatch(c.assignedAssociateMobile)) return true;
+      if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
+        if (c.respondentDetails.some(r => normalizeMobile(r.phone) === normalizedUserMobile)) return true;
+      }
+    }
+
+    // 3. Check synced_by_users list
+    if (c.synced_by_users && Array.isArray(c.synced_by_users)) {
+      if (c.synced_by_users.some(u => 
+        String(u) === String(userId) || 
+        (firebaseUid && String(u) === String(firebaseUid)) ||
+        (normalizedUserMobile && normalizeMobile(u) === normalizedUserMobile)
+      )) return true;
+    }
+
+    return false;
+  };
+
+  const isCaseOwnedByClient = (c: Case | null): boolean => {
+    if (!c) return true;
+    const isAdminUser = userType === 'admin' || userType === 'super_admin' || currentViewMode === 'admin';
+    if (isAdminUser) return true;
+    return isUserAssociatedWithCase(c);
   };
 
   const setSelectedCaseForTimeline = (c: Case | null) => {
@@ -1327,6 +1388,33 @@ export default function Dashboard({
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!firebaseUid) return;
+    const fetchUserData = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', firebaseUid));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (Array.isArray(data.chamberAssociates)) {
+            setChamberAssociates(data.chamberAssociates);
+            localStorage.setItem(`chamber_associates_${firebaseUid}`, JSON.stringify(data.chamberAssociates));
+          }
+          if (data.chamberName) {
+            setChamberName(data.chamberName);
+            localStorage.setItem(`chamber_name_${firebaseUid}`, data.chamberName);
+          }
+          if (data.chamberAddress) {
+            setChamberAddress(data.chamberAddress);
+            localStorage.setItem(`chamber_address_${firebaseUid}`, data.chamberAddress);
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching user chamber info:', e);
+      }
+    };
+    fetchUserData();
+  }, [firebaseUid]);
 
   useEffect(() => {
     localStorage.setItem('appCases', JSON.stringify(cases));
@@ -1789,92 +1877,6 @@ export default function Dashboard({
     fetchCases();
   }, [userId]);
 
-  const normalizeMobile = (m?: string | null) => {
-    if (!m) return '';
-    let clean = m.trim();
-    if (clean.startsWith('+88')) clean = clean.substring(3);
-    if (clean.startsWith('88')) clean = clean.substring(2);
-    if (clean.startsWith('0')) clean = clean.substring(1);
-    return clean;
-  };
-
-  const normalizedUserMobile = normalizeMobile(userMobile);
-
-  const normalizeName = (n?: string | null) => {
-    if (!n) return '';
-    return n.trim().toLowerCase();
-  };
-
-  const normalizedUserName = normalizeName(userName);
-
-  const isUserAssociatedWithCase = (c: Case) => {
-    // 1. Created by current user -> always visible
-    const isCreatedByUser = c.user_id !== undefined && (
-      String(c.user_id) === String(userId) || 
-      (firebaseUid && String(c.user_id) === String(firebaseUid))
-    );
-    if (isCreatedByUser) return true;
-
-    // Helper to check mobile array or string field
-    const checkMobileMatch = (field?: string | string[] | null) => {
-      if (!field || !normalizedUserMobile) return false;
-      if (Array.isArray(field)) {
-        return field.some(m => normalizeMobile(m) === normalizedUserMobile);
-      }
-      return normalizeMobile(field) === normalizedUserMobile;
-    };
-
-    // Helper to check name field match
-    const checkNameMatch = (field?: string | null) => {
-      if (!field || !normalizedUserName || normalizedUserName.length < 2) return false;
-      const cleanField = field.trim().toLowerCase();
-      return cleanField.includes(normalizedUserName) || normalizedUserName.includes(cleanField);
-    };
-
-    // 2. Check Mobile matches (Lawyers, Clerks, Parties)
-    if (normalizedUserMobile) {
-      if (normalizeMobile(c.petitionerMobile) === normalizedUserMobile) return true;
-      if (normalizeMobile(c.respondentMobile) === normalizedUserMobile) return true;
-      if (checkMobileMatch(c.petitionerLawyerMobile)) return true;
-      if (checkMobileMatch(c.respondentLawyerMobile)) return true;
-      if (checkMobileMatch(c.petitionerClerkMobile)) return true;
-      if (checkMobileMatch(c.respondentClerkMobile)) return true;
-      if (checkMobileMatch(c.petitionerAsstLawyerMobile)) return true;
-      if (checkMobileMatch(c.respondentAsstLawyerMobile)) return true;
-      if (checkMobileMatch(c.petitionerAsstClerkMobile)) return true;
-      if (checkMobileMatch(c.respondentAsstClerkMobile)) return true;
-      if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
-        if (c.respondentDetails.some(r => normalizeMobile(r.phone) === normalizedUserMobile)) return true;
-      }
-    }
-
-    // 3. Check Name matches (Lawyers, Clerks, Parties)
-    if (normalizedUserName) {
-      if (checkNameMatch(c.petitionerLawyer)) return true;
-      if (checkNameMatch(c.respondentLawyer)) return true;
-      if (checkNameMatch(c.petitionerClerk)) return true;
-      if (checkNameMatch(c.respondentClerk)) return true;
-      if (checkNameMatch(c.petitionerAsstClerk)) return true;
-      if (checkNameMatch(c.respondentAsstClerk)) return true;
-      if (checkNameMatch(c.petitioner)) return true;
-      if (checkNameMatch(c.respondent)) return true;
-      if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
-        if (c.respondentDetails.some(r => checkNameMatch(r.name))) return true;
-      }
-    }
-
-    // 4. Check synced_by_users list
-    if (c.synced_by_users && Array.isArray(c.synced_by_users)) {
-      if (c.synced_by_users.some(u => 
-        String(u) === String(userId) || 
-        (firebaseUid && String(u) === String(firebaseUid)) ||
-        (normalizedUserMobile && normalizeMobile(u) === normalizedUserMobile)
-      )) return true;
-    }
-
-    return false;
-  };
-
   const isAdminUser = userType === 'admin' || userType === 'super_admin' || currentViewMode === 'admin';
   const visibleCases = isAdminUser ? cases : cases.filter(isUserAssociatedWithCase);
   const ownCasesCount = visibleCases.filter(c => c.user_id && String(c.user_id) === String(firebaseUid || userId)).length;
@@ -1964,6 +1966,10 @@ export default function Dashboard({
           { id: 'monthly_report', label: t('monthly_report'), icon: Landmark, requiresSubscription: isSubRequired },
         ] : []),
         { id: 'cases', label: currentViewMode === 'client' ? t('my_cases') : t('cases'), icon: FileText },
+        ...(currentViewMode === 'lawyer' ? [
+          { id: 'chamber_associates', label: language === 'bn' ? 'ল’ চেম্বার ও অ্যাসোসিয়েট' : 'Chamber & Associates', icon: Briefcase, requiresSubscription: isSubRequired },
+          { id: 'associates_assignment', label: language === 'bn' ? 'অ্যাসোসিয়েট বণ্টন' : 'Associate Assignment', icon: UserCheck, requiresSubscription: isSubRequired },
+        ] : []),
         { id: 'calendar', label: t('calendar'), icon: Calendar },
         ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
           { id: 'invoices', label: t('invoices'), icon: CreditCard, requiresSubscription: isSubRequired },
@@ -2100,7 +2106,7 @@ export default function Dashboard({
       };
 
       const updatedHistory = [...(targetCase.history || []), newHistoryEntry];
-      await updateCase(caseId.toString(), { 
+      const updatedCaseFields = { 
         nextDate, 
         lastDate: lastDate || targetCase.lastDate,
         order, 
@@ -2111,8 +2117,88 @@ export default function Dashboard({
         history: updatedHistory,
         documents: [...(targetCase.documents || []), ...attachedDocs],
         ...(extraCaseData || {})
-      });
+      };
+      await updateCase(caseId.toString(), updatedCaseFields);
+      setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...updatedCaseFields } : c));
+      if (selectedCaseForCard && selectedCaseForCard.id === caseId) {
+        _setSelectedCaseForCard(prev => prev ? { ...prev, ...updatedCaseFields } : null);
+      }
     }
+  };
+
+  const handleAddAssociate = async (associate: Omit<ChamberAssociate, 'id' | 'createdAt'>) => {
+    const newAssoc: ChamberAssociate = {
+      ...associate,
+      id: `assoc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newAssoc, ...chamberAssociates];
+    setChamberAssociates(updated);
+    const docId = firebaseUid || String(userId);
+    try {
+      localStorage.setItem(`chamber_associates_${docId}`, JSON.stringify(updated));
+      await setDoc(doc(db, 'users', docId), { chamberAssociates: updated }, { merge: true });
+    } catch (e) {
+      console.error('Error saving associate:', e);
+    }
+  };
+
+  const handleUpdateAssociate = async (associate: ChamberAssociate) => {
+    const updated = chamberAssociates.map(a => a.id === associate.id ? associate : a);
+    setChamberAssociates(updated);
+    const docId = firebaseUid || String(userId);
+    try {
+      localStorage.setItem(`chamber_associates_${docId}`, JSON.stringify(updated));
+      await setDoc(doc(db, 'users', docId), { chamberAssociates: updated }, { merge: true });
+    } catch (e) {
+      console.error('Error updating associate:', e);
+    }
+  };
+
+  const handleDeleteAssociate = async (id: string) => {
+    const updated = chamberAssociates.filter(a => a.id !== id);
+    setChamberAssociates(updated);
+    const docId = firebaseUid || String(userId);
+    try {
+      localStorage.setItem(`chamber_associates_${docId}`, JSON.stringify(updated));
+      await setDoc(doc(db, 'users', docId), { chamberAssociates: updated }, { merge: true });
+    } catch (e) {
+      console.error('Error deleting associate:', e);
+    }
+  };
+
+  const handleUpdateChamberInfo = async (name: string, address: string) => {
+    setChamberName(name);
+    setChamberAddress(address);
+    const docId = firebaseUid || String(userId);
+    try {
+      localStorage.setItem(`chamber_name_${docId}`, name);
+      localStorage.setItem(`chamber_address_${docId}`, address);
+      await setDoc(doc(db, 'users', docId), { chamberName: name, chamberAddress: address }, { merge: true });
+    } catch (e) {
+      console.error('Error updating chamber info:', e);
+    }
+  };
+
+  const handleAssignCaseToAssociate = async (caseId: string | number, associate: ChamberAssociate | null) => {
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
+    const extraData: Partial<Case> = {
+      assignedAssociateId: associate?.id || '',
+      assignedAssociateName: associate?.name || '',
+      assignedAssociateMobile: associate?.mobile || '',
+      assignedAssociateRole: associate?.role || '',
+    };
+    await updateCase(caseId.toString(), extraData);
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...extraData } : c));
+    if (selectedCaseForCard && selectedCaseForCard.id === caseId) {
+      _setSelectedCaseForCard(prev => prev ? { ...prev, ...extraData } : null);
+    }
+  };
+
+  const handleViewAssociateCases = (associateName: string) => {
+    setActiveTab('cases');
+    setAssociateFilter(associateName);
   };
 
   const handleAddDocument = async (caseId: string | number, document: { name: string; type: string; url: string }) => {
@@ -3452,6 +3538,40 @@ export default function Dashboard({
                   userType={userType}
                   showAllCases={showAllCases}
                   onToggleShowAll={() => setShowAllCases(!showAllCases)}
+                  chamberAssociates={chamberAssociates}
+                  associateFilter={associateFilter}
+                  setAssociateFilter={setAssociateFilter}
+                />
+              )}
+              {activeTab === 'chamber_associates' && (
+                <ChamberAssociatesView
+                  associates={chamberAssociates}
+                  onAddAssociate={handleAddAssociate}
+                  onUpdateAssociate={handleUpdateAssociate}
+                  onDeleteAssociate={handleDeleteAssociate}
+                  cases={visibleCases}
+                  onAssignCase={handleAssignCaseToAssociate}
+                  onViewAssociateCases={handleViewAssociateCases}
+                  chamberName={chamberName}
+                  chamberAddress={chamberAddress}
+                  onUpdateChamberInfo={handleUpdateChamberInfo}
+                  leadLawyerName={userName}
+                  leadLawyerMobile={userMobile}
+                  leadLawyerPhoto={profilePic}
+                  barAssociation={barAssociation}
+                  language={language}
+                  t={t}
+                />
+              )}
+              {activeTab === 'associates_assignment' && (
+                <AssociatesAssignmentView
+                  associates={chamberAssociates}
+                  cases={visibleCases}
+                  onAssignCase={handleAssignCaseToAssociate}
+                  onAddAssociate={handleAddAssociate}
+                  onDeleteAssociate={handleDeleteAssociate}
+                  language={language}
+                  t={t}
                 />
               )}
               {activeTab === 'news' && (
@@ -5146,24 +5266,34 @@ export default function Dashboard({
                                                 </div>
                                               );
                                             } else if (isRes) {
-                                              const respondentsToShow = c.respondentDetails && c.respondentDetails.length > 0 
+                                              const respondentsToShow: Array<{ name: string; phone?: string; serial?: number | string }> = c.respondentDetails && c.respondentDetails.length > 0 
                                                 ? c.respondentDetails 
-                                                : [{ name: c.respondent || t('respondent'), phone: c.respondentMobile }];
+                                                : [{ name: c.respondent || t('respondent'), phone: c.respondentMobile, serial: 1 }];
                                                 
                                               return (
                                                 <div className="flex flex-col gap-1 max-w-[150px]">
-                                                  {respondentsToShow.map((resp, rIdx) => (
-                                                    <div key={rIdx} className="flex flex-col gap-0.5 border-b border-dashed border-slate-100 last:border-0 pb-1 last:pb-0">
-                                                      <span className="font-bold text-rose-600 text-xs truncate" title={resp.name}>
-                                                        {resp.name}
-                                                      </span>
-                                                      {resp.phone && (
-                                                        <span className="text-[10px] text-slate-500 font-medium font-sans">
-                                                          {resp.phone}
+                                                  {respondentsToShow.map((resp, rIdx) => {
+                                                    const serialNumber = resp.serial !== undefined && resp.serial !== null && String(resp.serial).trim() !== ''
+                                                      ? String(resp.serial).trim()
+                                                      : (respondentsToShow.length > 1 ? String(rIdx + 1) : '');
+                                                    return (
+                                                      <div key={rIdx} className="flex flex-col gap-0.5 border-b border-dashed border-slate-100 last:border-0 pb-1 last:pb-0">
+                                                        <span className="font-bold text-rose-600 text-xs truncate flex items-center gap-1" title={resp.name}>
+                                                          {serialNumber && (
+                                                            <span className="text-[10px] bg-rose-50 text-rose-600 px-1 py-0.2 rounded font-sans shrink-0 border border-rose-100">
+                                                              {serialNumber} নং
+                                                            </span>
+                                                          )}
+                                                          <span className="truncate">{resp.name}</span>
                                                         </span>
-                                                      )}
-                                                    </div>
-                                                  ))}
+                                                        {resp.phone && (
+                                                          <span className="text-[10px] text-slate-500 font-medium font-sans">
+                                                            {resp.phone}
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })}
                                                 </div>
                                               );
                                             } else {
@@ -5194,11 +5324,11 @@ export default function Dashboard({
                                                 </a>
                                               ) : '-';
                                             } else if (isRes) {
-                                              const respondentsToShow = c.respondentDetails && c.respondentDetails.length > 0 
+                                              const respondentsToShow: Array<{ name: string; phone?: string; serial?: number | string }> = c.respondentDetails && c.respondentDetails.length > 0 
                                                 ? c.respondentDetails 
-                                                : [{ name: c.respondent || t('respondent'), phone: c.respondentMobile }];
+                                                : [{ name: c.respondent || t('respondent'), phone: c.respondentMobile, serial: 1 }];
                                                 
-                                              const withPhones = respondentsToShow.filter(r => r.phone);
+                                              const withPhones = respondentsToShow.filter((r): r is { name: string; phone: string; serial?: number | string } => Boolean(r.phone));
                                               if (withPhones.length === 0) return '-';
                                               
                                               if (withPhones.length === 1) {
@@ -5238,26 +5368,36 @@ export default function Dashboard({
                                                           বিবাদী/আসামী তালিকা
                                                         </div>
                                                         <div className="space-y-1.5 max-h-[180px] overflow-y-auto">
-                                                          {withPhones.map((resp, rIdx) => (
-                                                            <a 
-                                                              key={rIdx} 
-                                                              href={`tel:${resp.phone}`}
-                                                              onClick={() => setActiveCallDropdownCaseId(null)}
-                                                              className="flex items-center justify-between p-2 rounded-xl hover:bg-rose-50/50 transition-colors group"
-                                                            >
-                                                              <div className="flex flex-col min-w-0 pr-2">
-                                                                <span className="text-xs font-bold text-slate-700 group-hover:text-rose-600 transition-colors truncate">
-                                                                  {resp.name}
-                                                                </span>
-                                                                <span className="text-[10px] text-slate-400 font-sans font-medium">
-                                                                  {resp.phone}
-                                                                </span>
-                                                              </div>
-                                                              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm">
-                                                                <PhoneCall size={12} />
-                                                              </div>
-                                                            </a>
-                                                          ))}
+                                                          {withPhones.map((resp, rIdx) => {
+                                                            const respSerial = resp.serial !== undefined && resp.serial !== null && String(resp.serial).trim() !== ''
+                                                              ? String(resp.serial).trim()
+                                                              : String(rIdx + 1);
+                                                            return (
+                                                              <a 
+                                                                key={rIdx} 
+                                                                href={`tel:${resp.phone}`}
+                                                                onClick={() => setActiveCallDropdownCaseId(null)}
+                                                                className="flex items-center justify-between p-2 rounded-xl hover:bg-rose-50/50 transition-colors group"
+                                                              >
+                                                                <div className="flex items-center gap-2 min-w-0 pr-2">
+                                                                  <span className="min-w-5 px-1 h-5 rounded-md bg-rose-50 text-rose-600 border border-rose-100 font-bold text-[10px] flex items-center justify-center shrink-0">
+                                                                    {respSerial}
+                                                                  </span>
+                                                                  <div className="flex flex-col min-w-0">
+                                                                    <span className="text-xs font-bold text-slate-700 group-hover:text-rose-600 transition-colors truncate">
+                                                                      {resp.name}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-slate-400 font-sans font-medium">
+                                                                      {resp.phone}
+                                                                    </span>
+                                                                  </div>
+                                                                </div>
+                                                                <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm shrink-0">
+                                                                  <PhoneCall size={12} />
+                                                                </div>
+                                                              </a>
+                                                            );
+                                                          })}
                                                         </div>
                                                       </div>
                                                     </>
@@ -5785,6 +5925,7 @@ export default function Dashboard({
             userType={currentViewMode}
             userName={userName}
             userMobile={userMobile}
+            chamberAssociates={chamberAssociates}
           />
         )}
       </AnimatePresence>
@@ -5880,6 +6021,7 @@ export default function Dashboard({
                   userType={currentViewMode}
                   userMobile={userMobile || ''}
                   language={language}
+                  chamberAssociates={chamberAssociates}
                 />
               </div>
             </motion.div>

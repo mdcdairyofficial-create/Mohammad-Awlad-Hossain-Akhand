@@ -13,7 +13,8 @@ import {
   X,
   ArrowLeft,
   ArrowRight,
-  Video
+  Video,
+  Phone
 } from 'lucide-react';
 import { Case } from '../../../types';
 
@@ -134,7 +135,40 @@ const BookView = ({
                               <div className="flex items-start justify-between mb-4">
                                 <div>
                                   <h6 className="font-bold text-slate-900 text-lg">{c.caseNumber}</h6>
-                                  <p className="text-xs text-slate-500 font-medium">{c.petitioner} {t('vs')} {c.respondent}</p>
+                                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-1 font-medium">
+                                    <span className="font-bold text-slate-800">{c.petitioner}</span>
+                                    {c.petitionerMobile && (
+                                      <a 
+                                        href={`tel:${c.petitionerMobile}`} 
+                                        className="w-5 h-5 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_2px_5px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
+                                        title={`কল করুন (বাদী): ${c.petitionerMobile}`}
+                                      >
+                                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
+                                        <Phone size={8} className="text-white fill-white relative z-10" />
+                                      </a>
+                                    )}
+                                    <span className="text-slate-300 font-black px-1">VS</span>
+                                    <span className="font-bold text-slate-800">
+                                      {c.respondentDetails && c.respondentDetails.length > 0 ? (
+                                        `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
+                                      ) : (
+                                        c.respondent ? (
+                                          c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                                            `${c.respondent.split(',')[0].trim()} গং` : c.respondent
+                                        ) : ''
+                                      )}
+                                    </span>
+                                    {c.respondentMobile && (
+                                      <a 
+                                        href={`tel:${c.respondentMobile}`} 
+                                        className="w-5 h-5 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_2px_5px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
+                                        title={`কল করুন (বিবাদী): ${c.respondentMobile}`}
+                                      >
+                                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
+                                        <Phone size={8} className="text-white fill-white relative z-10" />
+                                      </a>
+                                    )}
+                                  </div>
                                 </div>
                                 <button 
                                   onClick={() => onViewCard(c)}
@@ -511,9 +545,42 @@ export const CalendarView = ({
                         <MapPin size={14} className="text-slate-400" />
                         <span className="truncate">{c.courtName}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                        <FileText size={14} className="text-slate-400" />
-                        <span className="truncate">{c.petitioner} vs {c.respondent}</span>
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
+                        <FileText size={14} className="text-slate-400 shrink-0" />
+                        <span className="font-semibold text-slate-700">{c.petitioner}</span>
+                        {c.petitionerMobile && (
+                          <a 
+                            href={`tel:${c.petitionerMobile}`} 
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_1.5px_4px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
+                            title={`কল করুন (বাদী): ${c.petitionerMobile}`}
+                          >
+                            <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
+                            <Phone size={7} className="text-white fill-white relative z-10" />
+                          </a>
+                        )}
+                        <span className="text-slate-300 font-bold">vs</span>
+                        <span className="font-semibold text-slate-700">
+                          {c.respondentDetails && c.respondentDetails.length > 0 ? (
+                            `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
+                          ) : (
+                            c.respondent ? (
+                              c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                                `${c.respondent.split(',')[0].trim()} গং` : c.respondent
+                            ) : ''
+                          )}
+                        </span>
+                        {c.respondentMobile && (
+                          <a 
+                            href={`tel:${c.respondentMobile}`} 
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_1.5px_4px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
+                            title={`কল করুন (বিবাদী): ${c.respondentMobile}`}
+                          >
+                            <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
+                            <Phone size={7} className="text-white fill-white relative z-10" />
+                          </a>
+                        )}
                       </div>
                     </div>
                   </motion.div>

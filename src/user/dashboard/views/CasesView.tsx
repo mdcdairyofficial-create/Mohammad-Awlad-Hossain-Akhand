@@ -16,9 +16,10 @@ import {
   Trash2,
   Edit2,
   History,
-  CreditCard
+  CreditCard,
+  Briefcase
 } from 'lucide-react';
-import { Case } from '../../../types';
+import { Case, ChamberAssociate } from '../../../types';
 import { formatCourtNameWithNo } from '../../../constants';
 import { AdBanner } from '../AdBanner';
 
@@ -46,6 +47,9 @@ interface CasesViewProps {
   showAllCases?: boolean;
   onToggleShowAll?: () => void;
   totalCasesCount?: number;
+  chamberAssociates?: ChamberAssociate[];
+  associateFilter?: string;
+  setAssociateFilter?: (filter: string) => void;
 }
 
 export const CasesView = ({
@@ -71,7 +75,10 @@ export const CasesView = ({
   isPremiumForAds = false,
   userType = 'lawyer',
   showAllCases = false,
-  onToggleShowAll
+  onToggleShowAll,
+  chamberAssociates = [],
+  associateFilter = 'all',
+  setAssociateFilter
 }: CasesViewProps) => {
   const [selectedDistrict, setSelectedDistrict] = React.useState('all');
   const isClient = userType === 'client';
@@ -80,13 +87,19 @@ export const CasesView = ({
       c.caseNumber.toLowerCase().includes(caseSearchQuery.toLowerCase()) ||
       c.courtName.toLowerCase().includes(caseSearchQuery.toLowerCase()) ||
       c.petitioner.toLowerCase().includes(caseSearchQuery.toLowerCase()) ||
-      c.respondent.toLowerCase().includes(caseSearchQuery.toLowerCase());
+      c.respondent.toLowerCase().includes(caseSearchQuery.toLowerCase()) ||
+      (c.assignedAssociateName && c.assignedAssociateName.toLowerCase().includes(caseSearchQuery.toLowerCase()));
     
     const matchesType = caseFilter === 'all' || c.caseType === caseFilter;
     const matchesStatus = caseStatusFilter === 'all' || c.status === caseStatusFilter;
     const matchesDistrict = selectedDistrict === 'all' || c.district === selectedDistrict;
+    const matchesAssociate = !associateFilter || associateFilter === 'all'
+      ? true
+      : associateFilter === 'unassigned'
+        ? !c.assignedAssociateName
+        : c.assignedAssociateName?.toLowerCase() === associateFilter.toLowerCase();
     
-    return matchesSearch && matchesType && matchesStatus && matchesDistrict;
+    return matchesSearch && matchesType && matchesStatus && matchesDistrict && matchesAssociate;
   });
 
   return (
@@ -177,6 +190,26 @@ export const CasesView = ({
               <option value="Other">Other</option>
             </select>
           </div>
+
+          {/* Chamber Associate Filter */}
+          {!isClient && chamberAssociates && chamberAssociates.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50/80 rounded-xl border border-amber-200 shadow-2xs">
+              <Briefcase size={16} className="text-amber-600" />
+              <select 
+                value={associateFilter}
+                onChange={(e) => setAssociateFilter?.(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm font-bold text-amber-900"
+              >
+                <option value="all">{language === 'bn' ? 'সকল চেম্বার মামলা' : 'All Chamber Cases'}</option>
+                <option value="unassigned">{language === 'bn' ? '👑 সরাসরি চেম্বার প্রধানের দায়িত্বে' : 'Lead / Unassigned'}</option>
+                {chamberAssociates.map(a => (
+                  <option key={a.id} value={a.name}>
+                    ⚖️ {a.name} ({a.role || 'Associate'})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
             <CheckCircle2 size={16} className="text-slate-400" />
             <select 
@@ -285,11 +318,34 @@ export const CasesView = ({
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{c.petitioner}</span>
                           <span className="text-[10px] font-black text-slate-300 italic">vs</span>
-                          <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{c.respondent}</span>
+                          <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">
+                            {c.respondentDetails && c.respondentDetails.length > 0 ? (
+                              `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
+                            ) : (
+                              c.respondent ? (
+                                c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                                  `${c.respondent.split(',')[0].trim()} গং` : c.respondent
+                              ) : ''
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>
                   </div>
+
+                  {/* Assigned Associate Badge in Grid */}
+                  {c.assignedAssociateName && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-amber-900 text-xs font-bold shadow-2xs">
+                      <Briefcase size={14} className="text-amber-600 shrink-0" />
+                      <span className="truncate">
+                        {language === 'bn' ? 'দায়িত্বে: ' : 'Assigned: '}
+                        <span className="font-black text-amber-950">{c.assignedAssociateName}</span>
+                        {c.assignedAssociateRole && (
+                          <span className="text-[10px] text-amber-700 font-medium ml-1">({c.assignedAssociateRole})</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Quick Actions */}
                   <div className="pt-6 border-t border-slate-50 flex items-center justify-between gap-3">
@@ -339,7 +395,15 @@ export const CasesView = ({
                       </div>
                       <div>
                         <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">{c.caseType}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">{c.caseType}</p>
+                          {c.assignedAssociateName && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200">
+                              <Briefcase size={10} className="text-amber-600" />
+                              {c.assignedAssociateName}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </td>
