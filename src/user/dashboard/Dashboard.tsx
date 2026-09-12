@@ -1948,8 +1948,8 @@ export default function Dashboard({
 
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
 
-  const is20CasesReached = visibleCases.length >= 20;
-  const isSubRequired = is20CasesReached && !isSubscribed && !['admin', 'super_admin', 'country_manager'].includes(userType);
+  const is20CasesReached = false;
+  const isSubRequired = false;
 
   const menuGroups = currentViewMode === 'advertiser' ? [
     {
@@ -2034,7 +2034,7 @@ export default function Dashboard({
       items: [
         { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        ...((currentViewMode !== 'client' && (visibleCases.length >= 20 || isSubscribed || userType === 'admin' || userType === 'super_admin')) ? [
+        ...(currentViewMode !== 'client' ? [
           { id: 'subscription', label: t('subscription'), icon: CreditCard },
         ] : []),
         ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
@@ -6003,6 +6003,7 @@ export default function Dashboard({
             userName={userName}
             userMobile={userMobile}
             chamberAssociates={chamberAssociates}
+            isSubscribed={isSubscribed || userType === 'admin' || userType === 'super_admin'}
           />
         )}
       </AnimatePresence>

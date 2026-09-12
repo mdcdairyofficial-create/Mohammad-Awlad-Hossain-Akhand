@@ -23,6 +23,7 @@ interface CaseFormProps {
   onJoin?: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string, addedByMobile?: string, addedByName?: string, addedByRole?: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string, authorityHolder?: 'lawyer' | 'clerk') => void;
   initialMode?: 'detailed' | 'quick' | 'join';
   chamberAssociates?: ChamberAssociate[];
+  isSubscribed?: boolean;
 }
 
 interface PartyRow {
@@ -49,7 +50,8 @@ export default function CaseForm({
   existingCases = [],
   onJoin,
   initialMode = 'detailed',
-  chamberAssociates = []
+  chamberAssociates = [],
+  isSubscribed = false
 }: CaseFormProps) {
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
   const [mode, setMode] = useState<'detailed' | 'quick' | 'join'>(initialMode);
@@ -371,6 +373,14 @@ export default function CaseForm({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!isSubscribed) {
+      alert(language === 'bn' 
+        ? 'দলিল বা ওকালতনামা আপলোড করতে প্রিমিয়াম সাবস্ক্রিপশন প্রয়োজন। দয়া করে প্রোফাইল থেকে সাবস্ক্রাইব করুন।' 
+        : 'Premium subscription is required to upload files or documents. Please subscribe from your profile.');
+      e.target.value = ''; // Reset
+      return;
+    }
 
     setIsUploading(true);
     try {
@@ -1542,7 +1552,15 @@ export default function CaseForm({
                       </button>
                       <button 
                         type="button"
-                        onClick={() => setShowScannerModal(true)}
+                        onClick={() => {
+                          if (!isSubscribed) {
+                            alert(language === 'bn' 
+                              ? 'দলিল বা ওকালতনামা স্ক্যান করতে প্রিমিয়াম সাবস্ক্রিপশন প্রয়োজন। দয়া করে প্রোফাইল থেকে সাবস্ক্রাইব করুন।' 
+                              : 'Premium subscription is required to scan documents. Please subscribe from your profile.');
+                            return;
+                          }
+                          setShowScannerModal(true);
+                        }}
                         className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-2xl text-xs sm:text-sm font-bold hover:brightness-110 transition-all shadow-md shadow-indigo-100"
                       >
                         <Camera size={18} />
