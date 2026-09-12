@@ -141,6 +141,7 @@ import { SubscriptionView } from './views/SubscriptionView';
 import { LotteryView } from './views/LotteryView';
 import { ChamberAssociatesView } from './views/ChamberAssociatesView';
 import { AssociatesAssignmentView } from './views/AssociatesAssignmentView';
+import { ClerkAssistantsAssignmentView } from './views/ClerkAssistantsAssignmentView';
 import { NotificationsView } from './views/NotificationsView';
 import SocialView from './views/SocialView';
 import SynchronizeView from './views/SynchronizeView';
@@ -846,13 +847,23 @@ export default function Dashboard({
   const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'clerk_assistants_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
   const [chamberAssociates, setChamberAssociates] = useState<ChamberAssociate[]>(() => {
     try {
       const uid = initialFirebaseUid || auth.currentUser?.uid || null;
       if (uid) {
         const cached = localStorage.getItem(`chamber_associates_${uid}`);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [clerkAssistants, setClerkAssistants] = useState<ChamberAssociate[]>(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) {
+        const cached = localStorage.getItem(`clerk_assistants_${uid}`);
         if (cached) return JSON.parse(cached);
       }
     } catch (e) {}
@@ -1257,9 +1268,9 @@ export default function Dashboard({
 
   const isUserAssociatedWithCase = (c: Case) => {
     // 1. Created by current user -> always visible
-    const isCreatedByUser = c.user_id !== undefined && (
-      String(c.user_id) === String(userId) || 
-      (firebaseUid && String(c.user_id) === String(firebaseUid))
+    const isCreatedByUser = (c.user_id !== undefined && c.user_id !== null && c.user_id !== '') && (
+      (userId !== undefined && userId !== null && String(userId) !== '' && String(c.user_id) === String(userId)) || 
+      (firebaseUid !== undefined && firebaseUid !== null && firebaseUid !== '' && String(c.user_id) === String(firebaseUid))
     );
     if (isCreatedByUser) return true;
 
@@ -1267,19 +1278,19 @@ export default function Dashboard({
     const checkMobileMatch = (field?: string | string[] | null) => {
       if (!field || !normalizedUserMobile) return false;
       if (Array.isArray(field)) {
-        return field.some(m => normalizeMobile(m) === normalizedUserMobile);
+        return field.some(m => m && normalizeMobile(m) === normalizedUserMobile);
       }
       if (typeof field === 'string' && (field.includes(',') || field.includes(' '))) {
         const parts = field.split(/[\s,]+/);
-        return parts.some(m => normalizeMobile(m) === normalizedUserMobile);
+        return parts.some(m => m && normalizeMobile(m) === normalizedUserMobile);
       }
       return normalizeMobile(field) === normalizedUserMobile;
     };
 
     // 2. Check Mobile matches (Lawyers, Clerks, Parties, and Assigned Associates)
     if (normalizedUserMobile) {
-      if (normalizeMobile(c.petitionerMobile) === normalizedUserMobile) return true;
-      if (normalizeMobile(c.respondentMobile) === normalizedUserMobile) return true;
+      if (c.petitionerMobile && normalizeMobile(c.petitionerMobile) === normalizedUserMobile) return true;
+      if (c.respondentMobile && normalizeMobile(c.respondentMobile) === normalizedUserMobile) return true;
       if (checkMobileMatch(c.petitionerLawyerMobile)) return true;
       if (checkMobileMatch(c.respondentLawyerMobile)) return true;
       if (checkMobileMatch(c.petitionerClerkMobile)) return true;
@@ -1290,17 +1301,22 @@ export default function Dashboard({
       if (checkMobileMatch(c.respondentAsstClerkMobile)) return true;
       if (checkMobileMatch(c.assignedAssociateMobile)) return true;
       if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
-        if (c.respondentDetails.some(r => normalizeMobile(r.phone) === normalizedUserMobile)) return true;
+        if (c.respondentDetails.some(r => r && r.phone && normalizeMobile(r.phone) === normalizedUserMobile)) return true;
       }
     }
 
     // 3. Check synced_by_users list
     if (c.synced_by_users && Array.isArray(c.synced_by_users)) {
-      if (c.synced_by_users.some(u => 
-        String(u) === String(userId) || 
-        (firebaseUid && String(u) === String(firebaseUid)) ||
-        (normalizedUserMobile && normalizeMobile(u) === normalizedUserMobile)
-      )) return true;
+      if (c.synced_by_users.some(u => {
+        if (u === undefined || u === null || u === '') return false;
+        
+        const uStr = String(u);
+        const matchesUserId = userId !== undefined && userId !== null && String(userId) !== '' && uStr === String(userId);
+        const matchesFirebaseUid = firebaseUid !== undefined && firebaseUid !== null && firebaseUid !== '' && uStr === String(firebaseUid);
+        const matchesMobile = normalizedUserMobile && normalizeMobile(uStr) === normalizedUserMobile;
+        
+        return matchesUserId || matchesFirebaseUid || matchesMobile;
+      })) return true;
     }
 
     return false;
@@ -1308,7 +1324,7 @@ export default function Dashboard({
 
   const isCaseOwnedByClient = (c: Case | null): boolean => {
     if (!c) return true;
-    const isAdminUser = userType === 'admin' || userType === 'super_admin' || currentViewMode === 'admin';
+    const isAdminUser = currentViewMode === 'admin' || currentViewMode === 'super_admin' || currentViewMode === 'country_manager' || currentViewMode === 'bar_admin';
     if (isAdminUser) return true;
     return isUserAssociatedWithCase(c);
   };
@@ -1399,6 +1415,10 @@ export default function Dashboard({
           if (Array.isArray(data.chamberAssociates)) {
             setChamberAssociates(data.chamberAssociates);
             localStorage.setItem(`chamber_associates_${firebaseUid}`, JSON.stringify(data.chamberAssociates));
+          }
+          if (Array.isArray(data.clerkAssistants)) {
+            setClerkAssistants(data.clerkAssistants);
+            localStorage.setItem(`clerk_assistants_${firebaseUid}`, JSON.stringify(data.clerkAssistants));
           }
           if (data.chamberName) {
             setChamberName(data.chamberName);
@@ -1877,7 +1897,7 @@ export default function Dashboard({
     fetchCases();
   }, [userId]);
 
-  const isAdminUser = userType === 'admin' || userType === 'super_admin' || currentViewMode === 'admin';
+  const isAdminUser = currentViewMode === 'admin' || currentViewMode === 'super_admin' || currentViewMode === 'country_manager' || currentViewMode === 'bar_admin';
   const visibleCases = isAdminUser ? cases : cases.filter(isUserAssociatedWithCase);
   const ownCasesCount = visibleCases.filter(c => c.user_id && String(c.user_id) === String(firebaseUid || userId)).length;
   const assignedCasesCount = visibleCases.length - ownCasesCount;
@@ -1928,7 +1948,7 @@ export default function Dashboard({
 
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
 
-  const is20CasesReached = cases.length >= 20;
+  const is20CasesReached = visibleCases.length >= 20;
   const isSubRequired = is20CasesReached && !isSubscribed && !['admin', 'super_admin', 'country_manager'].includes(userType);
 
   const menuGroups = currentViewMode === 'advertiser' ? [
@@ -1964,6 +1984,7 @@ export default function Dashboard({
           { id: 'performance', label: t('performance_nav'), icon: Award, requiresSubscription: isSubRequired },
           { id: 'cause_list', label: t('cause_list'), icon: FileText, requiresSubscription: isSubRequired },
           { id: 'monthly_report', label: t('monthly_report'), icon: Landmark, requiresSubscription: isSubRequired },
+          { id: 'clerk_assistants_assignment', label: language === 'bn' ? 'সহকারী মুহুরী বণ্টন' : 'Assistant Clerks', icon: UserCheck, requiresSubscription: isSubRequired },
         ] : []),
         { id: 'cases', label: currentViewMode === 'client' ? t('my_cases') : t('cases'), icon: FileText },
         ...(currentViewMode === 'lawyer' ? [
@@ -2013,7 +2034,7 @@ export default function Dashboard({
       items: [
         { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        ...((currentViewMode !== 'client' && (cases.length >= 20 || isSubscribed || userType === 'admin' || userType === 'super_admin')) ? [
+        ...((currentViewMode !== 'client' && (visibleCases.length >= 20 || isSubscribed || userType === 'admin' || userType === 'super_admin')) ? [
           { id: 'subscription', label: t('subscription'), icon: CreditCard },
         ] : []),
         ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
@@ -2164,6 +2185,51 @@ export default function Dashboard({
       await setDoc(doc(db, 'users', docId), { chamberAssociates: updated }, { merge: true });
     } catch (e) {
       console.error('Error deleting associate:', e);
+    }
+  };
+
+  const handleAddClerkAssistant = async (assistant: Omit<ChamberAssociate, 'id' | 'createdAt'>) => {
+    const newAsst: ChamberAssociate = {
+      ...assistant,
+      id: `clerk_asst_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      createdAt: new Date().toISOString()
+    };
+    const updated = [newAsst, ...clerkAssistants];
+    setClerkAssistants(updated);
+    const docId = firebaseUid || String(userId);
+    try {
+      localStorage.setItem(`clerk_assistants_${docId}`, JSON.stringify(updated));
+      await setDoc(doc(db, 'users', docId), { clerkAssistants: updated }, { merge: true });
+    } catch (e) {
+      console.error('Error saving clerk assistant:', e);
+    }
+  };
+
+  const handleDeleteClerkAssistant = async (id: string) => {
+    const updated = clerkAssistants.filter(a => a.id !== id);
+    setClerkAssistants(updated);
+    const docId = firebaseUid || String(userId);
+    try {
+      localStorage.setItem(`clerk_assistants_${docId}`, JSON.stringify(updated));
+      await setDoc(doc(db, 'users', docId), { clerkAssistants: updated }, { merge: true });
+    } catch (e) {
+      console.error('Error deleting clerk assistant:', e);
+    }
+  };
+
+  const handleAssignCaseToClerkAssistant = async (caseId: string | number, assistant: ChamberAssociate | null) => {
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
+    const extraData: Partial<Case> = {
+      assignedClerkAssistantId: assistant?.id || '',
+      assignedClerkAssistantName: assistant?.name || '',
+      assignedClerkAssistantMobile: assistant?.mobile || '',
+      assignedClerkAssistantRole: assistant?.role || '',
+    };
+    await updateCase(caseId.toString(), extraData);
+    setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...extraData } : c));
+    if (selectedCaseForCard && selectedCaseForCard.id === caseId) {
+      _setSelectedCaseForCard(prev => prev ? { ...prev, ...extraData } : null);
     }
   };
 
@@ -3570,6 +3636,17 @@ export default function Dashboard({
                   onAssignCase={handleAssignCaseToAssociate}
                   onAddAssociate={handleAddAssociate}
                   onDeleteAssociate={handleDeleteAssociate}
+                  language={language}
+                  t={t}
+                />
+              )}
+              {activeTab === 'clerk_assistants_assignment' && (
+                <ClerkAssistantsAssignmentView
+                  assistants={clerkAssistants}
+                  cases={visibleCases}
+                  onAssignCase={handleAssignCaseToClerkAssistant}
+                  onAddAssistant={handleAddClerkAssistant}
+                  onDeleteAssistant={handleDeleteClerkAssistant}
                   language={language}
                   t={t}
                 />

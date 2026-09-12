@@ -70,6 +70,10 @@ export interface Case {
   assignedAssociateName?: string;
   assignedAssociateMobile?: string;
   assignedAssociateRole?: string;
+  assignedClerkAssistantId?: string;
+  assignedClerkAssistantName?: string;
+  assignedClerkAssistantMobile?: string;
+  assignedClerkAssistantRole?: string;
   caseNotes?: CaseNote[];
 }
 
