@@ -291,6 +291,9 @@ export const CaseCardPro = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (caseData.nextDate && caseData.nextDate !== currentStr && !lastDate) {
+                            setLastDate(caseData.nextDate);
+                          }
                           setNextDate(currentStr);
                           setShowCalendar(false);
                         }}
@@ -314,6 +317,9 @@ export const CaseCardPro = ({
         <button 
           onClick={(e) => {
             e.stopPropagation();
+            if (caseData.nextDate && caseData.nextDate !== todayStr && !lastDate) {
+              setLastDate(caseData.nextDate);
+            }
             setNextDate(todayStr);
             setShowCalendar(false);
           }}
@@ -328,7 +334,8 @@ export const CaseCardPro = ({
   const handleAction = (msg: string, update: boolean = false) => {
     if (update) {
       const finalStep = step === 'অন্যান্য' ? (customStep || 'অন্যান্য') : step;
-      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, lastDate, { status: finalStep });
+      const computedLastDate = lastDate || (caseData.nextDate && caseData.nextDate !== nextDate ? caseData.nextDate : caseData.lastDate);
+      onUpdate(caseData.id, nextDate, order, side, clerkCanCall, lawyerCanCall, visibility, attachedDocs, computedLastDate, { status: finalStep });
       setAttachedDocs([]);
     }
     setConfirmMsg(msg);

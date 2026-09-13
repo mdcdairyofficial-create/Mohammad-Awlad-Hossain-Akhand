@@ -16,7 +16,7 @@ import {
   Video,
   Phone
 } from 'lucide-react';
-import { Case } from '../../../types';
+import { Case, isCaseOnDate } from '../../../types';
 
 interface CalendarViewProps {
   currentMonth: Date;
@@ -60,7 +60,9 @@ const BookView = ({
   
   const getGroupedByStep = (courtCases: Case[]) => {
     return courtCases.reduce((acc, c) => {
-      const step = steps.find(s => c.order?.includes(s)) || "অন্যান্য";
+      const histForDate = c.history?.find(h => h.date === date);
+      const stepText = histForDate?.order || c.order || c.status;
+      const step = steps.find(s => stepText?.includes(s)) || "অন্যান্য";
       if (!acc[step]) acc[step] = [];
       acc[step].push(c);
       return acc;
@@ -130,12 +132,29 @@ const BookView = ({
                            t('other_label')}
                         </h5>
                         <div className="space-y-4">
-                          {stepCases.map(c => (
+                          {stepCases.map(c => {
+                            const isPastForCase = c.nextDate !== date;
+                            const histEntry = c.history?.find(h => h.date === date);
+                            const displayOrder = histEntry?.order || c.order;
+                            return (
                             <div key={c.id} className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-                              <div className="flex items-start justify-between mb-4">
+                              <div className="flex items-start justify-between mb-3">
                                 <div>
-                                  <h6 className="font-bold text-slate-900 text-lg">{c.caseNumber}</h6>
-                                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-1 font-medium">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h6 className="font-bold text-slate-900 text-lg">{c.caseNumber}</h6>
+                                    {isPastForCase ? (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full inline-flex items-center gap-1">
+                                        <span>বিগত ধার্য তারিখ</span>
+                                        <span className="text-amber-400">•</span>
+                                        <span className="text-indigo-700 font-semibold">পরবর্তী: {c.nextDate || 'নির্ধারিত নয়'}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full inline-flex items-center gap-1">
+                                        <span>আগামী ধার্য তারিখ</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-1.5 font-medium">
                                     <span className="font-bold text-slate-800">{c.petitioner}</span>
                                     {c.petitionerMobile && (
                                       <a 
@@ -177,6 +196,13 @@ const BookView = ({
                                   <CreditCard size={18} />
                                 </button>
                               </div>
+
+                              {displayOrder && (
+                                <div className="text-xs text-slate-700 bg-slate-50 border border-slate-100 rounded-xl p-2.5 my-2">
+                                  <span className="font-bold text-indigo-900 mr-1.5">আদেশ/কার্যবিবরণী:</span>
+                                  <span>{displayOrder}</span>
+                                </div>
+                              )}
                               
                               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-50">
                                 <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-all">
@@ -187,7 +213,8 @@ const BookView = ({
                                 </button>
                               </div>
                             </div>
-                          ))}
+                          );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -259,10 +286,10 @@ export const CalendarView = ({
 
   const getCasesForDate = (day: number) => {
     const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return cases.filter(c => c.nextDate === dateStr);
+    return cases.filter(c => isCaseOnDate(c, dateStr));
   };
 
-  const selectedDateCases = selectedDate ? cases.filter(c => c.nextDate === selectedDate) : [];
+  const selectedDateCases = selectedDate ? cases.filter(c => isCaseOnDate(c, selectedDate)) : [];
 
   const handleDateClick = (dateStr: string) => {
     setSelectedDate(dateStr);
@@ -338,7 +365,7 @@ export const CalendarView = ({
         {showBookView && bookDate && (
           <BookView 
             date={bookDate}
-            cases={cases.filter(c => c.nextDate === bookDate)}
+            cases={cases.filter(c => isCaseOnDate(c, bookDate))}
             onClose={() => setShowBookView(false)}
             onPrev={() => navigateDate('prev')}
             onNext={() => navigateDate('next')}
@@ -418,9 +445,10 @@ export const CalendarView = ({
               const isLawyerOrClerk = userType === 'lawyer' || userType === 'clerk';
               const todayStr = new Date().toISOString().split('T')[0];
               const isPast = dateStr < todayStr;
-              const shouldBlink = isLawyerOrClerk && isPast && dayCases.length > 0;
+              const hasPendingOverdue = dayCases.some(c => !c.isUpdated && c.nextDate === dateStr);
+              const shouldBlink = isLawyerOrClerk && isPast && hasPendingOverdue;
               const isPastOrToday = dateStr <= todayStr;
-              const shouldHighlightPending = isLawyerOrClerk && isPastOrToday && dayCases.length > 0;
+              const shouldHighlightPending = isLawyerOrClerk && isPastOrToday && hasPendingOverdue;
 
               return (
                 <button
@@ -515,14 +543,32 @@ export const CalendarView = ({
                     onClick={() => handleDateClick(selectedDate!)}
                     className="p-5 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-white hover:shadow-xl hover:shadow-slate-100 transition-all group cursor-pointer"
                   >
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${c.caseType === 'Civil' ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-600'}`}>
                           {c.caseNumber.charAt(0)}
                         </div>
                         <div>
-                          <h5 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</h5>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.caseType}</p>
+                          <div className="flex items-center gap-2">
+                            <h5 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</h5>
+                            {selectedDate && c.nextDate !== selectedDate ? (
+                              <span className="text-[9px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
+                                বিগত তারিখ
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
+                                আগামী তারিখ
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.caseType}</p>
+                            {selectedDate && c.nextDate !== selectedDate && (
+                              <span className="text-[10px] text-indigo-600 font-bold">
+                                (পরবর্তী: {c.nextDate || 'নির্ধারিত নয়'})
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
@@ -540,6 +586,18 @@ export const CalendarView = ({
                         </button>
                       </div>
                     </div>
+                    {(() => {
+                      const histEntry = selectedDate ? c.history?.find(h => h.date === selectedDate) : null;
+                      const displayOrder = histEntry?.order || c.order;
+                      if (displayOrder) {
+                        return (
+                          <div className="text-[11px] text-slate-600 bg-white border border-slate-100 rounded-xl px-2.5 py-1.5 mb-2 truncate">
+                            <span className="font-bold text-indigo-900">আদেশ:</span> {displayOrder}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
                         <MapPin size={14} className="text-slate-400" />

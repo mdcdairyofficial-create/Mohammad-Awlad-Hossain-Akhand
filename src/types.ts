@@ -53,6 +53,7 @@ export interface Case {
   district?: string;
   caseSection?: string;
   history?: CaseHistoryEntry[];
+  pastDates?: string[];
   totalRespondents?: string;
   respondentDetails?: { name: string; phone: string; serial: string | number; addedByMobile?: string; addedByName?: string; addedByRole?: string }[];
   additionalOrder?: string;
@@ -180,3 +181,12 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
 }
+
+export const isCaseOnDate = (c: Case, dateStr: string | null | undefined): boolean => {
+  if (!dateStr || !c) return false;
+  if (c.nextDate === dateStr) return true;
+  if (c.lastDate === dateStr) return true;
+  if (c.pastDates && Array.isArray(c.pastDates) && c.pastDates.includes(dateStr)) return true;
+  if (c.history && Array.isArray(c.history) && c.history.some(h => h && h.date === dateStr)) return true;
+  return false;
+};

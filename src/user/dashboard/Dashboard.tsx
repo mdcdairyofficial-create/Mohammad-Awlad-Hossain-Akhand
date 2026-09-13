@@ -90,7 +90,7 @@ import AdminPanel from '../../admin/AdminPanel';
 import LawyerDirectory from '../profile/LawyerDirectory';
 import ClerkDirectory from '../profile/ClerkDirectory';
 import ArchiveCaseHistory from '../cases/ArchiveCaseHistory';
-import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry, ChamberAssociate } from '../../types';
+import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry, ChamberAssociate, isCaseOnDate } from '../../types';
 import CaseForm from '../cases/CaseForm';
 import NotificationPanel from './NotificationPanel';
 import { Logo } from '../../components/Logo';
@@ -2115,21 +2115,44 @@ export default function Dashboard({
         await createTask(autoTask);
       }
 
+      // Collect all past dates so the case remains recorded on its past calendar dates
+      const pastDatesSet = new Set<string>(targetCase.pastDates || []);
+      if (targetCase.nextDate && targetCase.nextDate !== nextDate) {
+        pastDatesSet.add(targetCase.nextDate);
+      }
+      if (lastDate) {
+        pastDatesSet.add(lastDate);
+      }
+      if (targetCase.lastDate) {
+        pastDatesSet.add(targetCase.lastDate);
+      }
+      if (targetCase.history && targetCase.history.length > 0) {
+        targetCase.history.forEach(h => {
+          if (h.date) pastDatesSet.add(h.date);
+        });
+      }
+      const updatedPastDates = Array.from(pastDatesSet).filter(Boolean);
+
       // Add to history
       const actionBy: any = (currentViewMode === 'bar_admin' ? 'admin' : currentViewMode);
+      const hearingDate = lastDate || (targetCase.nextDate && targetCase.nextDate !== nextDate ? targetCase.nextDate : new Date().toISOString().split('T')[0]);
       const newHistoryEntry: CaseHistoryEntry = {
         id: Date.now().toString(),
-        date: new Date().toISOString().split('T')[0],
+        date: hearingDate,
         actionBy,
-        description: language === 'bn' ? 'মামলার তথ্য আপডেট করা হয়েছে।' : 'Case information updated.',
+        description: language === 'bn' 
+          ? (nextDate && nextDate !== targetCase.nextDate ? `মামলার তারিখ আপডেট (পরবর্তী তারিখ: ${nextDate})` : 'মামলার তথ্য আপডেট করা হয়েছে।') 
+          : (nextDate && nextDate !== targetCase.nextDate ? `Case date updated (Next date: ${nextDate})` : 'Case information updated.'),
         order: order,
         documents: attachedDocs
       };
 
       const updatedHistory = [...(targetCase.history || []), newHistoryEntry];
+      const effectiveLastDate = lastDate || (targetCase.nextDate && targetCase.nextDate !== nextDate ? targetCase.nextDate : targetCase.lastDate);
       const updatedCaseFields = { 
         nextDate, 
-        lastDate: lastDate || targetCase.lastDate,
+        lastDate: effectiveLastDate,
+        pastDates: updatedPastDates,
         order, 
         isUpdated: true, 
         clerkCanCall, 
@@ -2436,8 +2459,8 @@ export default function Dashboard({
     const isGovtHoliday = !!govtHolidays[dateStr as keyof typeof govtHolidays];
     const isHoliday = isWeekend || isGovtHoliday;
 
-    const dayCases = visibleCases.filter(c => c.nextDate === dateStr);
-    const hasPending = dayCases.length > 0 && dayCases.some(c => !c.isUpdated);
+    const dayCases = visibleCases.filter(c => isCaseOnDate(c, dateStr));
+    const hasPending = dayCases.length > 0 && dayCases.some(c => !c.isUpdated && c.nextDate === dateStr);
     
     // Check if today using local date
     const todayYearStr = today.getFullYear();
@@ -2505,6 +2528,17 @@ export default function Dashboard({
           finalCaseData.reportedErrorBySide = undefined;
         }
         finalCaseData.lastEditedBySide = currentSide;
+        
+        // Preserve past date if nextDate changes
+        if (finalCaseData.nextDate && editingCase.nextDate && finalCaseData.nextDate !== editingCase.nextDate) {
+          const pastSet = new Set<string>(editingCase.pastDates || []);
+          pastSet.add(editingCase.nextDate);
+          if (editingCase.lastDate) pastSet.add(editingCase.lastDate);
+          finalCaseData.pastDates = Array.from(pastSet).filter(Boolean);
+          if (!finalCaseData.lastDate) {
+            finalCaseData.lastDate = editingCase.nextDate;
+          }
+        }
         
         await updateCase(editingCase.id.toString(), finalCaseData);
         setSuccessMessage(t('success_update'));
