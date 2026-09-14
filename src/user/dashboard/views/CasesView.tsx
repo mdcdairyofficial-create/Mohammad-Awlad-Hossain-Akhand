@@ -355,14 +355,18 @@ export const CasesView = ({
                     >
                       <History size={14} /> {t('case_history_title')}
                     </button>
-                    {!isClient && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onDeleteCase(c.id); }}
-                        className="p-3 text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    )}
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this case?')) {
+                          onDeleteCase(c.id);
+                        }
+                      }}
+                      className="p-3 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-2xl transition-all"
+                      title={t('delete_case')}
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
                 </div>
               </motion.div>
@@ -429,15 +433,22 @@ export const CasesView = ({
                         <CreditCard size={18} />
                       </button>
                       {!isClient && (
-                        <>
-                          <button onClick={(e) => { e.stopPropagation(); onEditCase(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
-                            <Edit2 size={18} />
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); onDeleteCase(c.id); }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" title={t('delete_case')}>
-                            <Trash2 size={18} />
-                          </button>
-                        </>
+                        <button onClick={(e) => { e.stopPropagation(); onEditCase(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
+                          <Edit2 size={18} />
+                        </button>
                       )}
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this case?')) {
+                            onDeleteCase(c.id);
+                          }
+                        }} 
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" 
+                        title={t('delete_case')}
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </td>
                 </tr>

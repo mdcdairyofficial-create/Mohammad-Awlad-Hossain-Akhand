@@ -41,6 +41,8 @@ export const AdReportsView = ({ language }: AdReportsViewProps) => {
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setAds(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.warn("onSnapshot error in AdReportsView:", error);
     });
     return () => unsubscribe();
   }, []);

@@ -15,15 +15,21 @@ import {
 } from 'firebase/firestore';
 import { Notification, Task, SupportMessage, ArchiveCase, Case } from '../../types';
 import { deleteDoc, increment } from 'firebase/firestore';
+import { recordClientRead, recordClientWrite, recordClientDelete } from '../../utils/firebaseUsageTracker';
 
 
 // User Profile
 export const subscribeToUser = (userId: string, callback: (userData: any) => void) => {
   return onSnapshot(doc(db, 'users', userId), (snapshot) => {
+    recordClientRead(1, 'users');
     if (snapshot.exists()) {
       callback({ id: snapshot.id, ...snapshot.data() });
     }
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn(`[User] Quota exceeded for user subscription (${userId}), using current state.`);
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, `users/${userId}`);
   });
 };
@@ -47,7 +53,13 @@ const loadFromCache = <T>(key: string): { data: T; timestamp: number } | null =>
   try {
     const val = localStorage.getItem(key);
     if (val) {
-      return JSON.parse(val);
+      const parsed = JSON.parse(val);
+      if (parsed && typeof parsed === 'object' && 'data' in parsed && 'timestamp' in parsed) {
+        return parsed;
+      }
+      if (parsed !== undefined && parsed !== null) {
+        return { data: parsed as T, timestamp: Date.now() };
+      }
     }
   } catch (e) {
     console.error("Cache read error for key", key, e);
@@ -81,7 +93,7 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
   const cached = loadFromCache<Case[]>(cacheKey);
 
   // Serve from cache if fresh
-  if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
+  if (cached && Array.isArray(cached.data) && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
     console.log(`[Cache Hit] Serving cases from cache for user: ${userId}`);
     callback(cached.data);
     return () => {}; // Dummy unsubscribe
@@ -96,6 +108,7 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
   }
 
   return onSnapshot(q, (snapshot) => {
+    recordClientRead(snapshot.docs.length || 1, 'cases');
     const cases = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -110,12 +123,31 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
     
     saveToCache(cacheKey, cases);
     callback(cases);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Cases] Firestore quota exceeded. Serving from cache or local storage.');
+      if (cached && Array.isArray(cached.data)) {
+        callback(cached.data);
+        return;
+      }
+      const local = localStorage.getItem(`cases_cache_${userId}`) || localStorage.getItem('appCases');
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          const casesList = Array.isArray(parsed) ? parsed : (parsed?.data && Array.isArray(parsed.data) ? parsed.data : []);
+          callback(casesList);
+          return;
+        } catch {}
+      }
+      callback([]);
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, 'cases');
   });
 };
 
 export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
+  recordClientWrite(1, 'cases');
   const caseRef = await addDoc(collection(db, 'cases'), {
     ...caseData,
     created_at: serverTimestamp()
@@ -140,6 +172,7 @@ export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
 export const updateCase = async (caseId: string, caseData: Partial<Case>) => {
   const ref = doc(db, 'cases', caseId);
   try {
+    recordClientWrite(1, 'cases');
     await updateDoc(ref, {
       ...caseData,
       updated_at: serverTimestamp()
@@ -159,6 +192,7 @@ export const updateCase = async (caseId: string, caseData: Partial<Case>) => {
 export const deleteCase = async (caseId: string) => {
   const ref = doc(db, 'cases', caseId);
   try {
+    recordClientDelete(1, 'cases');
     await deleteDoc(ref);
     if (auth.currentUser) {
       clearCache(`cases_cache_${auth.currentUser.uid}`);
@@ -186,6 +220,7 @@ export const subscribeToNotifications = (userId: string, callback: (notification
     limit(50)
   );
   return onSnapshot(q, (snapshot) => {
+    recordClientRead(snapshot.docs.length || 1, 'notifications');
     const notifications = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
@@ -201,7 +236,16 @@ export const subscribeToNotifications = (userId: string, callback: (notification
     
     saveToCache(cacheKey, notifications);
     callback(notifications);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Notifications] Firestore quota exceeded. Serving from cache or empty list.');
+      if (cached && Array.isArray(cached.data)) {
+        callback(cached.data);
+        return;
+      }
+      callback([]);
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, 'notifications');
   });
 };
@@ -210,7 +254,7 @@ export const subscribeToGlobalNotifications = (callback: (notifications: Notific
   const cacheKey = 'global_notifications_cache';
   const cached = loadFromCache<Notification[]>(cacheKey);
 
-  if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
+  if (cached && Array.isArray(cached.data) && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
     console.log('[Cache Hit] Serving global notifications from cache');
     callback(cached.data);
     return () => {}; // Dummy unsubscribe
@@ -223,6 +267,7 @@ export const subscribeToGlobalNotifications = (callback: (notifications: Notific
   );
 
   return onSnapshot(q, (snapshot) => {
+    recordClientRead(snapshot.docs.length || 1, 'notifications');
     const notifications = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
@@ -232,13 +277,23 @@ export const subscribeToGlobalNotifications = (callback: (notifications: Notific
     
     saveToCache(cacheKey, notifications);
     callback(notifications);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Global Notifications] Firestore quota exceeded. Serving from cache or empty list.');
+      if (cached && Array.isArray(cached.data)) {
+        callback(cached.data);
+        return;
+      }
+      callback([]);
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, 'global_notifications');
   });
 };
 
 export const sendGlobalNotification = async (notification: Omit<Notification, 'id' | 'created_at' | 'isRead'>) => {
   try {
+    recordClientWrite(1, 'notifications');
     await addDoc(collection(db, 'global_notifications'), {
       ...notification,
       isRead: false,
@@ -252,6 +307,7 @@ export const sendGlobalNotification = async (notification: Omit<Notification, 'i
 
 export const sendNotification = async (userId: string, notification: Omit<Notification, 'id' | 'created_at' | 'isRead'>) => {
   try {
+    recordClientWrite(1, 'notifications');
     await addDoc(collection(db, 'notifications'), {
       ...notification,
       user_id: userId,
@@ -265,6 +321,7 @@ export const sendNotification = async (userId: string, notification: Omit<Notifi
 };
 
 export const markNotificationAsRead = async (notificationId: string) => {
+  recordClientWrite(1, 'notifications');
   const ref = doc(db, 'notifications', notificationId);
   await updateDoc(ref, { read: true });
   if (auth.currentUser) {
@@ -288,6 +345,7 @@ export const subscribeToTasks = (userId: string, callback: (tasks: Task[]) => vo
     where('assignedTo', '==', userId)
   );
   return onSnapshot(q, (snapshot) => {
+    recordClientRead(snapshot.docs.length || 1, 'tasks');
     const tasks = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -302,12 +360,31 @@ export const subscribeToTasks = (userId: string, callback: (tasks: Task[]) => vo
     
     saveToCache(cacheKey, tasks);
     callback(tasks);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Tasks] Firestore quota exceeded. Serving from cache or local storage.');
+      if (cached && Array.isArray(cached.data)) {
+        callback(cached.data);
+        return;
+      }
+      const local = localStorage.getItem(`tasks_cache_${userId}`) || localStorage.getItem('appTasks');
+      if (local) {
+        try {
+          const parsed = JSON.parse(local);
+          const tasksList = Array.isArray(parsed) ? parsed : (parsed?.data && Array.isArray(parsed.data) ? parsed.data : []);
+          callback(tasksList);
+          return;
+        } catch {}
+      }
+      callback([]);
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, 'tasks');
   });
 };
 
 export const createTask = async (task: Omit<Task, 'id' | 'created_at'>) => {
+  recordClientWrite(1, 'tasks');
   const taskRef = await addDoc(collection(db, 'tasks'), {
     ...task,
     created_at: serverTimestamp()
@@ -326,6 +403,7 @@ export const createTask = async (task: Omit<Task, 'id' | 'created_at'>) => {
 export const updateTask = async (taskId: string, taskData: Partial<Task>) => {
   const ref = doc(db, 'tasks', taskId);
   try {
+    recordClientWrite(1, 'tasks');
     await updateDoc(ref, {
       ...taskData,
       updated_at: serverTimestamp()
@@ -345,6 +423,7 @@ export const updateTask = async (taskId: string, taskData: Partial<Task>) => {
 export const deleteTask = async (taskId: string) => {
   const ref = doc(db, 'tasks', taskId);
   try {
+    recordClientDelete(1, 'tasks');
     await deleteDoc(ref);
     if (auth.currentUser) {
       clearCache(`tasks_cache_${auth.currentUser.uid}`);
@@ -367,7 +446,11 @@ export const subscribeToChatSessions = (userId: string, callback: (sessions: any
       ...doc.data()
     }));
     callback(sessions);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Chat Sessions] Firestore quota exceeded.');
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, 'chat_sessions');
   });
 };
@@ -383,7 +466,11 @@ export const subscribeToAllSupportChats = (callback: (sessions: any[]) => void) 
       ...doc.data()
     }));
     callback(sessions);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Support Chats] Firestore quota exceeded.');
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, 'chat_sessions');
   });
 };
@@ -408,7 +495,11 @@ export const subscribeToMessages = (chatSessionId: string, callback: (messages: 
       ...doc.data()
     } as unknown as SupportMessage));
     callback(messages);
-  }, (error) => {
+  }, (error: any) => {
+    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+      console.warn('[Messages] Firestore quota exceeded.');
+      return;
+    }
     handleFirestoreError(error, OperationType.GET, `chat_sessions/${chatSessionId}/messages`);
   });
 };

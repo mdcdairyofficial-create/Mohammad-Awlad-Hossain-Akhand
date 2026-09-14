@@ -94,9 +94,11 @@ export const InvoicesView = ({ t, language }: InvoicesViewProps) => {
   };
 
   const deleteInvoice = (id: string) => {
-    const updated = invoices.filter(i => i.id !== id);
-    setInvoices(updated);
-    localStorage.setItem('mdc_invoices', JSON.stringify(updated));
+    if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই ইনভয়েসটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this invoice?')) {
+      const updated = invoices.filter(i => i.id !== id);
+      setInvoices(updated);
+      localStorage.setItem('mdc_invoices', JSON.stringify(updated));
+    }
   };
 
   const totalBill = invoices.reduce((acc, curr) => acc + curr.amount, 0);

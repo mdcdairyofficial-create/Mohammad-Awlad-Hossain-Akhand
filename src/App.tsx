@@ -166,9 +166,14 @@ export default function App() {
         try {
           const res = await fetchWithAuth(`/api/users/${user.id}`);
           if (res.status === 401 || res.status === 404) {
-            console.warn(`[App] Profile fetch returned ${res.status}. Logging out local user...`);
-            localStorage.removeItem("appUser");
-            setUser(null);
+            // Only logout if there is no active Firebase auth session
+            if (!auth.currentUser) {
+              console.warn(`[App] Profile fetch returned ${res.status} and no active Firebase auth session. Logging out local user...`);
+              localStorage.removeItem("appUser");
+              setUser(null);
+              return;
+            }
+            console.warn(`[App] Profile fetch returned ${res.status}, keeping active session.`);
             return;
           }
           if (!res.ok) throw new Error(`Status: ${res.status}`);
@@ -367,8 +372,12 @@ export default function App() {
           });
         }
       },
-      (err) => {
-        console.error("[App] Users query onSnapshot failed:", err);
+      (err: any) => {
+        if (err?.message?.includes("Quota exceeded") || err?.code === "resource-exhausted") {
+          console.warn("[App] Firestore quota exceeded in onSnapshot listener, continuing with cached session.");
+        } else {
+          console.error("[App] Users query onSnapshot failed:", err);
+        }
       },
     );
 

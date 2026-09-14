@@ -25,6 +25,7 @@ import {
 import { jsPDF } from 'jspdf';
 import { Case, ChamberAssociate } from '../../types';
 import { formatCourtNameWithNo } from '../../constants';
+import { copyToClipboard } from '../../utils/clipboard';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
 import { fetchWithAuth } from '../../lib/api';
 import { AdBanner } from './AdBanner';
@@ -430,10 +431,15 @@ export const CaseCardPro = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigator.clipboard.writeText(caseData.caseNumber);
-                    setConfirmMsg('মামলা নম্বর কপি করা হয়েছে!');
-                    setShowConfirm(true);
-                    setTimeout(() => setShowConfirm(false), 2500);
+                    copyToClipboard(caseData.caseNumber).then((success) => {
+                      if (success) {
+                        setConfirmMsg('মামলা নম্বর কপি করা হয়েছে!');
+                      } else {
+                        setConfirmMsg('কপি করা যায়নি, দয়া করে ম্যানুয়ালি লিখুন।');
+                      }
+                      setShowConfirm(true);
+                      setTimeout(() => setShowConfirm(false), 2500);
+                    });
                   }}
                   className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                   title="মামলা নম্বর কপি করুন"
@@ -1367,13 +1373,18 @@ export const CaseCardPro = ({
                   navigator.share({
                     title: `মামলার তথ্য: ${caseData.caseNumber}`,
                     text: textToShare,
-                    url: window.location.href,
+                    url: window.location.href.replace(window.location.origin, 'https://mdccasebook.vercel.app'),
                   }).catch(() => {});
                 } else {
-                  navigator.clipboard.writeText(textToShare);
-                  setConfirmMsg('মামলার বিবরণ ক্লিপবোর্ডে কপি করা হয়েছে!');
-                  setShowConfirm(true);
-                  setTimeout(() => setShowConfirm(false), 3000);
+                  copyToClipboard(textToShare).then((success) => {
+                    if (success) {
+                      setConfirmMsg('মামলার বিবরণ ক্লিপবোর্ডে কপি করা হয়েছে!');
+                    } else {
+                      setConfirmMsg('কপি করা যায়নি, দয়া করে ম্যানুয়ালি কপি করুন।');
+                    }
+                    setShowConfirm(true);
+                    setTimeout(() => setShowConfirm(false), 3000);
+                  });
                 }
               }}
               className="p-2.5 bg-slate-50 text-slate-600 rounded-xl hover:bg-indigo-50 hover:text-indigo-600 transition-all"

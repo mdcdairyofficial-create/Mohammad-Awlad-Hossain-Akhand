@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { motion } from 'motion/react';
 import { toPng } from 'html-to-image';
+import { copyToClipboard } from '../../../utils/clipboard';
 import { 
   CheckCircle2, 
   MapPin, 
@@ -78,7 +79,7 @@ export const ProfessionalIDCard = ({
       text: isBn 
         ? `${userName}-এর ডিজিটাল আইডি কার্ড দেখুন` 
         : `View ${userName}'s Digital ID Card`,
-      url: window.location.href,
+      url: window.location.href.replace(window.location.origin, 'https://mdccasebook.vercel.app'),
     };
 
     try {
@@ -90,7 +91,8 @@ export const ProfessionalIDCard = ({
     } catch (err) {
       // Fallback for failed share or unsupported environments
       try {
-        await navigator.clipboard.writeText(window.location.href);
+        const isCopied = await copyToClipboard(window.location.href.replace(window.location.origin, 'https://mdccasebook.vercel.app'));
+        if (!isCopied) throw new Error('Fallback copy failed');
         alert(isBn ? 'লিঙ্ক কপি করা হয়েছে!' : 'Link copied to clipboard!');
       } catch (clipErr) {
         console.error('Clipboard failed:', clipErr);

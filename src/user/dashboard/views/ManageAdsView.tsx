@@ -70,6 +70,8 @@ export const ManageAdsView = ({ language }: ManageAdsViewProps) => {
         });
         batch.commit().catch(err => console.error("Auto-purge failed:", err));
       }
+    }, (error) => {
+      console.warn("onSnapshot error in ManageAdsView:", error);
     });
 
     return () => unsubscribe();

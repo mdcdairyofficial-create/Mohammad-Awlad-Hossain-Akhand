@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { FullscreenAdViewer } from '../components/FullscreenAdViewer';
 import { fetchWithAuth } from '../../../lib/api';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface PointsViewProps {
   language: 'bn' | 'en' | 'hi' | 'ur';
@@ -203,10 +204,13 @@ export const PointsView = ({ language, userPoints, onPointsUpdate, userType }: P
       return;
     }
     
-    const referralLink = `${window.location.origin}/join?ref=${auth.currentUser!.uid}`;
+    const referralLink = `https://mdccasebook.vercel.app/join?ref=${auth.currentUser!.uid}`;
     
     try {
-      await navigator.clipboard.writeText(referralLink);
+      const isCopied = await copyToClipboard(referralLink);
+      if (!isCopied) {
+        throw new Error('Copy failed');
+      }
       alert(t('আপনার রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে! এটি বন্ধুদের সাথে শেয়ার করুন এবং ২ টি সাদা বল পেতে পারেন।', 'Your referral link has been copied to clipboard! Share it to earn 2 White Balls.'));
       
       const userRef = doc(db, 'users', auth.currentUser!.uid);

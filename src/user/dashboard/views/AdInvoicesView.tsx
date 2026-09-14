@@ -47,6 +47,8 @@ export const AdInvoicesView = ({ language }: AdInvoicesViewProps) => {
         ...doc.data()
       })) as AdInvoice[];
       setInvoices(docs);
+    }, (error) => {
+      console.warn("onSnapshot error in AdInvoicesView:", error);
     });
 
     return () => unsubscribe();

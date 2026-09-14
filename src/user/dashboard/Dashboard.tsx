@@ -801,6 +801,34 @@ interface DashboardProps {
   onUpdateProfile?: (updatedProfile: any) => void;
 }
 
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (err) {
+    console.warn("navigator.clipboard failed, trying fallback:", err);
+  }
+  
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    return !!successful;
+  } catch (err) {
+    console.error("Fallback copy failed:", err);
+    return false;
+  }
+};
+
 export default function Dashboard({ 
   userId, 
   firebaseUid: initialFirebaseUid,
@@ -1429,8 +1457,24 @@ export default function Dashboard({
             localStorage.setItem(`chamber_address_${firebaseUid}`, data.chamberAddress);
           }
         }
-      } catch (e) {
-        console.error('Error fetching user chamber info:', e);
+      } catch (e: any) {
+        // Fallback to local storage
+        try {
+          const cachedAssociates = localStorage.getItem(`chamber_associates_${firebaseUid}`);
+          if (cachedAssociates) setChamberAssociates(JSON.parse(cachedAssociates));
+          const cachedClerks = localStorage.getItem(`clerk_assistants_${firebaseUid}`);
+          if (cachedClerks) setClerkAssistants(JSON.parse(cachedClerks));
+          const cachedName = localStorage.getItem(`chamber_name_${firebaseUid}`);
+          if (cachedName) setChamberName(cachedName);
+          const cachedAddr = localStorage.getItem(`chamber_address_${firebaseUid}`);
+          if (cachedAddr) setChamberAddress(cachedAddr);
+        } catch {}
+
+        if (e?.message?.includes('Quota exceeded') || e?.code === 'resource-exhausted') {
+          console.warn('Firestore quota exceeded while fetching user chamber info, using local cache.');
+        } else {
+          console.error('Error fetching user chamber info:', e);
+        }
       }
     };
     fetchUserData();
@@ -1459,9 +1503,11 @@ export default function Dashboard({
     const todayStr = `${y}-${m}-${d}`;
 
     const unsubNotifications = subscribeToNotifications(uid, (data) => {
+      const incoming = Array.isArray(data) ? data : [];
       setNotifications(prev => {
-        const globalOnes = prev.filter(n => n.isGlobal);
-        const merged = [...data, ...globalOnes];
+        const prevList = Array.isArray(prev) ? prev : [];
+        const globalOnes = prevList.filter(n => n && n.isGlobal);
+        const merged = [...incoming, ...globalOnes];
         return merged.sort((a: any, b: any) => {
           const dateA = a.created_at ? (typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : a.created_at.toMillis?.() || 0) : 0;
           const dateB = b.created_at ? (typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : b.created_at.toMillis?.() || 0) : 0;
@@ -1471,9 +1517,11 @@ export default function Dashboard({
     });
 
     const unsubGlobal = subscribeToGlobalNotifications((data) => {
+      const incoming = Array.isArray(data) ? data : [];
       setNotifications(prev => {
-        const personalOnes = prev.filter(n => !n.isGlobal);
-        const merged = [...personalOnes, ...data];
+        const prevList = Array.isArray(prev) ? prev : [];
+        const personalOnes = prevList.filter(n => n && !n.isGlobal);
+        const merged = [...personalOnes, ...incoming];
         return merged.sort((a: any, b: any) => {
           const dateA = a.created_at ? (typeof a.created_at === 'string' ? new Date(a.created_at).getTime() : a.created_at.toMillis?.() || 0) : 0;
           const dateB = b.created_at ? (typeof b.created_at === 'string' ? new Date(b.created_at).getTime() : b.created_at.toMillis?.() || 0) : 0;
@@ -1483,16 +1531,18 @@ export default function Dashboard({
     });
 
     const unsubTasks = subscribeToTasks(uid, (data) => {
-      setTasks(data);
-      if (data && data.length > 0) {
-        localStorage.setItem(`tasks_cache_${uid}`, JSON.stringify(data));
+      const safeTasks = Array.isArray(data) ? data : [];
+      setTasks(safeTasks);
+      if (safeTasks.length > 0) {
+        localStorage.setItem(`tasks_cache_${uid}`, JSON.stringify(safeTasks));
       }
     });
 
     const unsubCases = subscribeToCases(uid, (data) => {
-      setCases(data);
-      if (data && data.length > 0) {
-        localStorage.setItem(`cases_cache_${uid}`, JSON.stringify(data));
+      const safeCases = Array.isArray(data) ? data : [];
+      setCases(safeCases);
+      if (safeCases.length > 0) {
+        localStorage.setItem(`cases_cache_${uid}`, JSON.stringify(safeCases));
       }
     }, undefined); // Always fetch all cases to cache locally and enable calendar offline support
 
@@ -1515,8 +1565,8 @@ export default function Dashboard({
     const newNotifications: Notification[] = [];
 
     // Check cases for tomorrow's hearing/step
-    cases.forEach(c => {
-      if (c.nextDate === tomorrowStr) {
+    (cases || []).forEach(c => {
+      if (c && c.nextDate === tomorrowStr) {
         const stepName = c.order || c.status || 'Hearing';
         // Priority check: Judgment, Witness, Cross-exam are high priority
         const messageHeader = language === 'bn' ? 'আগামীকালের মামলার সতর্কতা' : 'Tomorrow\'s Case Alert';
@@ -1536,8 +1586,8 @@ export default function Dashboard({
     });
 
     // Check tasks for tomorrow
-    tasks.forEach(t => {
-      if (t.dueDate === tomorrowStr) {
+    (tasks || []).forEach(t => {
+      if (t && t.dueDate === tomorrowStr) {
         newNotifications.push({
           id: `tomorrow-task-${t.id}`,
           title: language === 'bn' ? 'আগামীকালের টাস্ক সতর্কতা' : 'Tomorrow\'s Task Alert',
@@ -1554,7 +1604,8 @@ export default function Dashboard({
 
     if (newNotifications.length > 0) {
       setNotifications(prev => {
-        const filtered = prev.filter(n => !n.id.toString().startsWith('tomorrow-'));
+        const prevList = Array.isArray(prev) ? prev : [];
+        const filtered = prevList.filter(n => n && n.id && !n.id.toString().startsWith('tomorrow-'));
         return [...newNotifications, ...filtered];
       });
     }
@@ -1898,8 +1949,9 @@ export default function Dashboard({
   }, [userId]);
 
   const isAdminUser = currentViewMode === 'admin' || currentViewMode === 'super_admin' || currentViewMode === 'country_manager' || currentViewMode === 'bar_admin';
-  const visibleCases = isAdminUser ? cases : cases.filter(isUserAssociatedWithCase);
-  const ownCasesCount = visibleCases.filter(c => c.user_id && String(c.user_id) === String(firebaseUid || userId)).length;
+  const safeCases = Array.isArray(cases) ? cases : [];
+  const visibleCases = isAdminUser ? safeCases : safeCases.filter(isUserAssociatedWithCase);
+  const ownCasesCount = visibleCases.filter(c => c && c.user_id && String(c.user_id) === String(firebaseUid || userId)).length;
   const assignedCasesCount = visibleCases.length - ownCasesCount;
 
   const getRenderTodayStr = () => {
@@ -1909,16 +1961,18 @@ export default function Dashboard({
     const d = String(today.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   };
-  const casesForDisplay = showAllCases ? visibleCases : visibleCases.filter(c => c.nextDate === getRenderTodayStr());
+  const casesForDisplay = showAllCases ? visibleCases : visibleCases.filter(c => c && c.nextDate === getRenderTodayStr());
 
   const [lastDeletedCase, setLastDeletedCase] = useState<Case | null>(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
 
   const handleDeleteCase = async (id: string | number) => {
-    const caseToDelete = cases.find(c => c.id === id);
+    const caseToDelete = cases.find(c => String(c.id) === String(id));
     if (caseToDelete) {
+      setCases(prev => prev.filter(c => String(c.id) !== String(id)));
       try {
-        await deleteCase(id.toString());
+        await deleteCase(String(id));
+        fetchWithAuth(`/api/cases/${id}`, { method: 'DELETE' }).catch(() => {});
         setLastDeletedCase(caseToDelete);
         setShowUndoToast(true);
         setTimeout(() => setShowUndoToast(false), 10000);
@@ -1941,7 +1995,8 @@ export default function Dashboard({
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const safeNotifications = Array.isArray(notifications) ? notifications : [];
+  const unreadCount = safeNotifications.filter(n => n && !n.isRead).length;
 
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -2593,6 +2648,8 @@ export default function Dashboard({
   };
 
   const handleDeleteTask = async (id: number | string) => {
+    if (!window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই টাস্কটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this task?')) return;
+    setTasks(prev => prev.filter(t => String(t.id) !== String(id)));
     try {
       await deleteTaskService(id.toString());
     } catch (err) {
@@ -3574,16 +3631,26 @@ export default function Dashboard({
                     isPremium={isPremiumFeatures}
                     isPremiumForAds={isAdFree}
                     referralCode={referralCode}
-                    referralCount={referralHistory.filter(r => r.case_count >= 10).length}
+                    referralCount={referralHistory.length}
                     onCopyLink={() => {
-                      const link = `${window.location.origin}/register?ref=${referralCode}`;
-                      navigator.clipboard.writeText(link);
-                      alert(t('link_copied_success') || 'Link Copied!');
+                      const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
+                      copyToClipboard(link).then((success) => {
+                        if (success) {
+                          alert(t('link_copied_success') || 'Link Copied!');
+                        } else {
+                          alert(language === 'bn' ? 'কপি করা যায়নি, দয়া করে ম্যানুয়ালি কপি করুন।' : 'Copy failed, please copy manually.');
+                        }
+                      });
                     }}
                     onWhatsAppShare={() => {
-                      const link = `${window.location.origin}/register?ref=${referralCode}`;
+                      const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
                       const text = `Join MDC Casebook and manage cases easily: ${link}`;
-                      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                      copyToClipboard(link).then((success) => {
+                        if (success) {
+                          alert(language === 'bn' ? 'লিংকটি কপি করা হয়েছে এবং হোয়াটসঅ্যাপ খোলা হচ্ছে! আপনি সরাসরি সেখানে পেস্ট করতে পারবেন।' : 'Link copied to clipboard! Opening WhatsApp, you can paste it directly.');
+                        }
+                        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                      });
                     }}
                     initialShowScoreModal={activeTab === 'performance'}
                     points={userPoints}
@@ -3837,15 +3904,15 @@ export default function Dashboard({
                           <Clock size={16} /> {t('ongoing_tasks')}
                         </h4>
                         <div className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
-                          {t('total_label')}: {tasks.filter(t => t.status === 'pending' || t.status === 'in-progress').length}
+                          {t('total_label')}: {(tasks || []).filter(t => t && (t.status === 'pending' || t.status === 'in-progress')).length}
                         </div>
                       </div>
                       
                       <div className="space-y-6">
                         {/* Pending & In-Progress Tasks */}
                         {Object.entries(
-                          tasks
-                            .filter(t => t.status === 'pending' || t.status === 'in-progress')
+                          (tasks || [])
+                            .filter(t => t && (t.status === 'pending' || t.status === 'in-progress'))
                             .filter(t => 
                               t.title.toLowerCase().includes(taskSearchQuery.toLowerCase()) || 
                               t.description?.toLowerCase().includes(taskSearchQuery.toLowerCase()) ||
@@ -3991,7 +4058,7 @@ export default function Dashboard({
                           </div>
                         ))}
                         
-                        {tasks.filter(t => t.status === 'pending').length === 0 && (
+                        {(tasks || []).filter(t => t && t.status === 'pending').length === 0 && (
                           <div className="text-center py-16 bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
                             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
                               <CheckCircle2 className="text-slate-200" size={32} />
@@ -4008,8 +4075,8 @@ export default function Dashboard({
                         <CheckCircle2 size={16} /> {t('completed_label')}
                       </h4>
                       <div className="space-y-3">
-                        {tasks
-                          .filter(t => t.status === 'completed')
+                        {(tasks || [])
+                          .filter(t => t && t.status === 'completed')
                           .filter(t => 
                             t.title.toLowerCase().includes(taskSearchQuery.toLowerCase()) || 
                             t.description?.toLowerCase().includes(taskSearchQuery.toLowerCase()) ||
@@ -4609,7 +4676,7 @@ export default function Dashboard({
                                 <p className="text-[10px] font-bold text-slate-500 uppercase">{t('total_referral')}</p>
                               </div>
                               <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <p className="text-2xl font-black text-emerald-600">{referralHistory.filter(r => r.case_count >= 10).length}</p>
+                                <p className="text-2xl font-black text-emerald-600">{referralHistory.length}</p>
                                 <p className="text-[10px] font-bold text-slate-500 uppercase">{t('successful_referral')}</p>
                               </div>
                               <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
@@ -4826,14 +4893,14 @@ export default function Dashboard({
                           <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-emerald-500" 
-                              style={{ width: `${Math.min(100, ((referralHistory.filter(r => r.case_count >= 10).length) / 5) * 100)}%` }}
+                              style={{ width: `${Math.min(100, (referralHistory.length / 5) * 100)}%` }}
                             ></div>
                           </div>
                           <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">
-                            {referralHistory.filter(r => r.case_count >= 10).length}/5
+                            {referralHistory.length}/5
                           </span>
                         </div>
-                        {referralHistory.filter(r => r.case_count >= 10).length >= 5 && (
+                        {referralHistory.length >= 5 && (
                           <button 
                             onClick={async () => {
                               try {
@@ -4861,14 +4928,20 @@ export default function Dashboard({
                           <input 
                             type="text" 
                             readOnly 
-                            value={referralCode ? `${window.location.origin}/register?ref=${referralCode}` : t('create_account')} 
+                            value={referralCode ? `https://mdccasebook.vercel.app/register?ref=${referralCode}` : t('create_account')} 
                             className="bg-transparent flex-1 outline-none text-xs text-slate-600 dark:text-slate-300 font-medium px-2 select-all h-full min-w-0"
                           />
-                          <button 
+                           <button 
                             onClick={() => {
                               if (referralCode) {
-                                navigator.clipboard.writeText(`${window.location.origin}/register?ref=${referralCode}`);
-                                alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Referral link copied to clipboard!'));
+                                const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
+                                copyToClipboard(link).then((success) => {
+                                  if (success) {
+                                    alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Referral link copied to clipboard!'));
+                                  } else {
+                                    alert(language === 'bn' ? 'কপি করা যায়নি, দয়া করে ম্যানুয়ালি কপি করুন।' : 'Copy failed, please copy manually.');
+                                  }
+                                });
                               } else {
                                 alert(t('register_for_referral'));
                               }
@@ -4882,9 +4955,14 @@ export default function Dashboard({
                         <button 
                           onClick={() => {
                             if (referralCode) {
-                              const link = `${window.location.origin}/register?ref=${referralCode}`;
+                              const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
                               const text = `Join MDC Casebook and manage cases easily: ${link}`;
-                              window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                              copyToClipboard(link).then((success) => {
+                                if (success) {
+                                  alert(language === 'bn' ? 'লিংকটি কপি করা হয়েছে এবং হোয়াটসঅ্যাপ খোলা হচ্ছে! আপনি সরাসরি সেখানে পেস্ট করতে পারবেন।' : 'Link copied to clipboard! Opening WhatsApp, you can paste it directly.');
+                                }
+                                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                              });
                             } else {
                               alert(t('register_for_referral'));
                             }
@@ -4916,8 +4994,8 @@ export default function Dashboard({
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                             {referralHistory.map((ref: any) => {
-                              const progress = Math.min((ref.case_count / 10) * 100, 100);
-                              const isBonusEligible = ref.case_count >= 10;
+                              const progress = 100;
+                              const isBonusEligible = true;
                               return (
                                 <tr key={ref.id}>
                                   <td className="px-4 py-3 font-medium">{ref.name} ({ref.mobile})</td>

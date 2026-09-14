@@ -11,6 +11,8 @@ import { jsPDF } from 'jspdf';
 
 import { BANGLADESH_DISTRICTS, getPoliceStations } from '../constants';
 import AdStats from './AdStats';
+import FirebaseUsageMonitor from './FirebaseUsageMonitor';
+import { Flame } from 'lucide-react';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -154,7 +156,7 @@ const handleDownloadFile = (dataUri: string, defaultName: string) => {
 };
 
 export default function AdminPanel({ userType, userId }: { userType: string, userId: number }) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'cases' | 'recharge' | 'subscriptions' | 'sub_requests' | 'affiliate_proofs' | 'affiliate_referrals' | 'createUser' | 'recycleBin' | 'support_messages' | 'global_notifications' | 'complaints' | 'clerk_trust' | 'audit_logs' | 'responsive_design' | 'testing' | 'ad_stats'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'firebase_quota' | 'users' | 'cases' | 'recharge' | 'subscriptions' | 'sub_requests' | 'affiliate_proofs' | 'affiliate_referrals' | 'createUser' | 'recycleBin' | 'support_messages' | 'global_notifications' | 'complaints' | 'clerk_trust' | 'audit_logs' | 'responsive_design' | 'testing' | 'ad_stats'>('dashboard');
   const [userFilter, setUserFilter] = useState<'all' | 'lawyer' | 'clerk' | 'client' | 'admin' | 'super_admin' | 'bar_association' | 'advertiser'>('all');
   const [thanaFilter, setThanaFilter] = useState('');
   const [userSearch, setUserSearch] = useState('');
@@ -173,6 +175,8 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
   const [affiliateReferrals, setAffiliateReferrals] = useState<AffiliateReferral[]>([]);
   const [supportChats, setSupportChats] = useState<SupportChat[]>([]);
   const [selectedChat, setSelectedChat] = useState<SupportChat | null>(null);
+  const [recycleBinItems, setRecycleBinItems] = useState<any[]>([]);
+  const [loadingRecycleBin, setLoadingRecycleBin] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [replyMessage, setReplyMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -770,6 +774,8 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
         } catch (fbErr) {
           console.error("Failed to load audit logs directly from Firebase:", fbErr);
         }
+      } else if (activeTab === 'recycleBin') {
+        fetchRecycleBin();
       }
     } catch (err: any) {
       setError(err.message);
@@ -997,11 +1003,130 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
         throw new Error(errData.error || 'Failed to delete user');
       }
       fetchData();
+      alert('ইউজার সফলভাবে মুছে ফেলা হয়েছে।');
     } catch (err: any) {
       setError(err.message);
       alert('ইউজার ডিলিট করতে সমস্যা হয়েছে: ' + err.message);
     } finally {
       setProcessingId(null);
+    }
+  };
+
+  const handleDeleteAdminCase = async (caseId: string | number) => {
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান? এটি রিসাইকেল বিনে জমা হবে।")) return;
+    try {
+      const response = await adminFetch(`/api/admin/cases/${caseId}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete case');
+      }
+      setCases(prev => prev.filter(c => String((c as any).id) !== String(caseId)));
+      if (selectedCaseForDetails && String((selectedCaseForDetails as any).id) === String(caseId)) {
+        setSelectedCaseForDetails(null);
+      }
+      alert("মামলাটি সফলভাবে মুছে ফেলা হয়েছে এবং রিসাইকেল বিনে জমা হয়েছে।");
+      fetchData();
+    } catch (err: any) {
+      alert('মামলা ডিলিট করতে সমস্যা হয়েছে: ' + err.message);
+    }
+  };
+
+  const fetchRecycleBin = async () => {
+    setLoadingRecycleBin(true);
+    try {
+      const res = await adminFetch('/api/admin/recycle-bin');
+      if (res.ok) {
+        const data = await res.json();
+        setRecycleBinItems(data);
+      }
+    } catch (e) {
+      console.error("Failed to load recycle bin:", e);
+    } finally {
+      setLoadingRecycleBin(false);
+    }
+  };
+
+  const handleRestoreRecycleItem = async (itemId: string) => {
+    try {
+      const res = await adminFetch(`/api/admin/recycle-bin/${itemId}/restore`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to restore');
+      }
+      alert("আইটেমটি সফলভাবে পুনরুদ্ধার (Restore) করা হয়েছে।");
+      fetchRecycleBin();
+      fetchData();
+    } catch (e: any) {
+      alert("রিস্টোর করতে সমস্যা: " + e.message);
+    }
+  };
+
+  const handlePermanentDeleteRecycleItem = async (itemId: string) => {
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এটি চিরতরে মুছে ফেলতে চান? এটি আর ফিরিয়ে আনা যাবে না।")) return;
+    try {
+      const res = await adminFetch(`/api/admin/recycle-bin/${itemId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete');
+      }
+      setRecycleBinItems(prev => prev.filter(item => item.id !== itemId));
+      alert("আইটেমটি স্থায়ীভাবে মুছে ফেলা হয়েছে।");
+    } catch (e: any) {
+      alert("মুছতে সমস্যা: " + e.message);
+    }
+  };
+
+  const handleEmptyRecycleBin = async () => {
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে রিসাইকেল বিনের সব ডাটা চিরতরে মুছে ফেলতে চান?")) return;
+    try {
+      const res = await adminFetch('/api/admin/recycle-bin', { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to empty');
+      }
+      setRecycleBinItems([]);
+      alert("রিসাইকেল বিন সম্পূর্ণ খালি করা হয়েছে।");
+    } catch (e: any) {
+      alert("খালি করতে সমস্যা: " + e.message);
+    }
+  };
+
+  const handleDeleteComplaint = async (complaintId: string) => {
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই অভিযোগটি মুছে ফেলতে চান?")) return;
+    try {
+      const response = await adminFetch(`/api/admin/complaints/${complaintId}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete complaint');
+      }
+      setComplaints(prev => prev.filter(c => c.id !== complaintId));
+      alert("অভিযোগটি মুছে ফেলা হয়েছে।");
+    } catch (err: any) {
+      alert('অভিযোগ ডিলিট করতে সমস্যা হয়েছে: ' + err.message);
+    }
+  };
+
+  const handleDeleteSupportChat = async (chatId: string) => {
+    if (!window.confirm("আপনি কি নিশ্চিতভাবে এই সাপোর্ট চ্যাটটি মুছে ফেলতে চান?")) return;
+    try {
+      const response = await adminFetch(`/api/admin/support-chats/${chatId}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to delete chat');
+      }
+      setSupportChats(prev => prev.filter(c => c.id !== chatId));
+      if (selectedChat && selectedChat.id === chatId) {
+        setSelectedChat(null);
+      }
+      alert("সাপোর্ট চ্যাট মুছে ফেলা হয়েছে।");
+    } catch (err: any) {
+      alert('চ্যাট ডিলিট করতে সমস্যা হয়েছে: ' + err.message);
     }
   };
 
@@ -1140,6 +1265,12 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'dashboard' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'}`}
         >
           <LayoutDashboard size={18} /> ড্যাশবোর্ড
+        </button>
+        <button 
+          onClick={() => setActiveTab('firebase_quota')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'firebase_quota' ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-sm' : 'text-amber-700 bg-amber-50 hover:bg-amber-100'}`}
+        >
+          <Flame size={18} className="text-amber-600 animate-pulse" /> ফায়ারবেস কোটা (Read/Write)
         </button>
         <button 
           onClick={() => setActiveTab('users')}
@@ -1310,6 +1441,12 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
         <div className="p-8 text-center text-red-500">{error}</div>
       ) : (
         <div className="space-y-6">
+          {activeTab === 'firebase_quota' && (
+            <div className="space-y-6">
+              <FirebaseUsageMonitor />
+            </div>
+          )}
+
           {activeTab === 'dashboard' && stats && (() => {
             const approvedIncome = (stats.rechargeStats && Array.isArray(stats.rechargeStats)) 
               ? (stats.rechargeStats.find((s: any) => s.status === 'approved')?.total || stats.rechargeStats.find((s: any) => s.status === 'approved')?.count || 0) 
@@ -1914,6 +2051,19 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               <option value="bar_association">বার অ্যাসোসিয়েশন (Bar Assoc)</option>
                               {userType === 'super_admin' && <option value="super_admin">সুপার অ্যাডমিন</option>}
                             </select>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`আপনি কি নিশ্চিতভাবে "${user.name}" (${user.mobile}) ব্যবহারকারীকে স্থায়ীভাবে মুছে ফেলতে চান?`)) {
+                                  deleteUser(user.id as any);
+                                }
+                              }}
+                              disabled={processingId === user.id}
+                              className="px-2 py-1 text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-md transition-colors flex items-center gap-1 text-[11px] font-bold border border-rose-200"
+                              title="ইউজার মুছুন"
+                            >
+                              <Trash2 size={12} />
+                              <span>মুছুন</span>
+                            </button>
                           </div>
                         )}
                       </td>
@@ -2021,12 +2171,21 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               </span>
                             </td>
                             <td className="p-4 text-right">
-                              <button
-                                onClick={() => setSelectedCaseForDetails(c)}
-                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                              >
-                                বিস্তারিত ও রেকর্ড
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => setSelectedCaseForDetails(c)}
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  বিস্তারিত ও রেকর্ড
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAdminCase(c.id)}
+                                  className="p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg transition-colors border border-rose-200"
+                                  title="মামলা মুছে ফেলুন"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2313,10 +2472,119 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
           )}
 
           {activeTab === 'recycleBin' && (
-            <div className="p-6">
-              <h2 className="text-xl font-bold mb-4">রিসাইকেল বিন</h2>
-              <p className="text-slate-500 mb-4">এখানে ডিলিট করা ডাটাগুলো জমা থাকবে। আপনি চাইলে রিস্টোর করতে পারেন অথবা স্থায়ীভাবে মুছে ফেলতে পারেন।</p>
-              {/* Recycle Bin content will be implemented here */}
+            <div className="p-6 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <Trash2 className="text-rose-500" size={24} />
+                    রিসাইকেল বিন (Recycle Bin)
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    মুছে ফেলা মামলা ও ডাটা এখানে সাময়িকভাবে সংরক্ষিত থাকে। প্রয়োজন অনুযায়ী ফিরিয়ে আনুন বা স্থায়ীভাবে মুছে ফেলুন।
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={fetchRecycleBin}
+                    disabled={loadingRecycleBin}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+                  >
+                    <RefreshCw size={14} className={loadingRecycleBin ? 'animate-spin' : ''} />
+                    <span>রিফ্রেশ</span>
+                  </button>
+                  {recycleBinItems.length > 0 && (
+                    <button
+                      onClick={handleEmptyRecycleBin}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                    >
+                      <Trash2 size={14} />
+                      <span>সব চিরতরে মুছুন</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                {loadingRecycleBin ? (
+                  <div className="p-12 text-center text-slate-500 flex items-center justify-center gap-2">
+                    <RefreshCw size={18} className="animate-spin text-indigo-600" />
+                    <span>রিসাইকেল বিনের তথ্য লোড হচ্ছে...</span>
+                  </div>
+                ) : recycleBinItems.length === 0 ? (
+                  <div className="p-16 text-center">
+                    <div className="w-16 h-16 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                      <Trash2 size={32} />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-700 mb-1">রিসাইকেল বিন খালি</h3>
+                    <p className="text-xs text-slate-400">বর্তমানে কোনো মুছে ফেলা ডাটা জমা নেই।</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100 text-xs text-slate-500 uppercase font-bold">
+                          <th className="p-4">ধরন (Type)</th>
+                          <th className="p-4">বিবরণ / নম্বর</th>
+                          <th className="p-4">পক্ষ বা ইউজার</th>
+                          <th className="p-4">মুছে ফেলার সময়</th>
+                          <th className="p-4 text-right">কার্যক্রম</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm">
+                        {recycleBinItems.map((item) => {
+                          const isCase = item.type === 'case' || item.caseNumber || item.case_number;
+                          const title = item.caseNumber || item.case_number || item.name || `আইডি: ${item.originalId || item.id}`;
+                          const subtitle = item.courtName || item.court_name || item.mobile || item.email || '';
+                          const parties = item.petitioner ? `${item.petitioner} বনাম ${item.respondent}` : item.email || item.user_type || '—';
+                          const deletedDate = item.deletedAt ? new Date(item.deletedAt).toLocaleString('bn-BD') : 'অজানা';
+
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                              <td className="p-4">
+                                <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${
+                                  isCase ? 'bg-indigo-50 text-indigo-700' : 'bg-amber-50 text-amber-700'
+                                }`}>
+                                  {isCase ? 'মামলা (Case)' : 'ইউজার (User)'}
+                                </span>
+                              </td>
+                              <td className="p-4">
+                                <div className="font-bold text-slate-800">{title}</div>
+                                {subtitle && <div className="text-xs text-slate-400">{subtitle}</div>}
+                              </td>
+                              <td className="p-4 text-slate-600 text-xs">
+                                {parties}
+                              </td>
+                              <td className="p-4 text-xs text-slate-400 font-mono">
+                                {deletedDate}
+                              </td>
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => handleRestoreRecycleItem(item.id)}
+                                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 transition-colors flex items-center gap-1"
+                                    title="পুনরুদ্ধার করে প্রধান তালিকায় ফিরিয়ে আনুন"
+                                  >
+                                    <RefreshCw size={12} />
+                                    <span>রিস্টোর</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handlePermanentDeleteRecycleItem(item.id)}
+                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg border border-rose-200 transition-colors flex items-center gap-1"
+                                    title="চিরতরে মুছে ফেলুন"
+                                  >
+                                    <Trash2 size={12} />
+                                    <span>চিরতরে মুছুন</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -2378,6 +2646,14 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                           <p className="text-xs text-emerald-500 font-bold">সক্রিয় চ্যাট</p>
                         </div>
                       </div>
+                      <button
+                        onClick={() => handleDeleteSupportChat(selectedChat.id)}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-1.5 transition-colors"
+                        title="এই চ্যাটটি মুছে ফেলুন"
+                      >
+                        <Trash2 size={14} />
+                        <span>চ্যাট মুছুন</span>
+                      </button>
                     </div>
 
                     <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30">
@@ -3202,34 +3478,44 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                             </div>
                           </div>
 
-                          {isPending && (
-                            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200/75 pt-3">
-                              <button
-                                onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'warn')}
-                                className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                              >
-                                🔔 ১ম সতর্কবার্তা (Warn)
-                              </button>
-                              <button
-                                onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'red_ball')}
-                                className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                              >
-                                🔴 রেড বল দিন (Strike)
-                              </button>
-                              <button
-                                onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'suspend')}
-                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-950 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                              >
-                                🚫 সাময়িক বরখাস্ত (Suspend)
-                              </button>
-                              <button
-                                onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'dismiss')}
-                                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors"
-                              >
-                                খারিজ করুন (Dismiss)
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200/75 pt-3">
+                            {isPending && (
+                              <>
+                                <button
+                                  onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'warn')}
+                                  className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                                >
+                                  🔔 ১ম সতর্কবার্তা (Warn)
+                                </button>
+                                <button
+                                  onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'red_ball')}
+                                  className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                                >
+                                  🔴 রেড বল দিন (Strike)
+                                </button>
+                                <button
+                                  onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'suspend')}
+                                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-950 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                                >
+                                  🚫 সাময়িক বরখাস্ত (Suspend)
+                                </button>
+                                <button
+                                  onClick={() => handleComplaintAction(comp.id, comp.accusedId, comp.accusedName, 'dismiss')}
+                                  className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  খারিজ করুন (Dismiss)
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleDeleteComplaint(comp.id)}
+                              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold border border-rose-200 flex items-center gap-1 transition-colors"
+                              title="অভিযোগটি চিরতরে মুছে ফেলুন"
+                            >
+                              <Trash2 size={13} />
+                              <span>মুছে ফেলুন</span>
+                            </button>
+                          </div>
                         </div>
                       );
                     })
@@ -4658,12 +4944,21 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                               </span>
                             </td>
                             <td className="p-4 text-right">
-                              <button
-                                onClick={() => setSelectedCaseForDetails(c)}
-                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                              >
-                                বিস্তারিত ও রেকর্ড
-                              </button>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => setSelectedCaseForDetails(c)}
+                                  className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  বিস্তারিত ও রেকর্ড
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteAdminCase(c.id)}
+                                  className="p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-lg transition-colors border border-rose-200"
+                                  title="মামলা মুছে ফেলুন"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -4687,12 +4982,22 @@ export default function AdminPanel({ userType, userId }: { userType: string, use
                 <h3 className="text-xl font-bold mt-1.5">মামলা নম্বর: {selectedCaseForDetails.caseNumber || selectedCaseForDetails.case_number}</h3>
                 <p className="text-xs text-indigo-300 mt-1">{selectedCaseForDetails.courtName || selectedCaseForDetails.court_name}</p>
               </div>
-              <button 
-                onClick={() => setSelectedCaseForDetails(null)}
-                className="p-2 hover:bg-indigo-900 rounded-full transition-colors text-white/80 hover:text-white"
-              >
-                <XCircle size={26} />
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => handleDeleteAdminCase(selectedCaseForDetails.id)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-rose-900/30"
+                  title="এই মামলাটি রিসাইকেল বিনে পাঠান"
+                >
+                  <Trash2 size={15} />
+                  <span>মামলা মুছুন</span>
+                </button>
+                <button 
+                  onClick={() => setSelectedCaseForDetails(null)}
+                  className="p-2 hover:bg-indigo-900 rounded-full transition-colors text-white/80 hover:text-white"
+                >
+                  <XCircle size={26} />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">

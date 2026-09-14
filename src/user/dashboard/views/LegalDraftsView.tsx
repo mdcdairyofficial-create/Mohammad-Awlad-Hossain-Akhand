@@ -18,7 +18,7 @@ import {
   Star
 } from 'lucide-react';
 import { db, storage, handleFirestoreError, OperationType } from '../../../firebase';
-import { collection, getDocs, addDoc, doc, getDoc, updateDoc, setDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, doc, getDoc, updateDoc, setDoc, arrayUnion, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { jsPDF } from 'jspdf';
 
@@ -475,6 +475,26 @@ export const LegalDraftsView = ({ language, userPoints, onUpdateProfile, userId 
                     >
                       <Download size={20} />
                     </a>
+                    {!STATIC_TEMPLATES.some(t => t.id === selectedTemplate.id) && (
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই খসড়া টেমপ্লেটটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this draft template?')) {
+                            try {
+                              await deleteDoc(doc(db, 'legalDrafts', selectedTemplate.id));
+                              setTemplates(prev => prev.filter(t => t.id !== selectedTemplate.id));
+                              setSelectedTemplate(null);
+                              alert(language === 'bn' ? 'টেমপ্লেট সফলভাবে মুছে ফেলা হয়েছে।' : 'Template deleted successfully.');
+                            } catch (e) {
+                              console.error("Delete draft error:", e);
+                            }
+                          }
+                        }}
+                        className="p-3 bg-white border border-rose-200 text-rose-600 rounded-2xl hover:bg-rose-50 transition-all shadow-sm flex items-center justify-center cursor-pointer"
+                        title={language === 'bn' ? 'টেমপ্লেট মুছুন' : 'Delete template'}
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

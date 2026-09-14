@@ -16,9 +16,11 @@ import {
   DollarSign,
   Activity,
   Zap,
-  BarChart3
+  BarChart3,
+  Flame
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
+import FirebaseUsageMonitor from './FirebaseUsageMonitor';
 import { db, auth } from '../firebase';
 import { 
   collection, 
@@ -41,7 +43,7 @@ interface BarAdminDashboardProps {
 }
 
 export default function BarAdminDashboard({ userId, userName }: BarAdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'verification' | 'ads' | 'notifications' | 'support' | 'usage'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'verification' | 'ads' | 'notifications' | 'support' | 'usage' | 'firebase_quota'>('dashboard');
   const [users, setUsers] = useState<any[]>([]);
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [supportChats, setSupportChats] = useState<any[]>([]);
@@ -94,6 +96,8 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
       
       const pendingVerify = userData.filter((u: any) => u.user_type === 'lawyer' && !u.isVerified).length;
       setStats(prev => ({ ...prev, totalUsers: userData.length, pendingVerification: pendingVerify }));
+    }, (error) => {
+      console.warn("onSnapshot users error:", error);
     });
 
     const unsubCampaigns = onSnapshot(collection(db, 'campaigns'), (snapshot) => {
@@ -103,6 +107,8 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
       const pending = campData.filter((c: any) => c.status === 'pending').length;
       const active = campData.filter((c: any) => c.status === 'active').length;
       setStats(prev => ({ ...prev, pendingAds: pending, activeAds: active }));
+    }, (error) => {
+      console.warn("onSnapshot campaigns error:", error);
     });
 
     const unsubChats = subscribeToAllSupportChats((chats) => {
@@ -193,6 +199,7 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
           <nav className="space-y-2">
             {[
               { id: 'dashboard', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
+              { id: 'firebase_quota', label: 'ফায়ারবেস কোটা (Read/Write)', icon: Flame },
               { id: 'users', label: 'ব্যবহারকারী', icon: Users },
               { id: 'verification', label: 'ভেরিফিকেশন', icon: UserCheck },
               { id: 'ads', label: 'বিজ্ঞাপন ম্যানেজমেন্ট', icon: MonitorPlay },
@@ -222,6 +229,7 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
             <div>
               <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tight">
                 {activeTab === 'dashboard' && 'সিস্টেম স্ট্যাটাস'}
+                {activeTab === 'firebase_quota' && 'ফায়ারবেস কোটা ও দৈনিক ব্যবহার'}
                 {activeTab === 'users' && 'ব্যবহারকারী ম্যানেজমেন্ট'}
                 {activeTab === 'verification' && 'আইনজীবী ভেরিফিকেশন'}
                 {activeTab === 'ads' && 'বিজ্ঞাপন অনুমোদন'}
@@ -552,8 +560,14 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
             </div>
           )}
 
+          {activeTab === 'firebase_quota' && (
+            <FirebaseUsageMonitor />
+          )}
+
           {activeTab === 'usage' && (
             <div className="space-y-8">
+              <FirebaseUsageMonitor />
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="bg-indigo-600 p-8 rounded-[3rem] text-white shadow-xl shadow-indigo-200 relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-6 opacity-10">
@@ -595,64 +609,6 @@ export default function BarAdminDashboard({ userId, userName }: BarAdminDashboar
                   <p className="mt-4 text-[10px] text-emerald-100 font-medium font-bold">
                     সাশ্রয় এবং মাল্টিপ্লায়ার থেকে মোট প্রফিট।
                   </p>
-                </div>
-              </div>
-
-              <div className="bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm">
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">লাইভ রিসোর্স মনিটর</h3>
-                    <p className="text-slate-500 font-bold text-sm tracking-widest uppercase opacity-60">রিয়েল-টাইম অপারেশন ট্র্যাকিং</p>
-                  </div>
-                  <BarChart3 className="text-indigo-600" size={32} />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                  <div className="space-y-6">
-                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                      <div className="flex justify-between items-end mb-4">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ফায়ারবেজ রিড (অনুমানকৃত)</span>
-                        <span className="text-xl font-black text-indigo-600">~৫০০-২০০০ / পিরিওড</span>
-                      </div>
-                      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-indigo-600 w-1/3 rounded-full"></div>
-                      </div>
-                    </div>
-                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                      <div className="flex justify-between items-end mb-4">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ফায়ারবেজ রাইট (অনুমানকৃত)</span>
-                        <span className="text-xl font-black text-emerald-600">~৫০-১৫০ / পিরিওড</span>
-                      </div>
-                      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-500 w-[15%] rounded-full"></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-indigo-50 p-8 rounded-[3rem] border border-indigo-100">
-                    <h4 className="font-black text-indigo-900 uppercase tracking-widest text-xs mb-6 flex items-center gap-2">
-                      <ShieldCheck size={16} /> সিকিউরিটি ও কস্ট কন্ট্রোল
-                    </h4>
-                    <ul className="space-y-4">
-                      {[
-                        'ইন্ডেক্সড কোয়েরি এনফোর্সমেন্ট',
-                        'ব্যাটচ রাইট অপ্টিমাইজেশন',
-                        'অপ্রয়োজনীয় অন-স্ন্যাপশট লিসেনার প্রতিরোধ',
-                        'ইউজার এপিআই কল লিমিটিং'
-                      ].map((item, i) => (
-                        <li key={i} className="flex items-center gap-3 text-sm font-bold text-indigo-700">
-                          <CheckCircle size={14} className="text-indigo-400" />
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-8 pt-8 border-t border-indigo-200">
-                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 font-black">ম্যানেজমেন্ট গাইড</p>
-                      <p className="text-xs text-indigo-800 font-medium leading-relaxed">
-                        সুপার অ্যাডমিন হিসেবে আপনি সবসময় গুগল ক্লাউড কনসোলের "Billing" সেকশন থেকে প্রকৃত ইনভয়েস দেখতে পারবেন। এখানে প্রদর্শিত তথ্য অনুমানকৃত।
-                      </p>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

@@ -58,8 +58,12 @@ export const FullscreenAdViewer = ({ language, userType, onClose, onPointsEarned
           // No active ads targeting this user role
           onClose();
         }
-      } catch (error) {
-        console.error('Error fetching ad:', error);
+      } catch (error: any) {
+        if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
+          console.warn('Firestore quota exceeded while fetching ad, closing ad viewer.');
+        } else {
+          console.error('Error fetching ad:', error);
+        }
         onClose();
       } finally {
         setIsLoading(false);

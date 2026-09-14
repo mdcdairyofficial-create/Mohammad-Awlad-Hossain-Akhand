@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import admin from "firebase-admin";
 import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
+import { firebaseUsageTracker } from "./firebaseUsageTracker";
 
 import { initializeApp as initializeClientApp } from "firebase/app";
 import { 
@@ -303,6 +304,8 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
 }
 
 // Authentication Middleware
+const serverUserProfileCache = new Map<string, { profile: any; timestamp: number }>();
+
 const authenticate = async (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
   console.log("[DEBUG] Auth header:", authHeader ? "Present" : "Missing");
@@ -360,12 +363,20 @@ const authenticate = async (req: any, res: any, next: any) => {
     console.log("[DEBUG] Verifying token...");
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
+
+    // Fast check in memory cache (reduces Firestore reads drastically)
+    const cached = serverUserProfileCache.get(decodedToken.uid);
+    if (cached && (Date.now() - cached.timestamp < 120000)) {
+      req.profile = cached.profile;
+      return next();
+    }
     
     // Fetch profile from Firestore with retry
     let retries = 3;
     while (retries > 0) {
       try {
         console.log(`[DEBUG] Querying users where firebase_uid == ${decodedToken.uid} (attempt ${4 - retries})`);
+        firebaseUsageTracker.recordRead(1, 'auth');
         const snapshot = await db.collection("users").where("firebase_uid", "==", decodedToken.uid).limit(1).get();
         if (!snapshot.empty) {
           const userDoc = snapshot.docs[0];
@@ -385,56 +396,39 @@ const authenticate = async (req: any, res: any, next: any) => {
           } else {
             req.profile = { id: userDoc.id, ...userData };
           }
+
+          // Cache profile in memory
+          serverUserProfileCache.set(decodedToken.uid, { profile: req.profile, timestamp: Date.now() });
           
-          // Track operations for billing
+          // Track operations for billing (only for writes/mutations to prevent exhausting free-tier write quotas on read requests)
           const userId = userDoc.id;
-          let opType = 'read_count';
+          let opType = '';
           if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
             opType = 'write_count';
           } else if (req.method === 'DELETE') {
             opType = 'delete_count';
           }
           
-          // Use Admin SDK directly to bypass security rules for internal bookkeeping
-          const trackOperation = async (dbId?: string) => {
-            try {
-              const adminDb = getAdminDb(dbId);
-              await adminDb.collection("users").doc(userId).set({
-                [opType]: AdminFieldValue.increment(1)
-              }, { merge: true });
-            } catch (err: any) {
-              // If specifically 5 NOT_FOUND and we were using a named DB, try (default)
-              if (err.code === 5 && dbId !== "(default)" && _databaseId) {
-                console.warn(`[Firebase] DB ${dbId} NOT_FOUND, retrying operation track with (default)`);
-                _useDefaultDbFallback = true;
-                const defaultDb = getAdminDb("(default)");
-                await defaultDb.collection("users").doc(userId).set({
+          if (opType) {
+            const trackOperation = async (dbId?: string) => {
+              try {
+                const adminDb = getAdminDb(dbId);
+                await adminDb.collection("users").doc(userId).set({
                   [opType]: AdminFieldValue.increment(1)
                 }, { merge: true });
-              } else {
-                throw err;
+              } catch (err: any) {
+                if (err.code === 5 && dbId !== "(default)" && _databaseId) {
+                  _useDefaultDbFallback = true;
+                  const defaultDb = getAdminDb("(default)");
+                  await defaultDb.collection("users").doc(userId).set({
+                    [opType]: AdminFieldValue.increment(1)
+                  }, { merge: true });
+                }
               }
-            }
-          };
+            };
 
-          trackOperation(_databaseId).catch((err: any) => {
-            // Keep error logging minimal for permission issues to avoid cluttering if it's an environment/IAM constraint
-            if (err.code === 7) {
-               if (process.env.NODE_ENV !== 'production') {
-                 console.warn(`[Firebase] Admin PERMISSION_DENIED while tracking for ${userId}. The Service Account may lack necessary IAM roles.`);
-               }
-               // Attempt fallback to Client SDK if possible
-               // We only attempt if we have a client DB instance and the user is updating their own record
-               // (Note: This relies on security rules allowing the update)
-               if (_clientDb && (userId === decodedToken.uid || req.profile?.firebase_uid === decodedToken.uid)) {
-                 db.collection("users").doc(userId).set({ [opType]: FieldValue.increment(1) }, { merge: true })
-                   .catch(() => { /* Silently fail Client fallback */ });
-               }
-            } else {
-              console.error(`[Firebase] FAILED to track operation for user ${userId}. DB: ${_databaseId || '(default)'}`);
-              console.error("Error Detail:", err.message || err);
-            }
-          });
+            trackOperation(_databaseId).catch(() => {});
+          }
 
           // --- 500MB Usage Limit Logic ---
           const displayMb = parseFloat(req.profile?.display_data_mb || "0");
@@ -453,7 +447,12 @@ const authenticate = async (req: any, res: any, next: any) => {
           console.log(`[DEBUG] User profile does not exist for firebase_uid ${decodedToken.uid}.`);
         }
         break; // Doesn't exist, don't retry
-      } catch (err) {
+      } catch (err: any) {
+        const isQuota = err?.message?.includes('Quota exceeded') || err?.code === 8;
+        if (isQuota) {
+          console.warn(`[Firebase] Quota exceeded while fetching profile for ${decodedToken.uid}. Using token fallback.`);
+          break; // Do not waste retries when Firestore quota is exceeded
+        }
         console.error(`Error fetching user profile (attempt ${4 - retries}):`, err);
         retries--;
         if (retries === 0) {
@@ -463,6 +462,23 @@ const authenticate = async (req: any, res: any, next: any) => {
             await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
         }
       }
+    }
+
+    // Fallback profile if Firestore is offline, doc is missing, or Quota exceeded
+    if (!req.profile && decodedToken) {
+      const isSuperAdmin = (decodedToken.email && decodedToken.email.toLowerCase() === 'mdcdairy.official@gmail.com');
+      req.profile = {
+        id: decodedToken.uid,
+        firebase_uid: decodedToken.uid,
+        name: decodedToken.name || (decodedToken.email ? decodedToken.email.split('@')[0] : 'User'),
+        email: decodedToken.email || '',
+        user_type: isSuperAdmin ? 'super_admin' : 'lawyer',
+        userType: isSuperAdmin ? 'super_admin' : 'lawyer',
+        subscription_package: 'premium',
+        subscription_status: 'active',
+        isQuotaFallback: true
+      };
+      serverUserProfileCache.set(decodedToken.uid, { profile: req.profile, timestamp: Date.now() });
     }
     
     next();
@@ -475,7 +491,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 // No SQLite needed anymore
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+  const PORT = 3000;
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -506,8 +522,50 @@ app.post('/api/dump', (req, res) => {
       // Ensure user is only accessing their own profile OR is an admin
       const isAdmin = ['admin', 'super_admin', 'country_manager'].includes(req.profile?.user_type || '');
       
-      const userDoc = await db.doc("users/" + userId).get();
+      let userDoc: any;
+      try {
+        userDoc = await db.doc("users/" + userId).get();
+      } catch (dbErr: any) {
+        if (dbErr?.message?.includes('Quota exceeded') || dbErr?.code === 8) {
+          console.warn(`[Users API] Firestore quota exceeded for user ${userId}. Returning available profile.`);
+          return res.json({
+            id: req.profile?.id || userId,
+            firebaseUid: req.profile?.firebase_uid || firebaseUid,
+            fullName: req.profile?.name || req.user.name || "ব্যবহারকারী",
+            email: req.profile?.email || req.user.email || "",
+            mobile: req.profile?.mobile || "",
+            userType: req.profile?.user_type || "lawyer",
+            district: req.profile?.district || "",
+            country: req.profile?.country || "Bangladesh",
+            referralCode: req.profile?.referral_code || "",
+            points: req.profile?.points || 0,
+            walletBalance: req.profile?.wallet_balance || 0,
+            subscriptionEndDate: req.profile?.subscription_end_date,
+            subscriptionPackage: req.profile?.subscription_package || "premium",
+            quotaExceeded: true
+          });
+        }
+        throw dbErr;
+      }
+
       if (!userDoc.exists) {
+        // If userDoc not found by doc id, but req.profile exists (or matches token UID)
+        if (req.profile && (req.profile.id === userId || req.profile.firebase_uid === firebaseUid)) {
+          return res.json({
+            id: req.profile.id,
+            firebaseUid: req.profile.firebase_uid || firebaseUid,
+            fullName: req.profile.name || req.user.name || "ব্যবহারকারী",
+            email: req.profile.email || req.user.email || "",
+            mobile: req.profile.mobile || "",
+            userType: req.profile.user_type || "lawyer",
+            district: req.profile.district || "",
+            country: req.profile.country || "Bangladesh",
+            points: req.profile.points || 0,
+            walletBalance: req.profile.wallet_balance || 0,
+            subscriptionEndDate: req.profile.subscription_end_date,
+            subscriptionPackage: req.profile.subscription_package || "premium"
+          });
+        }
         return res.status(404).json({ error: "User not found" });
       }
 
@@ -547,6 +605,16 @@ app.post('/api/dump', (req, res) => {
         pendingYellowFine: userData.pending_yellow_fine || 0
       });
     } catch (error: any) {
+      if (error?.message?.includes('Quota exceeded') || error?.code === 8) {
+        return res.json({
+          id: req.params.id,
+          firebaseUid: req.user?.uid,
+          fullName: req.user?.name || req.profile?.name || "ব্যবহারকারী",
+          email: req.user?.email || "",
+          userType: req.profile?.user_type || "lawyer",
+          quotaExceeded: true
+        });
+      }
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
   });
@@ -939,6 +1007,22 @@ app.post('/api/subscription/request', async (req, res) => {
     }
   });
 
+  // Client Firebase Usage Report Endpoint
+  app.post("/api/system/firebase-usage/report", (req, res) => {
+    try {
+      const { reads, writes, deletes, category } = req.body || {};
+      firebaseUsageTracker.recordBatch({
+        reads: typeof reads === 'number' ? reads : 0,
+        writes: typeof writes === 'number' ? writes : 0,
+        deletes: typeof deletes === 'number' ? deletes : 0,
+        category: category || 'other',
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Admin Middleware
   app.use("/api/admin", authenticate, (req: any, res, next) => {
     const profile = req.profile;
@@ -949,6 +1033,19 @@ app.post('/api/subscription/request', async (req, res) => {
       return res.status(403).json({ error: "অ্যাডমিন অ্যাক্সেস প্রয়োজন।" });
     }
     next();
+  });
+
+  // Get Live Firebase Quota & Usage Stats
+  app.get("/api/admin/firebase-usage", (req: any, res) => {
+    try {
+      const stats = firebaseUsageTracker.getStats(
+        "gen-lang-client-0215506885",
+        _databaseId || "ai-studio-b68ab48d-678f-40d2-8599-d689643a1dea"
+      );
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Superadmin Appointment Endpoint
@@ -1422,6 +1519,124 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     } catch (error: any) {
       console.error("[Admin Delete Error]", error);
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+    }
+  });
+
+  // Admin Case Delete API (archives to recycle bin)
+  app.delete("/api/admin/cases/:id", async (req, res) => {
+    try {
+      const caseId = String(req.params.id);
+      const caseRef = db.collection("cases").doc(caseId);
+      const caseSnap = await caseRef.get();
+      if (!caseSnap.exists) {
+        return res.status(404).json({ error: "মামলা পাওয়া যায়নি।" });
+      }
+      const caseData = caseSnap.data();
+
+      // Archive to recycle_bin
+      await db.collection("recycle_bin").doc(`case_${caseId}`).set({
+        type: 'case',
+        originalId: caseId,
+        title: (caseData as any)?.caseNumber || (caseData as any)?.case_number || `মামলা #${caseId}`,
+        details: `${(caseData as any)?.petitioner || ''} বনাম ${(caseData as any)?.respondent || ''}`,
+        data: caseData,
+        deletedBy: 'admin',
+        deletedAt: new Date().toISOString()
+      });
+
+      await caseRef.delete();
+      res.json({ success: true, message: "মামলাটি সফলভাবে মুছে ফেলা হয়েছে এবং রিসাইকেল বিনে জমা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "সার্ভার এরর: " + error.message });
+    }
+  });
+
+  // Recycle Bin APIs
+  app.get("/api/admin/recycle-bin", async (req, res) => {
+    try {
+      const snapshot = await db.collection("recycle_bin")
+        .orderBy("deletedAt", "desc")
+        .limit(100)
+        .get();
+      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json(items);
+    } catch (error: any) {
+      try {
+        const snapshot = await db.collection("recycle_bin").limit(100).get();
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(items);
+      } catch (e: any) {
+        res.json([]);
+      }
+    }
+  });
+
+  // Restore item from Recycle Bin
+  app.post("/api/admin/recycle-bin/:id/restore", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const binRef = db.collection("recycle_bin").doc(id);
+      const binSnap = await binRef.get();
+      if (!binSnap.exists) {
+        return res.status(404).json({ error: "রিসাইকেল বিনে এই আইটেমটি পাওয়া যায়নি।" });
+      }
+      const item = binSnap.data() as any;
+      if (item.type === 'case' && item.originalId && item.data) {
+        await db.collection("cases").doc(String(item.originalId)).set(item.data);
+      } else if (item.type === 'user' && item.originalId && item.data) {
+        await db.collection("users").doc(String(item.originalId)).set(item.data);
+      }
+      await binRef.delete();
+      res.json({ success: true, message: "আইটেমটি সফলভাবে পুনরুদ্ধার (Restore) করা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "পুনরুদ্ধারে সমস্যা: " + error.message });
+    }
+  });
+
+  // Permanently delete single item from Recycle Bin
+  app.delete("/api/admin/recycle-bin/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.collection("recycle_bin").doc(id).delete();
+      res.json({ success: true, message: "আইটেমটি স্থায়ীভাবে মুছে ফেলা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "মুছতে সমস্যা: " + error.message });
+    }
+  });
+
+  // Empty entire Recycle Bin
+  app.delete("/api/admin/recycle-bin", async (req, res) => {
+    try {
+      const snapshot = await db.collection("recycle_bin").limit(200).get();
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      res.json({ success: true, message: "রিসাইকেল বিন সম্পূর্ণ খালি করা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "খালি করতে সমস্যা: " + error.message });
+    }
+  });
+
+  // Delete complaint API
+  app.delete("/api/admin/complaints/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.collection("complaints").doc(id).delete();
+      await db.collection("case_complaints").doc(id).delete().catch(() => {});
+      res.json({ success: true, message: "অভিযোগটি সফলভাবে মুছে ফেলা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "অভিযোগ মুছতে সমস্যা: " + error.message });
+    }
+  });
+
+  // Delete support chat API
+  app.delete("/api/admin/support-chats/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.collection("support_chats").doc(id).delete();
+      res.json({ success: true, message: "সাপোর্ট চ্যাট মুছে ফেলা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "চ্যাট মুছতে সমস্যা: " + error.message });
     }
   });
 
@@ -2450,6 +2665,10 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
       res.json(cases);
     } catch (error: any) {
+      if (error?.message?.includes('Quota exceeded') || error?.code === 8) {
+        console.warn("[Cases API] Firestore quota exceeded. Returning empty array so client preserves local offline cases.");
+        return res.json([]);
+      }
       console.error(error);
       res.status(500).json({ error: "Database error: " + error.message });
     }
@@ -2760,6 +2979,36 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       }
     } catch (error: any) {
       res.status(500).json({ error: "Database error: " + error.message });
+    }
+  });
+
+  // User Case Delete API (archives to recycle_bin)
+  app.delete("/api/cases/:id", authenticate, async (req: any, res) => {
+    try {
+      const caseId = String(req.params.id);
+      const userId = req.profile?.id;
+      const caseRef = db.collection("cases").doc(caseId);
+      const caseSnap = await caseRef.get();
+      if (!caseSnap.exists) {
+        return res.status(404).json({ error: "মামলা পাওয়া যায়নি।" });
+      }
+      const caseData = caseSnap.data();
+
+      // Archive to recycle_bin
+      await db.collection("recycle_bin").doc(`case_${caseId}`).set({
+        type: 'case',
+        originalId: caseId,
+        title: (caseData as any)?.caseNumber || (caseData as any)?.case_number || `মামলা #${caseId}`,
+        details: `${(caseData as any)?.petitioner || ''} বনাম ${(caseData as any)?.respondent || ''}`,
+        data: caseData,
+        deletedBy: userId || 'user',
+        deletedAt: new Date().toISOString()
+      });
+
+      await caseRef.delete();
+      res.json({ success: true, message: "মামলাটি মুছে ফেলা হয়েছে।" });
+    } catch (error: any) {
+      res.status(500).json({ error: "মামলা মুছতে সমস্যা: " + error.message });
     }
   });
 
