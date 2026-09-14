@@ -3678,6 +3678,9 @@ export default function Dashboard({
                   userType={currentViewMode}
                   govtHolidays={govtHolidays}
                   getBanglaDate={getBanglaDate}
+                  onUpdateCaseLocal={(caseId, updatedFields) => {
+                    setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...updatedFields } : c));
+                  }}
                 />
               )}
               {activeTab === 'cases' && (

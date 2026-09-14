@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ChevronLeft, 
@@ -14,9 +14,16 @@ import {
   ArrowLeft,
   ArrowRight,
   Video,
-  Phone
+  Phone,
+  Camera,
+  Upload,
+  CheckCircle,
+  RefreshCw,
+  Edit2
 } from 'lucide-react';
-import { Case, isCaseOnDate } from '../../../types';
+import { Case, CaseHistoryEntry, isCaseOnDate } from '../../../types';
+import { updateCase } from '../../../services/user/featureService';
+import { uploadFile, getPublicUrl } from '../../../lib/storage';
 
 interface CalendarViewProps {
   currentMonth: Date;
@@ -31,6 +38,7 @@ interface CalendarViewProps {
   govtHolidays?: string[] | Record<string, string>;
   getBanglaDate?: (date: Date) => string;
   t: (key: any) => string;
+  onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
 }
 
 const BookView = ({ 
@@ -251,10 +259,233 @@ export const CalendarView = ({
   userType,
   govtHolidays = [],
   getBanglaDate,
-  t
+  t,
+  onUpdateCaseLocal
 }: CalendarViewProps) => {
   const [showBookView, setShowBookView] = useState(false);
   const [hoveredHolidayReason, setHoveredHolidayReason] = useState<string | null>(null);
+  const [focusedCaseId, setFocusedCaseId] = useState<string | number | null>(null);
+
+  // Court Session Draft and Finalize States
+  const [draftNotes, setDraftNotes] = useState<string>('');
+  const [finalizeDate, setFinalizeDate] = useState<string>('');
+  const [finalizeOrder, setFinalizeOrder] = useState<string>('');
+  const [finalizeFile, setFinalizeFile] = useState<File | null>(null);
+  const [finalizeFilePreview, setFinalizeFilePreview] = useState<string | null>(null);
+  const [isSavingFinal, setIsSavingFinal] = useState<boolean>(false);
+  const [saveSuccessAnim, setSaveSuccessAnim] = useState<boolean>(false);
+
+  // Multiple Parties Popup State
+  const [activePartyModal, setActivePartyModal] = useState<{
+    caseId: string | number;
+    side: 'petitioner' | 'respondent';
+    parties: { name: string; phone: string; serial: string | number }[];
+  } | null>(null);
+
+  // Case Editing Form State
+  const [editingCaseData, setEditingCaseData] = useState<Case | null>(null);
+  const [editCaseNumber, setEditCaseNumber] = useState('');
+  const [editCourtName, setEditCourtName] = useState('');
+  const [editCaseType, setEditCaseType] = useState('Civil');
+  const [editPetitioner, setEditPetitioner] = useState('');
+  const [editPetitionerMobile, setEditPetitionerMobile] = useState('');
+  const [editRespondent, setEditRespondent] = useState('');
+  const [editRespondentMobile, setEditRespondentMobile] = useState('');
+  const [editStatus, setEditStatus] = useState('');
+  const [isUpdatingCase, setIsUpdatingCase] = useState(false);
+
+  // Sync edit form fields when editingCaseData changes
+  useEffect(() => {
+    if (editingCaseData) {
+      setEditCaseNumber(editingCaseData.caseNumber || '');
+      setEditCourtName(editingCaseData.courtName || '');
+      setEditCaseType(editingCaseData.caseType || 'Civil');
+      setEditPetitioner(editingCaseData.petitioner || '');
+      setEditPetitionerMobile(editingCaseData.petitionerMobile || '');
+      setEditRespondent(editingCaseData.respondent || '');
+      setEditRespondentMobile(editingCaseData.respondentMobile || '');
+      setEditStatus(editingCaseData.status || '');
+    }
+  }, [editingCaseData]);
+
+  const handleEditCaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCaseData) return;
+    setIsUpdatingCase(true);
+    try {
+      const newPetitionerNames = editPetitioner.split(',').map(n => n.trim()).filter(Boolean);
+      const newPetitionerMobiles = editPetitionerMobile.split(',').map(m => m.trim()).filter(Boolean);
+      const newPetitionerDetails = newPetitionerNames.map((name, idx) => ({
+        name,
+        phone: newPetitionerMobiles[idx] || newPetitionerMobiles[0] || editPetitionerMobile || '',
+        serial: idx + 1
+      }));
+
+      const newRespondentNames = editRespondent.split(',').map(n => n.trim()).filter(Boolean);
+      const newRespondentMobiles = editRespondentMobile.split(',').map(m => m.trim()).filter(Boolean);
+      const newRespondentDetails = newRespondentNames.map((name, idx) => ({
+        name,
+        phone: newRespondentMobiles[idx] || newRespondentMobiles[0] || editRespondentMobile || '',
+        serial: idx + 1
+      }));
+
+      const updatedFields: Partial<Case> = {
+        caseNumber: editCaseNumber,
+        courtName: editCourtName,
+        caseType: editCaseType,
+        petitioner: editPetitioner,
+        petitionerMobile: editPetitionerMobile,
+        petitionerDetails: newPetitionerDetails,
+        respondent: editRespondent,
+        respondentMobile: editRespondentMobile,
+        respondentDetails: newRespondentDetails,
+        status: editStatus
+      };
+
+      await updateCase(editingCaseData.id.toString(), updatedFields);
+      onUpdateCaseLocal?.(editingCaseData.id, updatedFields);
+      setEditingCaseData(null);
+      
+      setSaveSuccessAnim(true);
+      setTimeout(() => setSaveSuccessAnim(false), 2500);
+    } catch (err) {
+      console.error("Failed to update case details:", err);
+      alert(language === 'bn' ? 'তথ্য আপডেট করতে সমস্যা হয়েছে।' : 'Failed to update case details.');
+    } finally {
+      setIsUpdatingCase(false);
+    }
+  };
+
+  const getPetitionersList = (c: Case) => {
+    if (c.petitionerDetails && c.petitionerDetails.length > 0) {
+      return c.petitionerDetails;
+    }
+    if (!c.petitioner) return [];
+    const names = c.petitioner.split(',').map(n => n.trim()).filter(Boolean);
+    const mobiles = c.petitionerMobile ? c.petitionerMobile.split(',').map(m => m.trim()).filter(Boolean) : [];
+    return names.map((name, idx) => ({
+      name,
+      phone: mobiles[idx] || mobiles[0] || c.petitionerMobile || '',
+      serial: idx + 1
+    }));
+  };
+
+  const getRespondentsList = (c: Case) => {
+    if (c.respondentDetails && c.respondentDetails.length > 0) {
+      return c.respondentDetails;
+    }
+    if (!c.respondent) return [];
+    const names = c.respondent.split(',').map(n => n.trim()).filter(Boolean);
+    const mobiles = c.respondentMobile ? c.respondentMobile.split(',').map(m => m.trim()).filter(Boolean) : [];
+    return names.map((name, idx) => ({
+      name,
+      phone: mobiles[idx] || mobiles[0] || c.respondentMobile || '',
+      serial: idx + 1
+    }));
+  };
+
+  useEffect(() => {
+    if (focusedCaseId) {
+      const saved = localStorage.getItem(`draft_notes_${focusedCaseId}`);
+      setDraftNotes(saved || '');
+      setFinalizeOrder(saved || '');
+      // Find case
+      const c = cases.find(item => item.id === focusedCaseId);
+      if (c) {
+        setFinalizeDate(c.nextDate || '');
+      }
+    } else {
+      setDraftNotes('');
+      setFinalizeDate('');
+      setFinalizeOrder('');
+      setFinalizeFile(null);
+      setFinalizeFilePreview(null);
+    }
+  }, [focusedCaseId, cases]);
+
+  const handleDraftNotesChange = (val: string) => {
+    setDraftNotes(val);
+    setFinalizeOrder(val); // Sync to finalize box automatically for convenience!
+    if (focusedCaseId) {
+      localStorage.setItem(`draft_notes_${focusedCaseId}`, val);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setFinalizeFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFinalizeFilePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFinalizeSave = async (c: Case) => {
+    if (!finalizeDate) {
+      alert(language === 'bn' ? 'অনুগ্রহ করে পরবর্তী শুনানির তারিখ সিলেক্ট করুন।' : 'Please select the next hearing date.');
+      return;
+    }
+
+    setIsSavingFinal(true);
+    try {
+      let uploadedUrl = '';
+      if (finalizeFile) {
+        const fileExt = finalizeFile.name.split('.').pop() || 'jpg';
+        const fileName = `order_${c.id}_${Date.now()}.${fileExt}`;
+        const uploadResult = await uploadFile('documents', fileName, finalizeFile);
+        if (uploadResult && (uploadResult as any).metadata?.downloadUrl) {
+          uploadedUrl = (uploadResult as any).metadata.downloadUrl;
+        } else {
+          uploadedUrl = await getPublicUrl('documents', fileName);
+        }
+      }
+
+      // Add to case history
+      const currentFormattedDate = selectedDate || new Date().toISOString().split('T')[0];
+      const newHistoryEntry: CaseHistoryEntry = {
+        id: Date.now().toString(),
+        date: currentFormattedDate,
+        actionBy: 'court',
+        description: finalizeOrder || draftNotes || (language === 'bn' ? 'হাজিরা / শুনানির আদেশ' : 'Attendance / Hearing Order'),
+        order: finalizeOrder || draftNotes || (language === 'bn' ? 'হাজিরা / শুনানির আদেশ' : 'Attendance / Hearing Order'),
+        documents: uploadedUrl ? [{ name: 'Order Sheet', type: 'image', url: uploadedUrl }] : []
+      };
+
+      const updatedHistory = [...(c.history || []), newHistoryEntry];
+      const updatedFields: Partial<Case> = {
+        nextDate: finalizeDate,
+        order: finalizeOrder || draftNotes || (language === 'bn' ? 'হাজিরা / শুনানির আদেশ' : 'Attendance / Hearing Order'),
+        history: updatedHistory
+      };
+
+      await updateCase(c.id.toString(), updatedFields);
+      onUpdateCaseLocal?.(c.id, updatedFields);
+
+      // Clear local storage draft
+      if (focusedCaseId) {
+        localStorage.removeItem(`draft_notes_${focusedCaseId}`);
+      }
+
+      setDraftNotes('');
+      setFinalizeOrder('');
+      setFinalizeFile(null);
+      setFinalizeFilePreview(null);
+      
+      setSaveSuccessAnim(true);
+      setTimeout(() => {
+        setSaveSuccessAnim(false);
+      }, 3000);
+
+    } catch (err) {
+      console.error("Failed to finalize case:", err);
+      alert(language === 'bn' ? 'আপডেট করতে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Failed to finalize. Please try again.');
+    } finally {
+      setIsSavingFinal(false);
+    }
+  };
 
   const getHolidayReason = (dateStr: string, dayOfWeek: number) => {
     if (govtHolidays) {
@@ -291,10 +522,181 @@ export const CalendarView = ({
 
   const selectedDateCases = selectedDate ? cases.filter(c => isCaseOnDate(c, selectedDate)) : [];
 
+  const groupedAndCategorizedCases = (() => {
+    const groups: {
+      [courtName: string]: {
+        attendance: Case[];
+        charge: Case[];
+        witness: Case[];
+        wa: Case[];
+      }
+    } = {};
+
+    selectedDateCases.forEach(c => {
+      const court = c.courtName || (language === 'bn' ? 'অন্যান্য আদালত' : 'Other Court');
+      if (!groups[court]) {
+        groups[court] = { attendance: [], charge: [], witness: [], wa: [] };
+      }
+
+      const histEntry = selectedDate ? c.history?.find(h => h.date === selectedDate) : null;
+      const orderStr = (histEntry?.order || c.order || '').toLowerCase();
+      const detailsStr = (c.details || '').toLowerCase();
+      const combinedStr = `${orderStr} ${detailsStr}`;
+
+      const isWa = combinedStr.includes('w/a') || 
+                   combinedStr.includes('w.a.') || 
+                   combinedStr.includes('wa') || 
+                   combinedStr.includes('warrant') || 
+                   combinedStr.includes('গ্রেপ্তারি') || 
+                   combinedStr.includes('ওয়ারেন্ট') || 
+                   combinedStr.includes('ওয়ারেন্ট');
+
+      const isWitness = combinedStr.includes('সাক্ষী') || 
+                        combinedStr.includes('সাক্ষ্য') || 
+                        combinedStr.includes('witness') || 
+                        combinedStr.includes('pw') || 
+                        combinedStr.includes('p.w.') || 
+                        combinedStr.includes('ph') || 
+                        combinedStr.includes('evidence') ||
+                        combinedStr.includes('জেরা');
+
+      const isCharge = combinedStr.includes('চার্জ') || 
+                       combinedStr.includes('গঠন') || 
+                       combinedStr.includes('শুনানি') || 
+                       combinedStr.includes('charge') || 
+                       combinedStr.includes('frame') || 
+                       combinedStr.includes('argument') || 
+                       combinedStr.includes('তর্ক') ||
+                       combinedStr.includes('জবাব') ||
+                       combinedStr.includes('ws') ||
+                       combinedStr.includes('w.s.') ||
+                       combinedStr.includes('statement');
+
+      if (isWa) {
+        groups[court].wa.push(c);
+      } else if (isWitness) {
+        groups[court].witness.push(c);
+      } else if (isCharge) {
+        groups[court].charge.push(c);
+      } else {
+        groups[court].attendance.push(c);
+      }
+    });
+
+    return groups;
+  })();
+
+  const renderSubgroupSection = (title: string, casesList: Case[], badgeColorClass: string) => {
+    return (
+      <div className="space-y-1">
+        <div className={`text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-md inline-flex items-center gap-1 border ${badgeColorClass}`}>
+          {title} ({language === 'bn' ? casesList.length.toString().split('').map(d => ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'][parseInt(d)] || d).join('') : casesList.length})
+        </div>
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse bg-white/40 rounded-xl overflow-hidden border border-[#e3dcc4]/30">
+            <thead>
+              <tr className="border-b border-[#e3dcc4]/40 text-[8px] font-black text-[#6e6347] uppercase tracking-wider bg-[#f3efe0]/30">
+                <th className="py-1 px-1.5 w-8 text-center">{language === 'bn' ? 'ক্র. নং' : 'SL'}</th>
+                <th className="py-1 px-1.5">{language === 'bn' ? 'মামলা নম্বর' : 'Case No'}</th>
+                <th className="py-1 px-1.5">{language === 'bn' ? 'পক্ষদ্বয়' : 'Parties'}</th>
+                <th className="py-1 px-1.5">{language === 'bn' ? 'পদক্ষেপ' : 'Step'}</th>
+                <th className="py-1 px-1 text-center">{language === 'bn' ? 'অ্যাকশন' : 'Action'}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#e3dcc4]/20">
+              {casesList.map((c, sIdx) => {
+                const slNo = language === 'bn' 
+                  ? (sIdx + 1).toString().split('').map(d => ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'][parseInt(d)] || d).join('')
+                  : (sIdx + 1);
+                const histEntry = selectedDate ? c.history?.find(h => h.date === selectedDate) : null;
+                const displayOrder = histEntry?.order || c.order;
+                return (
+                  <tr
+                    key={c.id}
+                    onClick={() => setFocusedCaseId(c.id)}
+                    className={`group transition-colors cursor-pointer text-[10px] ${
+                      c.selectedParty === 'petitioner'
+                        ? 'bg-[#f0faf2]/90 hover:bg-[#def5e4]'
+                        : c.selectedParty === 'respondent' || c.selectedParty === 'accused'
+                          ? 'bg-[#fff5f6]/90 hover:bg-[#ffe6e8]'
+                          : 'hover:bg-[#f3efe0]/40'
+                    }`}
+                  >
+                    <td className="py-1.5 px-1.5 text-center font-bold text-[#756a4e] border-r border-[#e3dcc4]/10">{slNo}</td>
+                    <td className="py-1.5 px-1.5 font-extrabold text-slate-950 border-r border-[#e3dcc4]/10">
+                      <div>
+                        <span>{c.caseNumber}</span>
+                        <div className="flex gap-0.5 mt-0.5">
+                          <span className={`text-[6px] font-extrabold px-1 py-0.2 rounded ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {c.caseType}
+                          </span>
+                          {c.selectedParty === 'petitioner' ? (
+                            <span className="text-[6px] font-black px-1 py-0.2 bg-emerald-600 text-white rounded">
+                              {language === 'bn' ? 'বাদী' : 'Pet'}
+                            </span>
+                          ) : c.selectedParty === 'respondent' || c.selectedParty === 'accused' ? (
+                            <span className="text-[6px] font-black px-1 py-0.2 bg-rose-600 text-white rounded">
+                              {language === 'bn' ? 'আসামী' : 'Acc'}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-1.5 border-r border-[#e3dcc4]/10 max-w-[100px] truncate">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-800 leading-tight">{c.petitioner}</span>
+                        <span className="text-[7px] text-[#b3a886] font-bold leading-none my-0.5">VS</span>
+                        <span className="font-semibold text-slate-800 leading-tight">
+                          {c.respondentDetails && c.respondentDetails.length > 0 ? c.respondentDetails[0].name : c.respondent}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-1.5 border-r border-[#e3dcc4]/10">
+                      <p className="text-[9px] text-slate-700 line-clamp-1" title={displayOrder}>
+                        {displayOrder || <span className="text-slate-400 italic">{language === 'bn' ? 'পদক্ষেপ নেই' : 'No steps'}</span>}
+                      </p>
+                    </td>
+                    <td className="py-1.5 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-center gap-0.5">
+                        {userType !== 'client' && (
+                          <button 
+                            onClick={() => setEditingCaseData(c)}
+                            className="p-0.5 bg-amber-50 text-amber-600 rounded hover:bg-amber-600 hover:text-white transition-all"
+                            title={language === 'bn' ? 'তথ্য সংশোধন করুন' : 'Edit Info'}
+                          >
+                            <Edit2 size={9} />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => onViewCard(c)}
+                          className="p-0.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-600 hover:text-white transition-all"
+                          title={language === 'bn' ? 'কার্ড দেখুন' : 'View Card'}
+                        >
+                          <CreditCard size={9} />
+                        </button>
+                        <button 
+                          onClick={() => onViewHistory(c)}
+                          className="p-0.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-600 hover:text-white transition-all"
+                          title={language === 'bn' ? 'ইতিহাস দেখুন' : 'View History'}
+                        >
+                          <History size={9} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   const handleDateClick = (dateStr: string) => {
     setSelectedDate(dateStr);
     setBookDate(dateStr);
-    setShowBookView(true);
+    setFocusedCaseId(null);
   };
 
   const navigateDate = (direction: 'prev' | 'next') => {
@@ -344,7 +746,7 @@ export const CalendarView = ({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:h-[calc(100vh-140px)] lg:min-h-[580px] max-w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
       <AnimatePresence>
         {hoveredHolidayReason && (
           <motion.div
@@ -376,45 +778,45 @@ export const CalendarView = ({
       </AnimatePresence>
 
       {/* Calendar Section */}
-      <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-        <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
-              <CalendarIcon size={24} />
+      <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
+        <div className="p-5 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+              <CalendarIcon size={20} />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight leading-none">
                 {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
               </h3>
-              <p className="text-indigo-600 font-bold text-xs -mt-1">
+              <p className="text-indigo-600 font-bold text-[10px] sm:text-xs mt-0.5">
                 {getBanglaMonthYear(currentMonth)}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button 
               onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-              className="p-3 hover:bg-white rounded-2xl transition-all border border-transparent hover:border-slate-200 text-slate-400 hover:text-indigo-600 shadow-sm"
+              className="p-2 hover:bg-white rounded-xl transition-all border border-transparent hover:border-slate-200 text-slate-400 hover:text-indigo-600"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={18} />
             </button>
             <button 
               onClick={() => setCurrentMonth(new Date())}
-              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] sm:text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-3xs"
             >
               {t('today')}
             </button>
             <button 
               onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-              className="p-3 hover:bg-white rounded-2xl transition-all border border-transparent hover:border-slate-200 text-slate-400 hover:text-indigo-600 shadow-sm"
+              className="p-2 hover:bg-white rounded-xl transition-all border border-transparent hover:border-slate-200 text-slate-400 hover:text-indigo-600"
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={18} />
             </button>
           </div>
         </div>
 
-        <div className="p-8 flex-1">
-          <div className="grid grid-cols-7 gap-4 mb-6">
+        <div className="p-5 flex-1 flex flex-col justify-between overflow-hidden">
+          <div className="grid grid-cols-7 gap-2 mb-3">
             {weekDays.map((day, idx) => {
               const isHoliday = idx === 5 || idx === 6; // Fri and Sat in Sun-Sat week
               return (
@@ -424,7 +826,7 @@ export const CalendarView = ({
               );
             })}
           </div>
-          <div className="grid grid-cols-7 gap-4">
+          <div className="grid grid-cols-7 gap-2">
             {prevMonthDays.map(i => (
               <div key={`prev-${i}`} className="aspect-square rounded-2xl bg-slate-50/30 border border-transparent opacity-20" />
             ))}
@@ -459,7 +861,7 @@ export const CalendarView = ({
                   onTouchStart={() => isHoliday && setHoveredHolidayReason(reason)}
                   onTouchEnd={() => setHoveredHolidayReason(null)}
                   className={`
-                    aspect-square rounded-2xl border transition-all duration-300 relative group p-2 flex flex-col justify-between
+                    aspect-square rounded-2xl border transition-all duration-300 relative group p-1.5 flex flex-col justify-between
                     ${isSelected 
                       ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-200 scale-105 z-10' 
                       : isToday
@@ -478,14 +880,14 @@ export const CalendarView = ({
                     <div className="absolute inset-0 rounded-2xl bg-rose-500/10 animate-pulse border-2 border-rose-500/30" />
                   )}
                   <div className="flex justify-start w-full relative z-10">
-                    <span className={`text-2xl sm:text-3xl leading-none font-black ${isSelected || isToday ? 'text-white' : isHoliday ? 'text-rose-600' : 'text-slate-700'}`}>
+                    <span className={`text-lg sm:text-xl leading-none font-black ${isSelected || isToday ? 'text-white' : isHoliday ? 'text-rose-600' : 'text-slate-700'}`}>
                       {day}
                     </span>
                   </div>
                   
                   {bnDate && (
                     <div className="flex justify-end w-full mt-auto relative z-10">
-                      <span className={`text-sm sm:text-base font-bold ${isSelected || isToday ? 'text-white/90' : 'text-indigo-600'}`}>
+                      <span className={`text-[9px] sm:text-[10px] font-bold leading-none ${isSelected || isToday ? 'text-white/90' : 'text-indigo-600'}`}>
                         {bnDate}
                       </span>
                     </div>
@@ -520,154 +922,734 @@ export const CalendarView = ({
       </div>
 
       {/* Details Section */}
-      <div className="space-y-6">
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm h-full flex flex-col">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-bold text-slate-900">
-              {selectedDate ? `${language === 'bn' ? 'তারিখ:' : 'Date:'} ${selectedDate}` : t('today_schedule')}
-            </h3>
-            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400">
-              <Clock size={20} />
+      <div className="space-y-4 h-full flex flex-col">
+        <div className="relative bg-[#fdfbf7] p-5 rounded-[2.5rem] border-2 border-[#e3dcc4] shadow-md h-full flex flex-col overflow-hidden">
+          {/* Notebook Spiral Ring Binder Effect */}
+          <div className="absolute left-2.5 top-0 bottom-0 w-5 flex flex-col justify-around items-center pointer-events-none z-20 opacity-80">
+            {Array.from({ length: 15 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-1.5 -my-1">
+                {/* Spiral binder hole */}
+                <div className="w-2 h-2 rounded-full bg-slate-800/20 border border-slate-900/30 shadow-inner" />
+                {/* Silver Metal Ring Hook */}
+                <div className="w-4 h-1.5 rounded-full bg-gradient-to-r from-slate-400 via-slate-100 to-slate-400 shadow-sm -ml-2 border border-slate-300" />
+              </div>
+            ))}
+          </div>
+
+          {/* Red Notebook Margin Line */}
+          <div className="absolute left-10 top-0 bottom-0 w-[2px] bg-rose-400/45 z-10 pointer-events-none" />
+
+          {/* Diary Header */}
+          <div className="pl-7 flex items-center justify-between mb-4 border-b border-[#e3dcc4] pb-3 z-10">
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-[#524933] flex items-center gap-1.5">
+                📖 {language === 'bn' ? 'দৈনিক শুনানি ডায়েরী' : 'Daily Hearing Diary'}
+              </h3>
+              <p className="text-[10px] text-indigo-600 font-bold mt-0.5 bg-indigo-50/75 px-2 py-0.5 rounded-full inline-block border border-indigo-100/70">
+                {selectedDate ? `${language === 'bn' ? 'তারিখ:' : 'Date:'} ${selectedDate}` : t('today_schedule')}
+              </p>
+            </div>
+            <div className="text-right">
+              <span className="text-[9px] font-bold bg-[#e3dcc4]/50 text-[#524933] px-2.5 py-0.5 rounded-full border border-[#d2c9ab]">
+                {language === 'bn' ? 'মোট: ' : 'Total: '}
+                {language === 'bn' 
+                  ? selectedDateCases.length.toString().split('').map(d => ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'][parseInt(d)] || d).join('')
+                  : selectedDateCases.length
+                }
+              </span>
             </div>
           </div>
 
-          <div className="space-y-4 flex-1 overflow-y-auto custom-scrollbar pr-2">
+          {/* Lined Notebook Paper Case Table */}
+          <div className="pl-7 flex-1 overflow-y-auto custom-scrollbar pr-1 min-h-[220px] z-10 bg-[linear-gradient(rgba(0,0,0,0)_94%,rgba(99,102,241,0.06)_6%)] bg-[length:100%_2.4rem]">
             <AnimatePresence mode="wait">
-              {selectedDateCases.length > 0 ? (
-                selectedDateCases.map((c, idx) => (
-                  <motion.div
-                    key={c.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    onClick={() => handleDateClick(selectedDate!)}
-                    className="p-5 bg-slate-50 rounded-3xl border border-slate-100 hover:bg-white hover:shadow-xl hover:shadow-slate-100 transition-all group cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${c.caseType === 'Civil' ? 'bg-blue-100 text-blue-600' : 'bg-rose-100 text-rose-600'}`}>
-                          {c.caseNumber.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h5 className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</h5>
-                            {selectedDate && c.nextDate !== selectedDate ? (
-                              <span className="text-[9px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full">
-                                বিগত তারিখ
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full">
-                                আগামী তারিখ
-                              </span>
-                            )}
+              {focusedCaseId ? (
+                (() => {
+                  const c = selectedDateCases.find(caseItem => caseItem.id === focusedCaseId);
+                  if (!c) {
+                    setFocusedCaseId(null);
+                    return null;
+                  }
+                  const histEntry = selectedDate ? c.history?.find(h => h.date === selectedDate) : null;
+                  const displayOrder = histEntry?.order || c.order;
+                  const petitionersList = getPetitionersList(c);
+                  const respondentsList = getRespondentsList(c);
+
+                  return (
+                    <motion.div
+                      key={`focused-${c.id}`}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="p-3 space-y-3"
+                    >
+                      {/* Back to list button */}
+                      <button
+                        onClick={() => setFocusedCaseId(null)}
+                        className="mb-2 px-2.5 py-1 bg-[#f3efe0] border border-[#d2c9ab] hover:bg-[#e3dcc4] text-[#524933] rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all shadow-3xs"
+                      >
+                        <ChevronLeft size={12} />
+                        {language === 'bn' ? 'সকল মামলা' : 'All Cases'}
+                      </button>
+
+                      {/* Hand-written styled details layout for specific case */}
+                      <div className={`space-y-3 text-slate-800 p-3 rounded-2xl border ${
+                        c.selectedParty === 'petitioner'
+                          ? 'bg-[#ecfbf3] border-[#b0e8c2]'
+                          : c.selectedParty === 'respondent' || c.selectedParty === 'accused'
+                            ? 'bg-[#fff5f6] border-[#ffd0d3]'
+                            : 'bg-[#fbf9f2]/80 border-[#e3dcc4]/50'
+                      }`}>
+                         <div className="flex items-start justify-between gap-2 border-b border-[#e3dcc4]/30 pb-2 mb-2">
+                          <div>
+                            <span className="text-[9px] font-black uppercase tracking-wider text-indigo-600 block mb-0.5">
+                              {language === 'bn' ? 'মামলা নম্বর' : 'Case Number'}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-base font-black text-slate-900 leading-none">
+                                {c.caseNumber}
+                              </p>
+                              {c.selectedParty === 'petitioner' ? (
+                                <span className="text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 bg-emerald-600 text-white rounded-full">
+                                  {language === 'bn' ? 'আমার মক্কেল: বাদী পক্ষ' : 'Client: Petitioner'}
+                                </span>
+                              ) : c.selectedParty === 'respondent' || c.selectedParty === 'accused' ? (
+                                <span className="text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 bg-rose-600 text-white rounded-full">
+                                  {language === 'bn' ? 'আমার মক্কেল: আসামী পক্ষ' : 'Client: Defendant/Accused'}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.caseType}</p>
-                            {selectedDate && c.nextDate !== selectedDate && (
-                              <span className="text-[10px] text-indigo-600 font-bold">
-                                (পরবর্তী: {c.nextDate || 'নির্ধারিত নয়'})
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onViewCard(c); }}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all shadow-sm"
-                        >
-                          <CreditCard size={16} />
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onViewHistory(c); }}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-xl transition-all shadow-sm"
-                        >
-                          <History size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    {(() => {
-                      const histEntry = selectedDate ? c.history?.find(h => h.date === selectedDate) : null;
-                      const displayOrder = histEntry?.order || c.order;
-                      if (displayOrder) {
-                        return (
-                          <div className="text-[11px] text-slate-600 bg-white border border-slate-100 rounded-xl px-2.5 py-1.5 mb-2 truncate">
-                            <span className="font-bold text-indigo-900">আদেশ:</span> {displayOrder}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                        <MapPin size={14} className="text-slate-400" />
-                        <span className="truncate">{c.courtName}</span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
-                        <FileText size={14} className="text-slate-400 shrink-0" />
-                        <span className="font-semibold text-slate-700">{c.petitioner}</span>
-                        {c.petitionerMobile && (
-                          <a 
-                            href={`tel:${c.petitionerMobile}`} 
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_1.5px_4px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
-                            title={`কল করুন (বাদী): ${c.petitionerMobile}`}
-                          >
-                            <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
-                            <Phone size={7} className="text-white fill-white relative z-10" />
-                          </a>
-                        )}
-                        <span className="text-slate-300 font-bold">vs</span>
-                        <span className="font-semibold text-slate-700">
-                          {c.respondentDetails && c.respondentDetails.length > 0 ? (
-                            `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
-                          ) : (
-                            c.respondent ? (
-                              c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
-                                `${c.respondent.split(',')[0].trim()} গং` : c.respondent
-                            ) : ''
+
+                          {userType !== 'client' && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingCaseData(c)}
+                              className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[10px]"
+                              title={language === 'bn' ? 'মামলার তথ্য সংশোধন করুন' : 'Edit Case Details'}
+                            >
+                              <Edit2 size={11} />
+                              <span>{language === 'bn' ? 'তথ্য সংশোধন' : 'Edit Info'}</span>
+                            </button>
                           )}
-                        </span>
-                        {c.respondentMobile && (
-                          <a 
-                            href={`tel:${c.respondentMobile}`} 
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_1.5px_4px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
-                            title={`কল করুন (বিবাদী): ${c.respondentMobile}`}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <span className="text-[9px] font-black uppercase tracking-wider text-indigo-600 block mb-0.5">
+                              {language === 'bn' ? 'মামলার ধরন' : 'Case Type'}
+                            </span>
+                            <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full inline-block ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-rose-50 text-rose-700 border border-rose-100'}`}>
+                              {c.caseType}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] font-black uppercase tracking-wider text-indigo-600 block mb-0.5">
+                              {language === 'bn' ? 'পরবর্তী শুনানির তারিখ' : 'Next Date'}
+                            </span>
+                            <p className="text-xs font-bold text-slate-900 leading-none mt-0.5">
+                              {c.nextDate || (language === 'bn' ? 'নির্ধারিত নয়' : 'Not Scheduled')}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[9px] font-black uppercase tracking-wider text-indigo-600 block mb-0.5">
+                            {language === 'bn' ? 'আদালতের নাম' : 'Court Name'}
+                          </span>
+                          <p className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                            <MapPin size={11} className="text-slate-400 shrink-0" />
+                            {c.courtName}
+                          </p>
+                        </div>
+
+                        <div className="border-t border-[#e3dcc4]/50 my-1 pt-1.5" />
+
+                        {/* Parties Section */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="bg-white/60 p-2 rounded-xl border border-[#e3dcc4]/30">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[8px] font-black uppercase tracking-wider text-indigo-600">
+                                {language === 'bn' ? 'বাদী / প্রথম পক্ষ' : 'Petitioner'}
+                              </span>
+                              {petitionersList.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePartyModal({
+                                    caseId: c.id,
+                                    side: 'petitioner',
+                                    parties: petitionersList
+                                  })}
+                                  className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/50 px-1.5 py-0.2 rounded-md transition-all select-none flex items-center gap-0.5 cursor-pointer"
+                                  title={language === 'bn' ? 'সকল বাদী দেখুন' : 'Show all petitioners'}
+                                >
+                                  ( {petitionersList.length} )
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-black text-slate-900 leading-none">
+                                {petitionersList.length > 0 ? (
+                                  `${petitionersList[0].name}${petitionersList.length > 1 ? ' গং' : ''}`
+                                ) : (
+                                  c.petitioner || ''
+                                )}
+                              </span>
+                              {c.petitionerMobile && (
+                                <a 
+                                  href={`tel:${c.petitionerMobile}`} 
+                                  className="w-3.5 h-3.5 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] flex items-center justify-center border border-slate-300 shadow-3xs"
+                                >
+                                  <Phone size={5} className="text-white fill-white" />
+                                </a>
+                              )}
+                            </div>
+                            {c.petitionerMobile && (
+                              <p className="text-[9px] text-slate-500 font-semibold mt-0.5">{c.petitionerMobile}</p>
+                            )}
+                          </div>
+
+                          <div className="bg-white/60 p-2 rounded-xl border border-[#e3dcc4]/30">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[8px] font-black uppercase tracking-wider text-[#b3a886]">
+                                {language === 'bn' ? 'বিবাদী / দ্বিতীয় পক্ষ' : 'Respondent'}
+                              </span>
+                              {respondentsList.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePartyModal({
+                                    caseId: c.id,
+                                    side: 'respondent',
+                                    parties: respondentsList
+                                  })}
+                                  className="text-[10px] font-black text-[#8c7e53] hover:text-[#736539] bg-amber-50 hover:bg-amber-100 border border-[#e3dcc4] px-1.5 py-0.2 rounded-md transition-all select-none flex items-center gap-0.5 cursor-pointer"
+                                  title={language === 'bn' ? 'সকল বিবাদী দেখুন' : 'Show all respondents'}
+                                >
+                                  ( {respondentsList.length} )
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-black text-slate-900 leading-none">
+                                {respondentsList.length > 0 ? (
+                                  `${respondentsList[0].name}${respondentsList.length > 1 ? ' গং' : ''}`
+                                ) : (
+                                  c.respondent || ''
+                                )}
+                              </span>
+                              {c.respondentMobile && (
+                                <a 
+                                  href={`tel:${c.respondentMobile}`} 
+                                  className="w-3.5 h-3.5 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] flex items-center justify-center border border-slate-300 shadow-3xs"
+                                >
+                                  <Phone size={5} className="text-white fill-white" />
+                                </a>
+                              )}
+                            </div>
+                            {c.respondentMobile && (
+                              <p className="text-[9px] text-slate-500 font-semibold mt-0.5">{c.respondentMobile}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Order & Steps */}
+                        <div className="bg-amber-50/45 border border-[#e3dcc4]/55 p-2.5 rounded-xl">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-800 block mb-0.5">
+                            {language === 'bn' ? 'আদেশ / শুনানির পদক্ষেপ' : 'Order / Hearing Steps'}
+                          </span>
+                          <p className="text-[11px] font-bold text-slate-800 leading-relaxed">
+                            {displayOrder || (language === 'bn' ? 'কোনো পদক্ষেপের বিবরণ নেই' : 'No steps or orders recorded')}
+                          </p>
+                        </div>
+
+                        {/* COURT SESSION DRAFT NOTES - TEMPORARY STORAGE */}
+                        <div className="bg-yellow-50/60 border border-yellow-200/80 p-3 rounded-xl space-y-2 relative shadow-2xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1">
+                              📝 {language === 'bn' ? 'কোর্ট সেশন খসড়া নোট' : 'Court Session Draft Notes'}
+                            </span>
+                            <span className="text-[8px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded flex items-center gap-1">
+                              <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+                              {language === 'bn' ? 'সাময়িক সংরক্ষণ' : 'Temp Saved'}
+                            </span>
+                          </div>
+                          
+                          <p className="text-[8px] text-[#8c7a51] font-bold leading-tight">
+                            {language === 'bn' 
+                              ? '*কোর্ট চলাকালীন এখানে যা টাইপ করবেন তা সাময়িকভাবে ব্রাউজারে সুরক্ষিত থাকবে। পরবর্তী তারিখ ফাইনাল এন্ট্রি করা মাত্রই এটি সার্ভারে স্থায়ীভাবে সেট হয়ে যাবে।' 
+                              : '*Any notes typed here during court sessions are safely stored locally. Finalizing the next date commits everything permanently.'
+                            }
+                          </p>
+
+                          <textarea
+                            className="w-full text-[11px] font-bold text-slate-800 bg-[#fefcf3] border border-yellow-300/60 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder-slate-400/80"
+                            rows={3}
+                            value={draftNotes}
+                            onChange={(e) => handleDraftNotesChange(e.target.value)}
+                            placeholder={language === 'bn' ? 'শুনানির খসড়া আদেশ বা গুরুত্বপূর্ন তথ্য এখানে লিখুন...' : 'Write draft hearing notes or session highlights...'}
+                          />
+                        </div>
+
+                        {/* FINALIZE UPDATE: ORDER, NEXT DATE, IMAGE */}
+                        <div className="bg-indigo-50/40 border border-indigo-100 p-3.5 rounded-2xl space-y-3 shadow-2xs">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-900 block">
+                            🏛️ {language === 'bn' ? 'মূল আদেশ ও পরবর্তী শুনানির তারিখ সেট করুন' : 'Update Final Order & Next Date'}
+                          </span>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[9px] font-black text-indigo-700 block mb-1">
+                                {language === 'bn' ? 'পরবর্তী শুনানির তারিখ *' : 'Next Hearing Date *'}
+                              </label>
+                              <input
+                                type="date"
+                                className="w-full text-xs font-bold text-slate-800 bg-white border border-indigo-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                value={finalizeDate}
+                                onChange={(e) => setFinalizeDate(e.target.value)}
+                                required
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[9px] font-black text-indigo-700 block mb-1">
+                                {language === 'bn' ? 'আদেশপত্রের ছবি (ঐচ্ছিক)' : 'Order Sheet Photo (Optional)'}
+                              </label>
+                              <div className="flex gap-2">
+                                <label className="flex-1 cursor-pointer bg-white border border-indigo-200 rounded-lg p-2 flex items-center justify-center gap-1 text-[10px] font-black text-indigo-600 hover:bg-indigo-50 transition-all border-dashed">
+                                  <Camera size={12} />
+                                  <span>{finalizeFile ? (language === 'bn' ? 'ছবি নির্বাচন করা হয়েছে' : 'Selected') : (language === 'bn' ? 'ছবি আপলোড করুন' : 'Upload Photo')}</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleFileChange}
+                                  />
+                                </label>
+                                {finalizeFilePreview && (
+                                  <div className="w-8 h-8 rounded-lg overflow-hidden border border-indigo-200 relative shrink-0">
+                                    <img src={finalizeFilePreview} alt="preview" className="w-full h-full object-cover" />
+                                    <button 
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        setFinalizeFile(null);
+                                        setFinalizeFilePreview(null);
+                                      }}
+                                      className="absolute inset-0 bg-black/40 flex items-center justify-center text-white hover:bg-black/60 transition-all"
+                                    >
+                                      <X size={10} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[9px] font-black text-indigo-700 block mb-1">
+                              {language === 'bn' ? 'চুড়ান্ত আদেশ বা পদক্ষেপের সারসংক্ষেপ' : 'Final Order / Summary of Step'}
+                            </label>
+                            <textarea
+                              className="w-full text-xs font-bold text-slate-800 bg-white border border-indigo-200 rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-slate-400"
+                              rows={2}
+                              value={finalizeOrder}
+                              onChange={(e) => setFinalizeOrder(e.target.value)}
+                              placeholder={language === 'bn' ? 'আদালতের দেওয়া চুড়ান্ত আদেশ বা পরবর্তী পদক্ষেপ...' : 'The final order given by the court or next legal step...'}
+                            />
+                          </div>
+
+                          {saveSuccessAnim && (
+                            <motion.div 
+                              initial={{ opacity: 0, y: -5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-2 text-[10px] font-black flex items-center gap-1.5"
+                            >
+                              <CheckCircle size={12} className="text-emerald-600 shrink-0" />
+                              <span>{language === 'bn' ? 'সার্ভারে সফলভাবে ইতিহাস ও চুড়ান্ত তারিখ সংরক্ষিত হয়েছে!' : 'Successfully saved permanent history & next date to the server!'}</span>
+                            </motion.div>
+                          )}
+
+                          <button
+                            onClick={() => handleFinalizeSave(c)}
+                            disabled={isSavingFinal}
+                            className={`w-full py-2 rounded-xl text-white font-black text-[11px] sm:text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm ${
+                              isSavingFinal 
+                                ? 'bg-indigo-400 cursor-not-allowed' 
+                                : 'bg-gradient-to-r from-indigo-700 to-indigo-800 hover:brightness-105 active:scale-[0.99]'
+                            }`}
                           >
-                            <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
-                            <Phone size={7} className="text-white fill-white relative z-10" />
-                          </a>
-                        )}
+                            {isSavingFinal ? (
+                              <>
+                                <RefreshCw size={12} className="animate-spin" />
+                                <span>{language === 'bn' ? 'সংরক্ষণ করা হচ্ছে...' : 'Saving...'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload size={12} />
+                                <span>{language === 'bn' ? 'চুড়ান্ত আদেশ ও পরবর্তী তারিখ আপডেট করুন' : 'Confirm Finalize & Update'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-1.5 pt-1">
+                          <button 
+                            onClick={() => onViewCard(c)}
+                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-600 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all shadow-3xs"
+                          >
+                            <CreditCard size={11} />
+                            {language === 'bn' ? 'কার্ড' : 'Card'}
+                          </button>
+                          <button 
+                            onClick={() => onViewHistory(c)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-600 hover:text-white text-slate-600 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all shadow-3xs"
+                          >
+                            <History size={11} />
+                            {language === 'bn' ? 'ইতিহাস' : 'History'}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))
+                    </motion.div>
+                  );
+                })()
+              ) : selectedDateCases.length > 0 ? (
+                <div className="space-y-4">
+                  {Object.entries(groupedAndCategorizedCases).map(([courtName, categories]) => {
+                    const totalCourtCases = categories.attendance.length + categories.charge.length + categories.witness.length + categories.wa.length;
+                    if (totalCourtCases === 0) return null;
+                    return (
+                      <div key={courtName} className="bg-white/40 border border-[#e3dcc4]/50 rounded-2xl p-2.5 space-y-3 shadow-3xs relative overflow-hidden">
+                        {/* Court Title Bar */}
+                        <div className="flex items-center justify-between pb-1.5 border-b border-[#e3dcc4]/30">
+                          <span className="text-[10px] sm:text-[11px] font-black text-[#524933] flex items-center gap-1.5">
+                            🏛️ {courtName}
+                          </span>
+                          <span className="text-[8px] sm:text-[9px] font-bold bg-[#e3dcc4]/45 text-[#524933] px-2 py-0.5 rounded-full border border-[#d2c9ab]/40">
+                            {language === 'bn' ? 'মোট: ' : 'Total: '}
+                            {language === 'bn'
+                              ? totalCourtCases.toString().split('').map(d => ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'][parseInt(d)] || d).join('')
+                              : totalCourtCases
+                            }
+                          </span>
+                        </div>
+
+                        {/* Categorized sub-sections (Chronological order) */}
+                        <div className="space-y-3 pl-1">
+                          {categories.attendance.length > 0 && renderSubgroupSection(
+                            language === 'bn' ? '📂 হাজিরা বা সময়' : '📂 Attendance / Time', 
+                            categories.attendance, 
+                            'bg-slate-50 text-slate-700 border-slate-200'
+                          )}
+                          {categories.charge.length > 0 && renderSubgroupSection(
+                            language === 'bn' ? '⚡ চার্জ / শুনানি / জবাব' : '⚡ Charge / Argument / WS', 
+                            categories.charge, 
+                            'bg-amber-50 text-amber-700 border-amber-200'
+                          )}
+                          {categories.witness.length > 0 && renderSubgroupSection(
+                            language === 'bn' ? '📝 সাক্ষী / জেরা / PH' : '📝 Witness / Cross / PH', 
+                            categories.witness, 
+                            'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          )}
+                          {categories.wa.length > 0 && renderSubgroupSection(
+                            language === 'bn' ? '🚨 W/A (ওয়ারেন্ট)' : '🚨 W/A (Warrant)', 
+                            categories.wa, 
+                            'bg-rose-50 text-rose-700 border-rose-200'
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40 py-20"
+                  className="h-full flex flex-col items-center justify-center text-center py-16"
                 >
-                  <CalendarIcon size={48} className="text-slate-300" />
-                  <p className="text-sm font-bold text-slate-500">{t('no_case_on_date')}</p>
+                  <CalendarIcon size={44} className="text-[#c2baa0]/50 mb-2" />
+                  <p className="text-xs font-black text-[#756a4e]">
+                    {language === 'bn' ? 'এই তারিখে কোনো মামলা তালিকাভুক্ত নেই' : 'No cases listed for this date'}
+                  </p>
+                  <p className="text-[10px] text-[#9c9172] mt-0.5">
+                    {language === 'bn' ? 'ক্যালেন্ডার থেকে যেকোনো তারিখ সিলেক্ট করুন' : 'Select any date from the calendar to view its diary entry'}
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
           {selectedDateCases.length > 0 && (
-            <div className="mt-8 p-6 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-80">{t('total_cases')}</p>
-                <CheckCircle2 size={16} />
+            <div className="mt-4 p-3 bg-indigo-600 rounded-2xl text-white shadow-md shadow-indigo-100/50 z-10 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[8px] font-black uppercase tracking-wider opacity-80">{t('total_cases')}</p>
+                <h4 className="text-sm font-black mt-0.5 leading-none">
+                  {language === 'bn' 
+                    ? selectedDateCases.length.toString().split('').map(d => ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'][parseInt(d)] || d).join('') + ' টি মামলা'
+                    : `${selectedDateCases.length} Cases`
+                  }
+                </h4>
               </div>
-              <h4 className="text-2xl font-black">{selectedDateCases.length}</h4>
-              <p className="text-xs font-medium text-indigo-100 mt-1">{t('finish_all_preparation')}</p>
+              <p className="text-[9px] font-bold text-indigo-100 bg-indigo-700/60 px-2.5 py-1 rounded-lg text-right">
+                {t('finish_all_preparation')}
+              </p>
             </div>
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {activePartyModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setActivePartyModal(null)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl w-full max-w-md overflow-hidden border border-slate-100 shadow-2xl p-5 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">
+                    {activePartyModal.side === 'petitioner' ? '⚖️' : '👤'}
+                  </span>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-800">
+                    {activePartyModal.side === 'petitioner'
+                      ? (language === 'bn' ? `বাদী / প্রথম পক্ষ (${activePartyModal.parties.length} জন)` : `Petitioners (${activePartyModal.parties.length})`)
+                      : (language === 'bn' ? `বিবাদী / দ্বিতীয় পক্ষ (${activePartyModal.parties.length} জন)` : `Respondents (${activePartyModal.parties.length})`)
+                    }
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActivePartyModal(null)}
+                  className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+                {activePartyModal.parties.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4">
+                    {language === 'bn' ? 'কোনো তথ্য পাওয়া যায়নি' : 'No details found'}
+                  </p>
+                ) : (
+                  activePartyModal.parties.map((p, idx) => (
+                    <div 
+                      key={idx}
+                      className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100/80 hover:bg-slate-100/50 transition-all"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-5 h-5 rounded-full bg-[#e3dcc4] text-[#7a6f4d] flex items-center justify-center text-[10px] font-black shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <p className="text-xs font-black text-slate-800">{p.name}</p>
+                          {p.phone && (
+                            <p className="text-[10px] text-slate-500 font-bold mt-0.5">{p.phone}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {p.phone && (
+                        <a 
+                          href={`tel:${p.phone}`}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-[10px] sm:text-[11px] shadow-sm shadow-emerald-100 hover:brightness-105 active:scale-[0.98] transition-all shrink-0"
+                        >
+                          <Phone size={10} className="fill-white text-white" />
+                          <span>{language === 'bn' ? 'কল করুন' : 'Call'}</span>
+                        </a>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActivePartyModal(null)}
+                className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-xs font-black hover:bg-slate-700 transition-all cursor-pointer"
+              >
+                {language === 'bn' ? 'বন্ধ করুন' : 'Close'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {editingCaseData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl w-full max-w-lg overflow-hidden border border-slate-100 shadow-2xl p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">📝</span>
+                  <h3 className="text-sm sm:text-base font-black text-slate-800">
+                    {language === 'bn' ? 'মামলার তথ্য সংশোধন করুন' : 'Edit Case Details'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingCaseData(null)}
+                  className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <form onSubmit={handleEditCaseSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'মামলা নম্বর *' : 'Case Number *'}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCaseNumber}
+                      onChange={(e) => setEditCaseNumber(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'আদালতের নাম *' : 'Court Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCourtName}
+                      onChange={(e) => setEditCourtName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'মামলার ধরন' : 'Case Type'}
+                    </label>
+                    <select
+                      value={editCaseType}
+                      onChange={(e) => setEditCaseType(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="Civil">{language === 'bn' ? 'দেওয়ানি (Civil)' : 'Civil'}</option>
+                      <option value="Criminal">{language === 'bn' ? 'ফৌজদারি (Criminal)' : 'Criminal'}</option>
+                      <option value="Other">{language === 'bn' ? 'অন্যান্য (Other)' : 'Other'}</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'মামলার বর্তমান অবস্থা' : 'Current Status'}
+                    </label>
+                    <input
+                      type="text"
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                      placeholder="e.g. শুনানি / জবাব দাখিল"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 border-t border-slate-100 my-1" />
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'বাদী / প্রথম পক্ষ (একাধিক হলে কমা দিয়ে লিখুন)' : 'Petitioner Name(s)'}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editPetitioner}
+                      onChange={(e) => setEditPetitioner(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'বাদীর মোবাইল (একাধিক হলে কমা দিয়ে লিখুন)' : 'Petitioner Mobile(s)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={editPetitionerMobile}
+                      onChange={(e) => setEditPetitionerMobile(e.target.value)}
+                      placeholder="e.g. 01700000000"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'বিবাদী / দ্বিতীয় পক্ষ (একাধিক হলে কমা দিয়ে লিখুন)' : 'Respondent Name(s)'}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editRespondent}
+                      onChange={(e) => setEditRespondent(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-500 block">
+                      {language === 'bn' ? 'বিবাদীর মোবাইল (একাধিক হলে কমা দিয়ে লিখুন)' : 'Respondent Mobile(s)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={editRespondentMobile}
+                      onChange={(e) => setEditRespondentMobile(e.target.value)}
+                      placeholder="e.g. 01800000000"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setEditingCaseData(null)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black transition-all cursor-pointer"
+                  >
+                    {language === 'bn' ? 'বাতিল' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingCase}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isUpdatingCase ? (
+                      <RefreshCw size={12} className="animate-spin" />
+                    ) : (
+                      '💾'
+                    )}
+                    <span>{language === 'bn' ? 'সংরক্ষণ করুন' : 'Save Changes'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

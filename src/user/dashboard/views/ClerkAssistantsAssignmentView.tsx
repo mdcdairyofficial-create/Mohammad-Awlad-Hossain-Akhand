@@ -233,6 +233,33 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
     }
   };
 
+  const handleAssignBoth = async (caseId: string | number) => {
+    try {
+      const mobilesList = assistants.map(a => a.mobile).filter(Boolean).join(', ');
+      const bothAsstStub: ChamberAssociate = {
+        id: 'both_head_assistants',
+        name: isBn ? 'উভয় (প্রধান ও সহকারী)' : 'Both (Head & Assistants)',
+        mobile: mobilesList,
+        role: 'Joint Responsibility',
+        status: 'active'
+      };
+      
+      await onAssignCase(caseId, bothAsstStub);
+      
+      const caseItem = cases.find(c => c.id === caseId);
+      const caseName = caseItem ? caseItem.caseNumber : '';
+      
+      setSuccessToast(
+        isBn 
+          ? `মামলা নং ${caseName} সফলভাবে উভয়কে (প্রধান ও সহকারী) অর্পণ করা হয়েছে!` 
+          : `Case No. ${caseName} successfully assigned to both (head & assistants)!`
+      );
+      setSelectedCaseId(null);
+    } catch (error) {
+      console.error('Error assigning both:', error);
+    }
+  };
+
   const handleAddAssistantSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formMobile.trim()) return;
@@ -536,6 +563,7 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                   // Find assistant object to get photo
                   const asstObject = assistants.find(a => a.id === c.assignedClerkAssistantId || (a.name === c.assignedClerkAssistantName && a.mobile === c.assignedClerkAssistantMobile));
                   const isAllMembersAssigned = c.assignedClerkAssistantId === 'all_assistants';
+                  const isBothAssigned = c.assignedClerkAssistantId === 'both_head_assistants';
 
                   return (
                     <tr key={c.id} className="hover:bg-slate-50/50 transition-colors group">
@@ -591,6 +619,7 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                             className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 group/btn transition-all ${
                               totalAssistants === 0 ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-60' :
                               isAllMembersAssigned ? 'bg-emerald-50/60 border-emerald-200 hover:bg-emerald-50 text-emerald-950' :
+                              isBothAssigned ? 'bg-indigo-50/60 border-indigo-200 hover:bg-indigo-50 text-indigo-950' :
                               c.assignedClerkAssistantName ? 'bg-amber-50/60 border-amber-200 hover:bg-amber-50 text-slate-900' :
                               'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500'
                             }`}
@@ -599,6 +628,10 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                               {isAllMembersAssigned ? (
                                 <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0 border border-emerald-200 shadow-3xs">
                                   👥
+                                </div>
+                              ) : isBothAssigned ? (
+                                <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0 border border-indigo-200 shadow-3xs">
+                                  🤝
                                 </div>
                               ) : asstObject?.photoURL ? (
                                 <img
@@ -618,11 +651,17 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                               <div className="min-w-0">
                                 <p className="text-[11px] font-bold truncate leading-tight">
                                   {isAllMembersAssigned ? (isBn ? 'সহকারী মুহুরী টিম' : 'Assistant Clerks') :
+                                   isBothAssigned ? (isBn ? 'উভয় (প্রধান ও সহকারী)' : 'Both (Head & Assistants)') :
                                    c.assignedClerkAssistantName || (isBn ? 'প্রধান মুহুরী' : 'Head Clerk')}
                                 </p>
-                                {c.assignedClerkAssistantRole && !isAllMembersAssigned && (
+                                {c.assignedClerkAssistantRole && !isAllMembersAssigned && !isBothAssigned && (
                                   <p className="text-[9px] text-slate-500 font-semibold truncate leading-none mt-0.5">
                                     {c.assignedClerkAssistantRole}
+                                  </p>
+                                )}
+                                {isBothAssigned && (
+                                  <p className="text-[9px] text-slate-500 font-semibold truncate leading-none mt-0.5">
+                                    {isBn ? 'যৌথ দায়িত্ব' : 'Joint Responsibility'}
                                   </p>
                                 )}
                               </div>
@@ -661,6 +700,23 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                                   {!c.assignedClerkAssistantName && <Check size={14} className="text-indigo-600 shrink-0" />}
                                 </button>
 
+                                {/* Option: Both (Head & Assistants) */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleAssignBoth(c.id)}
+                                  className={`w-full p-2 text-left rounded-xl hover:bg-slate-50 text-xs font-bold flex items-center gap-2 ${
+                                    isBothAssigned ? 'bg-indigo-50/60 text-indigo-800' : 'text-slate-700'
+                                  }`}
+                                >
+                                  <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[9px] shrink-0 border">
+                                    🤝
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate">{isBn ? 'উভয় (প্রধান ও সহকারী)' : 'Both (Head & Assistants)'}</p>
+                                  </div>
+                                  {isBothAssigned && <Check size={14} className="text-indigo-600 shrink-0" />}
+                                </button>
+
                                 {/* Option: All Assistant Clerks */}
                                 <button
                                   type="button"
@@ -680,7 +736,7 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
 
                                 {/* List individual assistants */}
                                 {assistants.map((asst) => {
-                                  const isAsstSelected = c.assignedClerkAssistantName === asst.name && !isAllMembersAssigned;
+                                  const isAsstSelected = c.assignedClerkAssistantName === asst.name && !isAllMembersAssigned && !isBothAssigned;
                                   return (
                                     <button
                                       key={asst.id}
