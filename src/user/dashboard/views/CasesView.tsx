@@ -17,7 +17,8 @@ import {
   Edit2,
   History,
   CreditCard,
-  Briefcase
+  Briefcase,
+  MessageSquare
 } from 'lucide-react';
 import { Case, ChamberAssociate } from '../../../types';
 import { formatCourtNameWithNo } from '../../../constants';
@@ -39,6 +40,7 @@ interface CasesViewProps {
   onDeleteCase: (id: string | number) => void;
   onViewHistory: (c: Case) => void;
   onViewCard: (c: Case) => void;
+  onWhatsAppNotify?: (c: Case) => void;
   t: (key: string) => string;
   language: 'bn' | 'en' | 'hi' | 'ur';
   isPremium?: boolean;
@@ -69,6 +71,7 @@ export const CasesView = ({
   onDeleteCase,
   onViewHistory,
   onViewCard,
+  onWhatsAppNotify,
   t,
   language,
   isPremium = false,
@@ -355,6 +358,15 @@ export const CasesView = ({
                     >
                       <History size={14} /> {t('case_history_title')}
                     </button>
+                    {onWhatsAppNotify && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onWhatsAppNotify(c); }}
+                        className="p-3 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-2xl transition-all"
+                        title={language === 'bn' ? 'হোয়াটসঅ্যাপে রেফার লিংকসহ পাঠান' : 'Share via WhatsApp with Referral Link'}
+                      >
+                        <MessageSquare size={18} className="fill-blue-100 text-blue-600" />
+                      </button>
+                    )}
                     <button 
                       onClick={(e) => { 
                         e.stopPropagation(); 
@@ -429,6 +441,15 @@ export const CasesView = ({
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {onWhatsAppNotify && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onWhatsAppNotify(c); }} 
+                          className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all" 
+                          title={language === 'bn' ? 'হোয়াটসঅ্যাপে রেফার লিংকসহ পাঠান' : 'Share via WhatsApp with Referral Link'}
+                        >
+                          <MessageSquare size={18} className="fill-blue-100 text-blue-600" />
+                        </button>
+                      )}
                       <button onClick={(e) => { e.stopPropagation(); onViewCard(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('case_card_pro')}>
                         <CreditCard size={18} />
                       </button>

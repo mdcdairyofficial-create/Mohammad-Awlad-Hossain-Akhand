@@ -16,7 +16,10 @@ import {
   Award,
   Zap,
   X,
-  ShieldAlert
+  ShieldAlert,
+  ExternalLink,
+  Sparkles,
+  Gift
 } from 'lucide-react';
 import { AdBanner } from '../AdBanner';
 import { Case, Task } from '../../../types';
@@ -107,6 +110,40 @@ export const HomeView = ({
       setTotalDue(due);
     }
   }, []);
+
+  const [copiedLink, setCopiedLink] = React.useState(false);
+
+  const effectiveReferralCode = referralCode || '';
+  const currentOrigin = typeof window !== 'undefined' && !window.location.origin.includes('localhost') && !window.location.origin.includes('ais-')
+    ? window.location.origin
+    : 'https://mdccasebook.vercel.app';
+  const fullReferralLink = `${currentOrigin}/register?ref=${effectiveReferralCode}`;
+
+  const handleCopy = () => {
+    if (onCopyLink) {
+      onCopyLink();
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } else {
+      navigator.clipboard.writeText(fullReferralLink).then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2500);
+      });
+    }
+  };
+
+  const handleWhatsApp = () => {
+    if (onWhatsAppShare) {
+      onWhatsAppShare();
+    } else {
+      const text = `Join MDC Casebook and manage cases easily: ${fullReferralLink}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    }
+  };
+
+  const handleTestOpen = () => {
+    window.open(fullReferralLink, '_blank');
+  };
 
   const monthsBn = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
   const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -355,6 +392,131 @@ export const HomeView = ({
             )}
           </motion.div>
         ))}
+      </div>
+
+      {/* Active Referral Link Section */}
+      <div className="bg-gradient-to-br from-indigo-900 via-indigo-850 to-slate-900 text-white p-6 sm:p-8 rounded-[2rem] border border-indigo-500/20 shadow-xl shadow-indigo-950/20 relative overflow-hidden">
+        <div className="absolute -right-12 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-12 -bottom-12 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 shrink-0">
+                <Share2 className="text-white" size={24} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-xl font-bold text-white tracking-tight">
+                    {language === 'bn' ? 'আপনার সক্রিয় রেফারেল লিংক' : 'Your Active Referral Link'}
+                  </h3>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    {language === 'bn' ? 'সক্রিয় (Active)' : 'Active'}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-indigo-200/80 mt-1">
+                  {language === 'bn' 
+                    ? 'বন্ধুদের রেফার করুন: প্রতি সফল রেফারে ১০০ পয়েন্ট ও ২ টি সাদা বল জিতুন! ৫ জন রেফার করলেই ১ মাসের স্পেশাল ডায়মন্ড প্যাক সম্পূর্ণ ফ্রি!'
+                    : 'Refer friends: Earn 100 points & 2 White Balls per referral! Refer 5 members to get 1 Month Diamond Plan for free!'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 text-xs">
+                <span className="text-indigo-200">{language === 'bn' ? 'মোট রেফারেল: ' : 'Referrals: '}</span>
+                <strong className="text-white font-bold">{referralCount}</strong>
+              </div>
+              <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30 text-xs">
+                <span className="text-emerald-300">{language === 'bn' ? 'অর্জিত বোনাস: ' : 'Earned: '}</span>
+                <strong className="text-emerald-200 font-bold">{referralCount * 100} Pts</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Share Link Bar */}
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                readOnly
+                value={fullReferralLink}
+                className="w-full px-4 py-3.5 bg-white/5 border border-white/15 rounded-xl text-white font-mono text-xs sm:text-sm focus:outline-none select-all backdrop-blur-sm"
+              />
+              {effectiveReferralCode && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
+                  {effectiveReferralCode}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCopy}
+                className={`px-4 sm:px-5 py-3.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shrink-0 ${
+                  copiedLink
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-white text-slate-900 hover:bg-slate-100 active:scale-95'
+                }`}
+              >
+                {copiedLink ? (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>{language === 'bn' ? 'কপি হয়েছে!' : 'Copied!'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={16} />
+                    <span>{language === 'bn' ? 'কপি লিংক' : 'Copy Link'}</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleWhatsApp}
+                className="px-4 sm:px-5 py-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shrink-0"
+              >
+                <MessageCircle size={16} />
+                <span>{language === 'bn' ? 'হোয়াটসঅ্যাপ' : 'WhatsApp'}</span>
+              </button>
+              <button
+                onClick={handleTestOpen}
+                title={language === 'bn' ? 'লিংকটি নতুন ট্যাবে টেস্ট করুন' : 'Test / Open Link'}
+                className="px-3.5 py-3.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all border border-white/10 shrink-0"
+              >
+                <ExternalLink size={16} />
+                <span className="hidden md:inline">{language === 'bn' ? 'টেস্ট করুন' : 'Open'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Goal Progress Bar: 5 referrals for 1 month free pack */}
+          <div className="p-4 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-indigo-200">
+                <Gift size={14} className="text-amber-400" />
+                <span className="font-semibold text-white">
+                  {language === 'bn' ? '৫ জন রেফারেল স্পেশাল অফার:' : '5 Referrals Special Offer:'}
+                </span>
+                <span>{language === 'bn' ? '১ মাসের স্পেশাল ডায়মন্ড প্যাক ফ্রি' : '1 Month Special Diamond Pack'}</span>
+              </div>
+              <span className="font-bold text-amber-300">
+                {referralCount} / 5 {language === 'bn' ? 'জন' : 'Referred'}
+              </span>
+            </div>
+            <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-teal-400 rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, (referralCount / 5) * 100)}%` }}
+              />
+            </div>
+            {referralCount >= 5 && (
+              <div className="flex items-center gap-2 text-xs text-emerald-300 font-semibold pt-1">
+                <Sparkles size={14} />
+                <span>{language === 'bn' ? 'অভিনন্দন! আপনি ৫ জন সফলভাবে রেফার করেছেন। স্পেশাল ডায়মন্ড সুবিধা সক্রিয় হয়েছে!' : 'Congratulations! You reached 5 referrals! Special Diamond Pack unlocked!'}</span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Quick Update Section */}

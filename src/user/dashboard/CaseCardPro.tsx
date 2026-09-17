@@ -20,7 +20,8 @@ import {
   ShieldAlert,
   UserPlus,
   Phone,
-  Briefcase
+  Briefcase,
+  Sparkles
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case, ChamberAssociate } from '../../types';
@@ -43,6 +44,7 @@ interface CaseCardProProps {
   userMobile: string;
   language?: 'bn' | 'en' | 'hi' | 'ur';
   chamberAssociates?: ChamberAssociate[];
+  onOpenAiForCase?: (c: Case) => void;
 }
 
 export const CaseCardPro = ({ 
@@ -56,7 +58,8 @@ export const CaseCardPro = ({
   userType, 
   userMobile,
   language = 'bn',
-  chamberAssociates = []
+  chamberAssociates = [],
+  onOpenAiForCase
 }: CaseCardProProps) => {
   const [side, setSide] = useState<'petitioner' | 'respondent' | 'accused'>(caseData.selectedParty || 'petitioner');
   const [nextDate, setNextDate] = useState(caseData.nextDate);
@@ -478,6 +481,18 @@ export const CaseCardPro = ({
               <AlertTriangle size={14} className="text-rose-500" />
               <span>ওয়ার্নিং কমপ্লেইন</span>
             </button>
+
+            {onOpenAiForCase && (
+              <button
+                type="button"
+                onClick={() => onOpenAiForCase(caseData)}
+                className="px-3 py-1.5 bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                title={language === 'bn' ? 'এআই কে এই মামলা সম্পর্কে প্রশ্ন করুন' : 'Ask AI about this case'}
+              >
+                <Sparkles size={14} className="text-indigo-600 animate-pulse" />
+                <span>{language === 'bn' ? 'এআই-কে জিজ্ঞেস করুন' : 'Ask AI'}</span>
+              </button>
+            )}
 
             {onDelete && (
               <button 

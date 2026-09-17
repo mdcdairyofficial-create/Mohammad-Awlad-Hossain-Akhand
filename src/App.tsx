@@ -82,6 +82,12 @@ export default function App() {
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+    const refCode = urlParams.get("ref") || urlParams.get("referral") || urlParams.get("referredBy") || urlParams.get("referred_by");
+    if (refCode) {
+      localStorage.setItem("pending_referral_code", refCode.trim());
+      sessionStorage.setItem("pending_referral_code", refCode.trim());
+    }
+
     if (urlParams.get("payment") === "success") {
       alert("পেমেন্ট সফলভাবে সম্পন্ন হয়েছে!");
       // Clean up the URL
@@ -98,6 +104,7 @@ export default function App() {
         if (!user) {
           console.log("[App] Firebase session found, restoring user profile...");
           try {
+            const pendingRef = localStorage.getItem("pending_referral_code") || sessionStorage.getItem("pending_referral_code") || undefined;
             const response = await fetchWithAuth("/api/auth/firebase-sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -108,6 +115,7 @@ export default function App() {
                 fullName: fbUser.displayName,
                 profilePicture: fbUser.photoURL,
                 userType: sessionStorage.getItem("registrationUserType") || undefined,
+                referredBy: pendingRef
               }),
             });
 
@@ -115,7 +123,10 @@ export default function App() {
               const data = await response.json();
               if (data.success) {
                 console.log("[App] Session restored successfully");
-                setUser(data.user);
+                setUser({
+                  ...data.user,
+                  referralCode: data.user.referralCode || data.user.referral_code || ''
+                });
               }
             }
           } catch (err) {

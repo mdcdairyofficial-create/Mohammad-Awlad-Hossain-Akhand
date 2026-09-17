@@ -19,7 +19,8 @@ import {
   Upload,
   CheckCircle,
   RefreshCw,
-  Edit2
+  Edit2,
+  Sparkles
 } from 'lucide-react';
 import { Case, CaseHistoryEntry, isCaseOnDate } from '../../../types';
 import { updateCase } from '../../../services/user/featureService';
@@ -39,6 +40,7 @@ interface CalendarViewProps {
   getBanglaDate?: (date: Date) => string;
   t: (key: any) => string;
   onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
+  onOpenAiForCase?: (c: Case) => void;
 }
 
 const BookView = ({ 
@@ -260,7 +262,8 @@ export const CalendarView = ({
   govtHolidays = [],
   getBanglaDate,
   t,
-  onUpdateCaseLocal
+  onUpdateCaseLocal,
+  onOpenAiForCase
 }: CalendarViewProps) => {
   const [showBookView, setShowBookView] = useState(false);
   const [hoveredHolidayReason, setHoveredHolidayReason] = useState<string | null>(null);
@@ -656,8 +659,17 @@ export const CalendarView = ({
                         {displayOrder || <span className="text-slate-400 italic">{language === 'bn' ? 'পদক্ষেপ নেই' : 'No steps'}</span>}
                       </p>
                     </td>
-                    <td className="py-1.5 px-1 text-center" onClick={(e) => e.stopPropagation()}>
+                     <td className="py-1.5 px-1 text-center" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-center gap-0.5">
+                        {onOpenAiForCase && (
+                          <button 
+                            onClick={() => onOpenAiForCase(c)}
+                            className="p-0.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-600 hover:text-white transition-all"
+                            title={language === 'bn' ? 'এআই সহায়ক' : 'Ask AI'}
+                          >
+                            <Sparkles size={9} className="animate-pulse" />
+                          </button>
+                        )}
                         {userType !== 'client' && (
                           <button 
                             onClick={() => setEditingCaseData(c)}
@@ -1021,17 +1033,30 @@ export const CalendarView = ({
                             </div>
                           </div>
 
-                          {userType !== 'client' && (
-                            <button
-                              type="button"
-                              onClick={() => setEditingCaseData(c)}
-                              className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[10px]"
-                              title={language === 'bn' ? 'মামলার তথ্য সংশোধন করুন' : 'Edit Case Details'}
-                            >
-                              <Edit2 size={11} />
-                              <span>{language === 'bn' ? 'তথ্য সংশোধন' : 'Edit Info'}</span>
-                            </button>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                            {onOpenAiForCase && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenAiForCase(c)}
+                                className="px-2 py-1.5 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[10px]"
+                                title={language === 'bn' ? 'এআই কে এই মামলা সম্পর্কে প্রশ্ন করুন' : 'Ask AI about this case'}
+                              >
+                                <Sparkles size={11} className="text-indigo-600 animate-pulse" />
+                                <span>{language === 'bn' ? 'এআই সহায়ক' : 'Ask AI'}</span>
+                              </button>
+                            )}
+                            {userType !== 'client' && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingCaseData(c)}
+                                className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[10px]"
+                                title={language === 'bn' ? 'মামলার তথ্য সংশোধন করুন' : 'Edit Case Details'}
+                              >
+                                <Edit2 size={11} />
+                                <span>{language === 'bn' ? 'তথ্য সংশোধন' : 'Edit Info'}</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">

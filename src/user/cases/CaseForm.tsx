@@ -6,6 +6,7 @@ import { translations } from '../../translations';
 import { BANGLADESH_DISTRICTS, getPoliceStations, getCourtsForDistrict, CIVIL_CASE_STEPS, CRIMINAL_CASE_STEPS } from '../../constants';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
 import { DocumentScannerModal } from '../../components/DocumentScannerModal';
+import WhatsAppPhoneInput from './WhatsAppPhoneInput';
 
 interface CaseFormProps {
   onSave: (caseData: any) => void;
@@ -24,6 +25,7 @@ interface CaseFormProps {
   initialMode?: 'detailed' | 'quick' | 'join';
   chamberAssociates?: ChamberAssociate[];
   isSubscribed?: boolean;
+  referralCode?: string;
 }
 
 interface PartyRow {
@@ -51,7 +53,8 @@ export default function CaseForm({
   onJoin,
   initialMode = 'detailed',
   chamberAssociates = [],
-  isSubscribed = false
+  isSubscribed = false,
+  referralCode = ''
 }: CaseFormProps) {
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
   const [mode, setMode] = useState<'detailed' | 'quick' | 'join'>(initialMode);
@@ -491,13 +494,14 @@ export default function CaseForm({
               placeholder={namePlaceholder}
               value={row.name}
               onChange={(e) => handlePartyChange(index, 'name', e.target.value, setter)}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 h-[38px]"
             />
-            <input
-              placeholder={language === 'bn' ? 'মোবাইল নম্বর' : 'Mobile Number'}
+            <WhatsAppPhoneInput
               value={row.phone}
-              onChange={(e) => handlePartyChange(index, 'phone', e.target.value, setter)}
-              className="w-full px-3 py-1.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={(val) => handlePartyChange(index, 'phone', val, setter)}
+              placeholder={language === 'bn' ? 'মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Mobile (WhatsApp)'}
+              language={language}
+              className="h-[38px]"
             />
           </div>
           {isDefendant && (

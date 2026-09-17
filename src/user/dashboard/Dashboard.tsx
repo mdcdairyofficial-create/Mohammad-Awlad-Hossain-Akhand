@@ -92,6 +92,7 @@ import ClerkDirectory from '../profile/ClerkDirectory';
 import ArchiveCaseHistory from '../cases/ArchiveCaseHistory';
 import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry, ChamberAssociate, isCaseOnDate } from '../../types';
 import CaseForm from '../cases/CaseForm';
+import CaseSavedWhatsAppModal from '../cases/CaseSavedWhatsAppModal';
 import NotificationPanel from './NotificationPanel';
 import { Logo } from '../../components/Logo';
 import { translations } from '../../translations';
@@ -1237,6 +1238,7 @@ export default function Dashboard({
   const isAdmin = currentViewMode === 'admin';
   const [isCaseFormOpen, setIsCaseFormOpen] = useState(false);
   const [isJoinFormOpen, setIsJoinFormOpen] = useState(false);
+  const [savedCaseForWhatsApp, setSavedCaseForWhatsApp] = useState<{ caseData: Partial<Case>; targetSide: 'petitioner' | 'respondent' } | null>(null);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [selectedPkg, setSelectedPkg] = useState<any>(null);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -1666,24 +1668,49 @@ export default function Dashboard({
     setUserThana(userPoliceStation || '');
   }, [userName, userEmail, userMobile, userDistrict, userPoliceStation]);
 
+  const [activeRefCode, setActiveRefCode] = useState(referralCode || '');
+
   useEffect(() => {
     if (referralCode) {
-      fetchWithAuth(`/api/user-network?referralCode=${referralCode}`)
+      setActiveRefCode(referralCode);
+    } else if (userId || initialFirebaseUid) {
+      fetchWithAuth('/api/user/activate-referral', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: initialFirebaseUid || userId })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.referralCode) {
+          setActiveRefCode(data.referralCode);
+        }
+      })
+      .catch(() => {});
+    }
+  }, [referralCode, userId, initialFirebaseUid]);
+
+  useEffect(() => {
+    const codeToSearch = activeRefCode || referralCode;
+    const uidToSearch = initialFirebaseUid || (userId ? String(userId) : '');
+    if (codeToSearch || uidToSearch) {
+      fetchWithAuth(`/api/user-network?referralCode=${encodeURIComponent(codeToSearch || '')}&uid=${encodeURIComponent(uidToSearch)}`)
         .then(async res => {
           if (!res.ok) throw new Error(`Network response was not ok, status: ${res.status}`);
           const contentType = res.headers.get("content-type");
           if (contentType && contentType.indexOf("application/json") !== -1) {
             return res.json();
           } else {
-            const text = await res.text();
-            console.error('Expected JSON for referrals, but received:', contentType, 'Response:', text.substring(0, 100));
             return [];
           }
         })
-        .then(data => setReferralHistory(data))
+        .then(data => {
+          if (Array.isArray(data)) {
+            setReferralHistory(data);
+          }
+        })
         .catch(err => console.error("Error fetching referrals:", err));
     }
-  }, [referralCode]);
+  }, [activeRefCode, referralCode, userId, initialFirebaseUid]);
 
   // AI Chat State
   const [showSubscriptionPayment, setShowSubscriptionPayment] = useState(false);
@@ -2605,6 +2632,17 @@ export default function Dashboard({
 
         await createCase(newCase as any);
         setSuccessMessage(t('success_add'));
+
+        const isPetitioner = isUserPetitioner(newCase as Case);
+        const isRespondent = isUserRespondent(newCase as Case);
+        const saveSide: 'petitioner' | 'respondent' = (isRespondent && !isPetitioner) ? 'respondent' : 'petitioner';
+
+        if (
+          (saveSide === 'petitioner' && (newCase.petitionerMobile || (newCase.petitionerDetails && newCase.petitionerDetails.length > 0))) ||
+          (saveSide === 'respondent' && (newCase.respondentMobile || (newCase.respondentDetails && newCase.respondentDetails.length > 0)))
+        ) {
+          setSavedCaseForWhatsApp({ caseData: newCase, targetSide: saveSide });
+        }
       }
       setIsCaseFormOpen(false);
       setEditingCase(null);
@@ -2781,6 +2819,12 @@ export default function Dashboard({
       try {
         await updateCase(targetCase.id.toString(), updatedCase);
         setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
+        if (
+          (side === 'petitioner' && updatedCase.petitionerMobile) || 
+          (side === 'respondent' && (updatedCase.respondentMobile || (updatedCase.respondentDetails && updatedCase.respondentDetails.length > 0)))
+        ) {
+          setSavedCaseForWhatsApp({ caseData: updatedCase, targetSide: side });
+        }
       } catch (err) {
         console.error("Failed to update case for join:", err);
         alert(language === 'bn' ? 'ডাটাবেসে আপডেট করতে সমস্যা হয়েছে।' : 'Failed to update database.');
@@ -2837,6 +2881,12 @@ export default function Dashboard({
         const createdCase = { ...newCaseData, id: createdId };
         setCases(prev => [createdCase, ...prev]);
         setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
+        if (
+          (side === 'petitioner' && createdCase.petitionerMobile) || 
+          (side === 'respondent' && (createdCase.respondentMobile || (createdCase.respondentDetails && createdCase.respondentDetails.length > 0)))
+        ) {
+          setSavedCaseForWhatsApp({ caseData: createdCase, targetSide: side });
+        }
       } catch (err) {
         console.error("Failed to create joined case:", err);
         alert(language === 'bn' ? 'ডাটাবেসে মামলা সংরক্ষণ করতে সমস্যা হয়েছে।' : 'Failed to save case.');
@@ -3630,20 +3680,22 @@ export default function Dashboard({
                     t={t}
                     isPremium={isPremiumFeatures}
                     isPremiumForAds={isAdFree}
-                    referralCode={referralCode}
+                    referralCode={activeRefCode || referralCode}
                     referralCount={referralHistory.length}
                     onCopyLink={() => {
-                      const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
+                      const code = activeRefCode || referralCode;
+                      const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
                       copyToClipboard(link).then((success) => {
                         if (success) {
-                          alert(t('link_copied_success') || 'Link Copied!');
+                          alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Link Copied!'));
                         } else {
                           alert(language === 'bn' ? 'কপি করা যায়নি, দয়া করে ম্যানুয়ালি কপি করুন।' : 'Copy failed, please copy manually.');
                         }
                       });
                     }}
                     onWhatsAppShare={() => {
-                      const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
+                      const code = activeRefCode || referralCode;
+                      const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
                       const text = `Join MDC Casebook and manage cases easily: ${link}`;
                       copyToClipboard(link).then((success) => {
                         if (success) {
@@ -3681,6 +3733,18 @@ export default function Dashboard({
                   onUpdateCaseLocal={(caseId, updatedFields) => {
                     setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...updatedFields } : c));
                   }}
+                  onOpenAiForCase={(c) => {
+                    setSelectedCaseForCard(c);
+                    setAiMode('case');
+                    setIsLegalAIOpen(true);
+                    if (isUserPetitioner(c)) {
+                      setUserCaseRole('plaintiff');
+                    } else if (isUserRespondent(c)) {
+                      setUserCaseRole('defendant');
+                    } else {
+                      setUserCaseRole('none');
+                    }
+                  }}
                 />
               )}
               {activeTab === 'cases' && (
@@ -3701,6 +3765,12 @@ export default function Dashboard({
                   onDeleteCase={handleDeleteCase}
                   onViewHistory={setSelectedCaseForHistory}
                   onViewCard={setSelectedCaseForCard}
+                  onWhatsAppNotify={(c) => {
+                    const isResp = isUserRespondent(c);
+                    const isPet = isUserPetitioner(c);
+                    const targetSide: 'petitioner' | 'respondent' = (isResp && !isPet) ? 'respondent' : 'petitioner';
+                    setSavedCaseForWhatsApp({ caseData: c, targetSide });
+                  }}
                   t={t}
                   language={language}
                   isPremium={isPremiumFeatures}
@@ -4887,7 +4957,11 @@ export default function Dashboard({
                       <div className="flex-1 space-y-3">
                         <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
                           <Share2 size={20} />
-                          <span className="text-sm font-black tracking-widest">{language === 'bn' ? 'রেফার লিংক' : 'Referral Link'}</span>
+                          <span className="text-sm font-black tracking-widest">{language === 'bn' ? 'রেফারেল লিংক' : 'Referral Link'}</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            {language === 'bn' ? 'সক্রিয় (Active)' : 'Active'}
+                          </span>
                         </div>
                         <h3 className="text-xl font-black text-slate-900 dark:text-white leading-tight">
                           {t('special_offer_desc')}
@@ -4926,18 +5000,19 @@ export default function Dashboard({
                         )}
                       </div>
                       
-                      <div className="flex flex-col gap-3 w-full lg:w-[400px]">
+                      <div className="flex flex-col gap-3 w-full lg:w-[420px]">
                         <div className="flex items-center bg-slate-50 dark:bg-slate-800 rounded-2xl p-2 border border-slate-200 dark:border-slate-700">
                           <input 
                             type="text" 
                             readOnly 
-                            value={referralCode ? `https://mdccasebook.vercel.app/register?ref=${referralCode}` : t('create_account')} 
-                            className="bg-transparent flex-1 outline-none text-xs text-slate-600 dark:text-slate-300 font-medium px-2 select-all h-full min-w-0"
+                            value={`https://mdccasebook.vercel.app/register?ref=${activeRefCode || referralCode || ''}`} 
+                            className="bg-transparent flex-1 outline-none text-xs text-slate-600 dark:text-slate-300 font-mono px-2 select-all h-full min-w-0"
                           />
-                           <button 
+                          <button 
                             onClick={() => {
-                              if (referralCode) {
-                                const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
+                              const code = activeRefCode || referralCode;
+                              if (code) {
+                                const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
                                 copyToClipboard(link).then((success) => {
                                   if (success) {
                                     alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Referral link copied to clipboard!'));
@@ -4949,32 +5024,47 @@ export default function Dashboard({
                                 alert(t('register_for_referral'));
                               }
                             }}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-md shadow-indigo-200 dark:shadow-none"
+                            className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap shadow-md shadow-indigo-200 dark:shadow-none"
                           >
                             <Copy size={14} />
                             {t('copy_link')}
                           </button>
                         </div>
-                        <button 
-                          onClick={() => {
-                            if (referralCode) {
-                              const link = `https://mdccasebook.vercel.app/register?ref=${referralCode}`;
-                              const text = `Join MDC Casebook and manage cases easily: ${link}`;
-                              copyToClipboard(link).then((success) => {
-                                if (success) {
-                                  alert(language === 'bn' ? 'লিংকটি কপি করা হয়েছে এবং হোয়াটসঅ্যাপ খোলা হচ্ছে! আপনি সরাসরি সেখানে পেস্ট করতে পারবেন।' : 'Link copied to clipboard! Opening WhatsApp, you can paste it directly.');
-                                }
-                                window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-                              });
-                            } else {
-                              alert(t('register_for_referral'));
-                            }
-                          }}
-                          className="w-full px-4 py-3 bg-[#25D366] text-white rounded-2xl font-bold text-xs hover:bg-[#128C7E] transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 dark:shadow-none"
-                        >
-                          <MessageSquare size={16} fill="currentColor" />
-                          {t('share_via_whatsapp') || 'Share via WhatsApp'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => {
+                              const code = activeRefCode || referralCode;
+                              if (code) {
+                                const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
+                                const text = `Join MDC Casebook and manage cases easily: ${link}`;
+                                copyToClipboard(link).then((success) => {
+                                  if (success) {
+                                    alert(language === 'bn' ? 'লিংকটি কপি করা হয়েছে এবং হোয়াটসঅ্যাপ খোলা হচ্ছে! আপনি সরাসরি সেখানে পেস্ট করতে পারবেন।' : 'Link copied to clipboard! Opening WhatsApp, you can paste it directly.');
+                                  }
+                                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+                                });
+                              } else {
+                                alert(t('register_for_referral'));
+                              }
+                            }}
+                            className="flex-1 px-4 py-2.5 bg-[#25D366] text-white rounded-xl font-bold text-xs hover:bg-[#128C7E] transition-all flex items-center justify-center gap-2 shadow-sm"
+                          >
+                            <MessageSquare size={16} fill="currentColor" />
+                            {t('share_via_whatsapp') || 'Share via WhatsApp'}
+                          </button>
+                          <button
+                            onClick={() => {
+                              const code = activeRefCode || referralCode;
+                              const link = `https://mdccasebook.vercel.app/register?ref=${code || ''}`;
+                              window.open(link, '_blank');
+                            }}
+                            className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700"
+                            title={language === 'bn' ? 'লিংকটি ওপেন বা টেস্ট করুন' : 'Test Link'}
+                          >
+                            <ExternalLink size={14} />
+                            <span>{language === 'bn' ? 'টেস্ট করুন' : 'Open'}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -6119,9 +6209,21 @@ export default function Dashboard({
             userMobile={userMobile}
             chamberAssociates={chamberAssociates}
             isSubscribed={isSubscribed || userType === 'admin' || userType === 'super_admin'}
+            referralCode={activeRefCode || referralCode}
           />
         )}
       </AnimatePresence>
+
+      {/* WhatsApp Referral Share Modal after Case Save */}
+      <CaseSavedWhatsAppModal
+        isOpen={!!savedCaseForWhatsApp}
+        onClose={() => setSavedCaseForWhatsApp(null)}
+        caseData={savedCaseForWhatsApp?.caseData || {}}
+        targetSide={savedCaseForWhatsApp?.targetSide || 'petitioner'}
+        referralCode={activeRefCode || referralCode}
+        lawyerName={userName || 'আইনজীবী'}
+        language={language === 'bn' ? 'bn' : 'en'}
+      />
 
       {/* Payment Modal */}
       <AnimatePresence>
@@ -6215,6 +6317,18 @@ export default function Dashboard({
                   userMobile={userMobile || ''}
                   language={language}
                   chamberAssociates={chamberAssociates}
+                  onOpenAiForCase={(c) => {
+                    setSelectedCaseForCard(c);
+                    setAiMode('case');
+                    setIsLegalAIOpen(true);
+                    if (isUserPetitioner(c)) {
+                      setUserCaseRole('plaintiff');
+                    } else if (isUserRespondent(c)) {
+                      setUserCaseRole('defendant');
+                    } else {
+                      setUserCaseRole('none');
+                    }
+                  }}
                 />
               </div>
             </motion.div>

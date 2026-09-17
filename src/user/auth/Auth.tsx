@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, User, MapPin, Phone, ArrowRight, Gavel, Briefcase, Users, ChevronDown, Globe, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, MapPin, Phone, ArrowRight, Gavel, Briefcase, Users, ChevronDown, Globe, Eye, EyeOff, CheckCircle2, Sparkles } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS, COUNTRY_CODES, getPoliceStations } from '../../constants';
@@ -37,7 +37,11 @@ interface AuthProps {
 }
 
 export default function Auth({ onAuthSuccess }: AuthProps) {
-  const [isLogin, setIsLogin] = useState(true);
+  const urlParams = new URLSearchParams(window.location.search);
+  const refCodeFromUrl = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('referredBy') || urlParams.get('referred_by') || '';
+  const initialRefCode = refCodeFromUrl || localStorage.getItem('pending_referral_code') || '';
+
+  const [isLogin, setIsLogin] = useState(!initialRefCode && !window.location.pathname.includes('/register'));
   const [resetMode, setResetMode] = useState(false);
   const [userType, setUserType] = useState<UserRole>('lawyer');
   const [loading, setLoading] = useState(false);
@@ -51,9 +55,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const refCode = urlParams.get('ref') || '';
-
   const [formData, setFormData] = useState({
     fullName: '',
     country: 'Bangladesh',
@@ -63,9 +64,35 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
     email: '',
     password: '',
     confirmPassword: '',
-    referredBy: refCode,
+    referredBy: initialRefCode,
     newPassword: ''
   });
+
+  const [referrerInfo, setReferrerInfo] = useState<{ valid: boolean; referrerName?: string; referralCode?: string } | null>(null);
+
+  React.useEffect(() => {
+    if (initialRefCode) {
+      localStorage.setItem('pending_referral_code', initialRefCode);
+    }
+  }, [initialRefCode]);
+
+  React.useEffect(() => {
+    const code = formData.referredBy?.trim();
+    if (code) {
+      fetch(`/api/referral/check/${encodeURIComponent(code)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.valid) {
+            setReferrerInfo(data);
+          } else {
+            setReferrerInfo(null);
+          }
+        })
+        .catch(() => setReferrerInfo(null));
+    } else {
+      setReferrerInfo(null);
+    }
+  }, [formData.referredBy]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -563,16 +590,36 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                   </div>
                 )}
 
-                <div className="relative">
-                  <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                  <input
-                    type="text"
-                    name="referredBy"
-                    value={formData.referredBy}
-                    onChange={handleChange}
-                    placeholder="রেফারেল কোড বা রেফারেন্স (ঐচ্ছিক)"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
-                  />
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <input
+                      type="text"
+                      name="referredBy"
+                      value={formData.referredBy}
+                      onChange={handleChange}
+                      placeholder="রেফারেল কোড বা রেফারেন্স (ঐচ্ছিক)"
+                      className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all ${
+                        referrerInfo?.valid 
+                          ? 'border-emerald-300 focus:ring-emerald-500 bg-emerald-50/30' 
+                          : 'border-slate-200 focus:ring-indigo-500'
+                      }`}
+                    />
+                    {referrerInfo?.valid && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                        <CheckCircle2 size={12} />
+                        সক্রিয়
+                      </span>
+                    )}
+                  </div>
+                  {referrerInfo?.valid && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                      <Sparkles size={14} className="text-emerald-600 shrink-0" />
+                      <span>
+                        <strong>রেফারেল লিংক সক্রিয়!</strong> রেফার করেছেন <strong>{referrerInfo.referrerName}</strong>। আপনি ১০০ বোনাস পয়েন্ট পাবেন।
+                      </span>
+                    </div>
+                  )}
                 </div>
               </>
             )}

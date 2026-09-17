@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Search } from 'lucide-react';
 import { translations } from '../../translations';
 import { Case } from '../../types';
 import { getPoliceStations, CIVIL_CASE_STEPS, CRIMINAL_CASE_STEPS } from '../../constants';
+import WhatsAppPhoneInput from './WhatsAppPhoneInput';
 
 interface JoinCaseFormProps {
   onJoin: (caseNumber: string, side: 'petitioner' | 'respondent', respondents?: {name: string, serial: string, phone: string, addedByMobile?: string, addedByName?: string, addedByRole?: string}[], totalRespondents?: string, order?: string, additionalOrder?: string, lawyerInfo?: {name: string, phone: string}, clerkInfo?: {name: string, phone: string}, nextDate?: string, caseSection?: string) => void;
@@ -384,14 +385,13 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
                           </div>
                           <div className="sm:col-span-2">
                             <label className="block text-xs font-medium text-slate-600 mb-1">
-                              {language === 'bn' ? 'মোবাইল নং' : 'Mobile No'}
+                              {language === 'bn' ? 'মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Mobile No (WhatsApp)'}
                             </label>
-                            <input
-                              type="tel"
+                            <WhatsAppPhoneInput
                               value={respondent.phone}
-                              onChange={(e) => handleRespondentChange(index, 'phone', e.target.value)}
+                              onChange={(val) => handleRespondentChange(index, 'phone', val)}
                               placeholder={language === 'bn' ? 'মোবাইল নং লিখুন' : 'Enter mobile no'}
-                              className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              language={language}
                             />
                           </div>
                         </div>
@@ -466,14 +466,13 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">
-                          {language === 'bn' ? 'উকিলের মোবাইল নং' : 'Lawyer Mobile No'}
+                          {language === 'bn' ? 'উকিলের মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Lawyer Mobile No (WhatsApp)'}
                         </label>
-                        <input
-                          type="tel"
+                        <WhatsAppPhoneInput
                           value={lawyerPhone}
-                          onChange={(e) => setLawyerPhone(e.target.value)}
+                          onChange={(val) => setLawyerPhone(val)}
                           placeholder={language === 'bn' ? 'মোবাইল নং লিখুন' : 'Enter mobile no'}
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          language={language}
                         />
                       </div>
                     </div>
@@ -495,14 +494,13 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">
-                          {language === 'bn' ? 'মুহুরির মোবাইল নং' : 'Clerk Mobile No'}
+                          {language === 'bn' ? 'মুহুরির মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Clerk Mobile No (WhatsApp)'}
                         </label>
-                        <input
-                          type="tel"
+                        <WhatsAppPhoneInput
                           value={clerkPhone}
-                          onChange={(e) => setClerkPhone(e.target.value)}
+                          onChange={(val) => setClerkPhone(val)}
                           placeholder={language === 'bn' ? 'মোবাইল নং লিখুন' : 'Enter mobile no'}
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          language={language}
                         />
                       </div>
                     </div>

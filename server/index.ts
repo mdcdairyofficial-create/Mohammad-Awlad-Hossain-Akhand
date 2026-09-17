@@ -575,6 +575,19 @@ app.post('/api/dump', (req, res) => {
         return res.status(403).json({ error: "Forbidden: Access denied" });
       }
 
+      let userReferralCode = userData.referral_code || userData.referralCode;
+      if (!userReferralCode) {
+        const namePart = (userData.name || userData.fullName || 'MDC').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() || 'MDC';
+        userReferralCode = namePart + Math.floor(1000 + Math.random() * 9000);
+        try {
+          await userDoc.ref.update({ referral_code: userReferralCode, referralCode: userReferralCode });
+          userData.referral_code = userReferralCode;
+          userData.referralCode = userReferralCode;
+        } catch (e) {
+          console.warn("Failed to save generated referral_code:", e);
+        }
+      }
+
       res.json({
         id: userDoc.id,
         firebaseUid: userData.firebase_uid || firebaseUid,
@@ -584,7 +597,7 @@ app.post('/api/dump', (req, res) => {
         userType: userData.user_type,
         district: userData.district,
         country: userData.country,
-        referralCode: userData.referral_code,
+        referralCode: userReferralCode,
         referredBy: userData.referred_by,
         subscriptionEndDate: userData.subscription_end_date,
         subscriptionPackage: userData.subscription_package,
@@ -1690,7 +1703,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
   app.post("/api/auth/firebase-sync", async (req, res) => {
     try {
-      const { firebaseUid, email, mobile, fullName, profilePicture, userType, district, country } = req.body;
+      const { firebaseUid, email, mobile, fullName, profilePicture, userType, district, country, referredBy } = req.body;
       if (!firebaseUid) return res.status(400).json({ error: "UID missing" });
 
       const usersRef = db.collection("users");
@@ -1777,13 +1790,19 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
             updates.subscription_end_date = new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString();
             updates.subscriptionEndDate = updates.subscription_end_date;
           }
+          if (!currentData.referral_code && !currentData.referralCode) {
+            const namePart = (currentData.name || currentData.fullName || 'MDC').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() || 'MDC';
+            const code = namePart + Math.floor(1000 + Math.random() * 9000);
+            updates.referral_code = code;
+            updates.referralCode = code;
+          }
           await userDoc.ref.update(updates);
           const fresh = await userDoc.ref.get();
           userDoc = fresh;
         } else {
           // Auto-register
-          const namePart = (fullName || 'USER').replace(/\s+/g, '').substring(0, 4).toUpperCase();
-          const referralCode = namePart + Math.floor(Math.random() * 10000);
+          const namePart = (fullName || 'USER').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() || 'USER';
+          const referralCode = namePart + Math.floor(1000 + Math.random() * 9000);
           let finalUserType = userType || 'client';
           let subscriptionDays = 1;
 
@@ -1793,6 +1812,33 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           }
 
           const subscriptionEnd = new Date(Date.now() + subscriptionDays * 24 * 60 * 60 * 1000).toISOString();
+
+          let initialPoints = 100;
+          let actualReferredBy = referredBy || null;
+
+          if (referredBy && typeof referredBy === 'string' && referredBy.trim()) {
+            try {
+              const cleanRef = referredBy.trim();
+              let refSnap = await usersRef.where("referral_code", "==", cleanRef).limit(1).get();
+              if (refSnap.empty) {
+                refSnap = await usersRef.where("referral_code", "==", cleanRef.toUpperCase()).limit(1).get();
+              }
+              if (refSnap.empty) {
+                refSnap = await usersRef.where("referralCode", "==", cleanRef).limit(1).get();
+              }
+              if (!refSnap.empty) {
+                const rDoc = refSnap.docs[0];
+                actualReferredBy = rDoc.data().referral_code || cleanRef;
+                initialPoints = 200;
+                await rDoc.ref.update({
+                  points: FieldValue.increment(100),
+                  white_balls_count: FieldValue.increment(2)
+                });
+              }
+            } catch (rErr) {
+              console.warn("Failed to process referral in sync:", rErr);
+            }
+          }
 
           const newUser = {
             firebase_uid: firebaseUid,
@@ -1806,6 +1852,8 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
             country: country || 'Bangladesh',
             referral_code: referralCode,
             referralCode: referralCode,
+            referred_by: actualReferredBy,
+            referredBy: actualReferredBy,
             profile_picture: profilePicture || null,
             profilePicture: profilePicture || null,
             is_approved: true,
@@ -1815,7 +1863,8 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
             subscriptionEndDate: subscriptionEnd,
             createdAt: new Date().toISOString(),
             created_at: FieldValue.serverTimestamp(),
-            points: 100,
+            points: initialPoints,
+            white_balls_count: 0,
             wallet_balance: 0
           };
           
@@ -1839,6 +1888,12 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           updates.user_type = userType;
           updates.userType = userType;
         }
+        if (!data.referral_code && !data.referralCode) {
+          const namePart = (data.name || data.fullName || 'MDC').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() || 'MDC';
+          const code = namePart + Math.floor(1000 + Math.random() * 9000);
+          updates.referral_code = code;
+          updates.referralCode = code;
+        }
         
         if (Object.keys(updates).length > 0) {
           try {
@@ -1851,6 +1906,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       }
 
       const userData = (userDoc.data() || {}) as any;
+      const effectiveReferralCode = userData.referral_code || userData.referralCode || '';
       res.json({ 
         success: true, 
         user: { 
@@ -1860,6 +1916,8 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
           firebase_uid: userData.firebase_uid || firebaseUid,
           fullName: userData.fullName || userData.name || '',
           userType: userData.userType || userData.user_type || 'client',
+          referralCode: effectiveReferralCode,
+          referral_code: effectiveReferralCode,
           subscriptionEndDate: userData.subscriptionEndDate || userData.subscription_end_date || null
         } 
       });
@@ -1868,6 +1926,72 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       res.status(500).json({ error: error.message });
     }
   });
+
+  // Helper: Find referrer across multiple formats (referral_code, case-insensitive, uid, doc ID) and reward them
+  async function findReferrerAndReward(usersRef: any, refInput: any, newUserName: string, dbInstance: any) {
+    if (!refInput || typeof refInput !== 'string' || !refInput.trim()) {
+      return { referrerDoc: null, initialPointsBonus: 0, actualReferralCode: null };
+    }
+    const cleanRef = refInput.trim();
+    let referrerDoc: any = null;
+
+    try {
+      // 1. Exact match by referral_code
+      let snap = await usersRef.where("referral_code", "==", cleanRef).limit(1).get();
+      if (snap.empty) {
+        // 2. Uppercase
+        snap = await usersRef.where("referral_code", "==", cleanRef.toUpperCase()).limit(1).get();
+      }
+      if (snap.empty) {
+        // 3. Lowercase
+        snap = await usersRef.where("referral_code", "==", cleanRef.toLowerCase()).limit(1).get();
+      }
+      if (snap.empty) {
+        // 4. referralCode camelCase
+        snap = await usersRef.where("referralCode", "==", cleanRef).limit(1).get();
+      }
+      if (snap.empty) {
+        // 5. Try doc ID
+        try {
+          const byId = await usersRef.doc(cleanRef).get();
+          if (byId.exists) referrerDoc = byId;
+        } catch (_) {}
+      }
+      if (snap.empty && !referrerDoc) {
+        // 6. Try firebase_uid
+        snap = await usersRef.where("firebase_uid", "==", cleanRef).limit(1).get();
+      }
+
+      if (!referrerDoc && !snap.empty) {
+        referrerDoc = snap.docs[0];
+      }
+
+      if (referrerDoc) {
+        const refData = referrerDoc.data() || {};
+        const actualReferralCode = refData.referral_code || refData.referralCode || referrerDoc.id;
+        try {
+          await referrerDoc.ref.update({
+            points: FieldValue.increment(100),
+            white_balls_count: FieldValue.increment(2)
+          });
+          await dbInstance.collection("points_history").add({
+            user_id: referrerDoc.id,
+            type: "referral_bonus",
+            amount: 100,
+            description: `রেফারেল বোনাস: নতুন সদস্য (${newUserName || 'ব্যবহারকারী'}) আপনার সক্রিয় লিংক দিয়ে যুক্ত হয়েছেন।`,
+            created_at: FieldValue.serverTimestamp()
+          });
+        } catch (rewardErr) {
+          console.warn("Failed to credit referrer reward:", rewardErr);
+        }
+        return { referrerDoc, initialPointsBonus: 100, actualReferralCode };
+      }
+    } catch (e) {
+      console.warn("Error finding referrer:", e);
+    }
+
+    return { referrerDoc: null, initialPointsBonus: 0, actualReferralCode: cleanRef };
+  }
 
   app.get("/api/auth/register", (req, res) => {
     res.json({
@@ -2007,14 +2131,12 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       }
 
       let initialPoints = 100;
+      let actualReferralCode = referredBy || null;
       if (referredBy) {
-        const referrerSnap = await usersRef.where("referral_code", "==", referredBy).limit(1).get();
-        if (!referrerSnap.empty) {
+        const rewardResult = await findReferrerAndReward(usersRef, referredBy, fullName, db);
+        if (rewardResult.referrerDoc) {
           initialPoints = 200;
-          const referrerDoc = referrerSnap.docs[0];
-          await referrerDoc.ref.update({
-            points: FieldValue.increment(100)
-          });
+          actualReferralCode = rewardResult.actualReferralCode || referredBy;
         }
       }
 
@@ -2032,8 +2154,8 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         country: country,
         referral_code: referralCode,
         referralCode: referralCode,
-        referred_by: referredBy || null,
-        referredBy: referredBy || null,
+        referred_by: actualReferralCode,
+        referredBy: actualReferralCode,
         is_approved: true,
         subscription_package: subscriptionPackage,
         subscriptionPackage: subscriptionPackage,
@@ -2125,15 +2247,13 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         subscriptionPackage = 'diamond';
       }
 
-      let initialPoints = 0;
+      let initialPoints = 100;
+      let actualReferralCode = referredBy || null;
       if (referredBy) {
-        const referrerSnap = await usersRef.where("referral_code", "==", referredBy).limit(1).get();
-        if (!referrerSnap.empty) {
-          initialPoints = 100;
-          const referrerDoc = referrerSnap.docs[0];
-          await referrerDoc.ref.update({
-            points: FieldValue.increment(100)
-          });
+        const rewardResult = await findReferrerAndReward(usersRef, referredBy, fullName || 'Google User', db);
+        if (rewardResult.referrerDoc) {
+          initialPoints = 200;
+          actualReferralCode = rewardResult.actualReferralCode || referredBy;
         }
       }
 
@@ -2146,7 +2266,9 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         district: district || 'ঢাকা',
         country: country || 'Bangladesh',
         referral_code: referralCode,
-        referred_by: referredBy || null,
+        referralCode: referralCode,
+        referred_by: actualReferralCode,
+        referredBy: actualReferralCode,
         profile_picture: profilePicture || null,
         is_approved: true,
         subscription_package: subscriptionPackage,
@@ -2503,20 +2625,178 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  // Check if a referral code is valid and active
+  app.get("/api/referral/check/:code", async (req, res) => {
+    try {
+      const { code } = req.params;
+      if (!code || !code.trim()) return res.json({ valid: false });
+      const usersRef = db.collection("users");
+      const cleanRef = code.trim();
+      let snap = await usersRef.where("referral_code", "==", cleanRef).limit(1).get();
+      if (snap.empty) {
+        snap = await usersRef.where("referral_code", "==", cleanRef.toUpperCase()).limit(1).get();
+      }
+      if (snap.empty) {
+        snap = await usersRef.where("referral_code", "==", cleanRef.toLowerCase()).limit(1).get();
+      }
+      if (snap.empty) {
+        snap = await usersRef.where("referralCode", "==", cleanRef).limit(1).get();
+      }
+      if (snap.empty) {
+        try {
+          const byId = await usersRef.doc(cleanRef).get();
+          if (byId.exists) snap = { empty: false, docs: [byId] } as any;
+        } catch (_) {}
+      }
+      if (snap.empty) {
+        snap = await usersRef.where("firebase_uid", "==", cleanRef).limit(1).get();
+      }
+
+      if (!snap.empty) {
+        const u = snap.docs[0].data() as any;
+        return res.json({
+          valid: true,
+          status: "active",
+          referralCode: u.referral_code || u.referralCode || cleanRef,
+          referrerName: u.name || u.fullName || "MDC Casebook সদস্য",
+          userType: u.user_type || u.userType || "lawyer"
+        });
+      }
+
+      // Special promo codes
+      const upper = cleanRef.toUpperCase();
+      if (cleanRef === '1012' || upper === 'SUPERADMIN2026') {
+        return res.json({
+          valid: true,
+          status: "active",
+          referralCode: cleanRef,
+          referrerName: "অফিসিয়াল স্পেশাল কোড",
+          userType: "super_admin"
+        });
+      }
+
+      res.json({ valid: false });
+    } catch (e: any) {
+      res.json({ valid: false, error: e.message });
+    }
+  });
+
+  // Activate or get active referral link
+  app.post("/api/user/activate-referral", async (req, res) => {
+    try {
+      const { uid, referralCode } = req.body;
+      if (!uid && !referralCode) return res.status(400).json({ error: "UID or referral code required" });
+
+      const usersRef = db.collection("users");
+      let userDoc: any = null;
+
+      if (uid) {
+        try {
+          const byId = await usersRef.doc(uid).get();
+          if (byId.exists) userDoc = byId;
+        } catch (_) {}
+        if (!userDoc) {
+          const s = await usersRef.where("firebase_uid", "==", uid).limit(1).get();
+          if (!s.empty) userDoc = s.docs[0];
+        }
+      }
+      if (!userDoc && referralCode) {
+        const s = await usersRef.where("referral_code", "==", referralCode).limit(1).get();
+        if (!s.empty) userDoc = s.docs[0];
+      }
+
+      if (!userDoc) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const uData = userDoc.data() as any;
+      let activeCode = uData.referral_code || uData.referralCode;
+      if (!activeCode) {
+        const namePart = (uData.name || uData.fullName || 'MDC').replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase() || 'MDC';
+        activeCode = namePart + Math.floor(1000 + Math.random() * 9000);
+      }
+
+      await userDoc.ref.update({
+        referral_code: activeCode,
+        referralCode: activeCode,
+        is_referral_active: true,
+        referral_activated_at: new Date().toISOString()
+      });
+
+      const fullLink = `https://mdccasebook.vercel.app/register?ref=${activeCode}`;
+
+      res.json({
+        success: true,
+        status: "active",
+        referralCode: activeCode,
+        referralLink: fullLink,
+        message: "রেফারেল লিংক সফলভাবে এক্টিভ (সক্রিয়) করা হয়েছে।"
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/user-network", async (req, res) => {
     try {
-      const { referralCode } = req.query;
-      if (!referralCode) return res.status(400).json({ error: "Referral code required" });
+      const { referralCode, uid } = req.query;
+      if (!referralCode && !uid) return res.status(400).json({ error: "Referral code or UID required" });
 
-      const snapshot = await db.collection("users").where("referred_by", "==", referralCode).get();
-      const referredUsers = snapshot.docs.map(doc => {
-        const udata = doc.data() as any;
-        return {
-          id: doc.id,
-          ...udata,
-          case_count: udata.case_count || 0
-        };
-      });
+      const usersRef = db.collection("users");
+      const searchCodes = new Set<string>();
+
+      if (referralCode) {
+        const str = String(referralCode).trim();
+        if (str) {
+          searchCodes.add(str);
+          searchCodes.add(str.toUpperCase());
+          searchCodes.add(str.toLowerCase());
+        }
+      }
+      if (uid) {
+        const str = String(uid).trim();
+        if (str) searchCodes.add(str);
+      }
+
+      // Find user doc to add any alternative code representations
+      if (referralCode) {
+        try {
+          const ownerSnap = await usersRef.where("referral_code", "==", String(referralCode).trim()).limit(1).get();
+          if (!ownerSnap.empty) {
+            const oDoc = ownerSnap.docs[0];
+            searchCodes.add(oDoc.id);
+            const oData = oDoc.data() || {};
+            if (oData.firebase_uid) searchCodes.add(oData.firebase_uid);
+            if (oData.referral_code) searchCodes.add(oData.referral_code);
+          }
+        } catch (_) {}
+      }
+
+      const foundDocs = new Map<string, any>();
+      for (const c of Array.from(searchCodes)) {
+        try {
+          const [s1, s2] = await Promise.all([
+            usersRef.where("referred_by", "==", c).get(),
+            usersRef.where("referredBy", "==", c).get()
+          ]);
+          s1.docs.forEach(d => foundDocs.set(d.id, { id: d.id, ...d.data() }));
+          s2.docs.forEach(d => foundDocs.set(d.id, { id: d.id, ...d.data() }));
+        } catch (_) {}
+      }
+
+      const referredUsers = Array.from(foundDocs.values()).map(udata => ({
+        id: udata.id,
+        name: udata.name || udata.fullName || "ব্যবহারকারী",
+        fullName: udata.fullName || udata.name || "ব্যবহারকারী",
+        mobile: udata.mobile || "",
+        email: udata.email || "",
+        user_type: udata.user_type || udata.userType || "client",
+        userType: udata.user_type || udata.userType || "client",
+        district: udata.district || "",
+        thana: udata.thana || "",
+        createdAt: udata.createdAt || udata.created_at || new Date().toISOString(),
+        case_count: udata.case_count || 0
+      }));
 
       res.json(referredUsers);
     } catch (error: any) {
