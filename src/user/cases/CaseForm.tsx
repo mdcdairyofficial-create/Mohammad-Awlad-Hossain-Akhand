@@ -94,7 +94,8 @@ export default function CaseForm({
     lastDate: '',
     additionalOrder: '',
     totalRespondents: '',
-    authorityHolder: initialData?.authorityHolder || (userType === 'lawyer' || userType === 'clerk' ? userType : 'lawyer')
+    authorityHolder: initialData?.authorityHolder || (userType === 'lawyer' || userType === 'clerk' ? userType : 'lawyer'),
+    selectedParty: initialData?.selectedParty || 'petitioner'
   });
 
   const [caseDocuments, setCaseDocuments] = useState<{ name: string; type: string; url: string }[]>(initialData?.documents || []);
@@ -167,7 +168,13 @@ export default function CaseForm({
       }
       
       // Parse Petitioner/Plaintiffs
-      if (initialData.petitioner) {
+      if (initialData.petitionerDetails && initialData.petitionerDetails.length > 0) {
+        setPlaintiffs(initialData.petitionerDetails.map(p => ({
+          name: p.name,
+          phone: p.phone,
+          serial: Number(p.serial) || 1
+        })));
+      } else if (initialData.petitioner) {
         const names = initialData.petitioner.split(', ');
         setPlaintiffs(names.map(name => ({ name, phone: initialData.petitionerMobile || '' })));
       }
@@ -351,6 +358,16 @@ export default function CaseForm({
       court: formData.courtName, // Ensure court is updated
       petitioner: plaintiffs.map(p => p.name).filter(Boolean).join(', '),
       petitionerMobile: plaintiffs[0]?.phone || '',
+      petitionerDetails: plaintiffs
+        .filter(p => p.name.trim() !== '')
+        .map((p, idx) => ({
+          name: p.name,
+          phone: p.phone,
+          serial: idx + 1,
+          addedByMobile: p.addedByMobile || userMobile,
+          addedByName: p.addedByName || userName,
+          addedByRole: p.addedByRole || userType
+        })),
       respondent: defendants.map(d => d.name).filter(Boolean).join(', '),
       respondentMobile: defendants[0]?.phone || '',
       respondentDetails: defendants
@@ -367,7 +384,8 @@ export default function CaseForm({
       petitionerLawyerMobile: lawyers.map(l => l.phone).filter(Boolean),
       petitionerClerk: clerks.map(c => c.name).filter(Boolean).join(', '),
       petitionerClerkMobile: clerks.map(c => c.phone).filter(Boolean),
-      authorityHolder: formData.authorityHolder || (userType === 'lawyer' || userType === 'clerk' ? userType : 'lawyer')
+      authorityHolder: formData.authorityHolder || (userType === 'lawyer' || userType === 'clerk' ? userType : 'lawyer'),
+      selectedParty: formData.selectedParty || 'petitioner'
     };
 
     onSave({ ...finalData, documents: caseDocuments });
@@ -694,6 +712,39 @@ export default function CaseForm({
                         }`}
                       >
                         📋 {language === 'bn' ? 'মুহুরি (Clerk)' : 'Clerk'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Case Representation Side Selection */}
+                  <div className="space-y-4">
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">
+                      {language === 'bn' ? 'আপনি কোন পক্ষের প্রতিনিধিত্ব করছেন? (যার হোয়াটসঅ্যাপে বার্তা যাবে)' : 'Which side do you represent? (Who gets the WhatsApp info)'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, selectedParty: 'petitioner' }))}
+                        className={`py-3.5 px-4 rounded-2xl border text-sm font-black transition-all flex flex-col sm:flex-row items-center justify-center gap-2 ${
+                          formData.selectedParty === 'petitioner'
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100'
+                            : 'bg-white text-slate-700 font-extrabold border-slate-200 hover:border-blue-450'
+                        }`}
+                      >
+                        <span className="text-xl">👨‍⚖️</span>
+                        <span>{language === 'bn' ? 'বাদী পক্ষ (Plaintiff)' : 'Plaintiff / Petitioner'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, selectedParty: 'respondent' }))}
+                        className={`py-3.5 px-4 rounded-2xl border text-sm font-black transition-all flex flex-col sm:flex-row items-center justify-center gap-2 ${
+                          formData.selectedParty === 'respondent'
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-lg shadow-amber-100'
+                            : 'bg-white text-slate-700 font-extrabold border-slate-200 hover:border-amber-450'
+                        }`}
+                      >
+                        <span className="text-xl">⚖️</span>
+                        <span>{language === 'bn' ? 'বিবাদী পক্ষ (Defendant)' : 'Defendant / Respondent'}</span>
                       </button>
                     </div>
                   </div>
@@ -1075,29 +1126,33 @@ export default function CaseForm({
                     </div>
 
                     <div className="space-y-4">
-                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পক্ষ হিসেবে যুক্ত হোন' : 'Join As'}</label>
-                      <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">
+                        {language === 'bn' ? 'আপনি কোন পক্ষের প্রতিনিধিত্ব করছেন? (যার হোয়াটসঅ্যাপে বার্তা যাবে)' : 'Which side do you represent? (Who gets the WhatsApp info)'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-4">
                         <button
                           type="button"
                           onClick={() => setSide('petitioner')}
-                          className={`py-3 px-4 rounded-xl border font-bold transition-all ${
-                            side === 'petitioner' 
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' 
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
+                          className={`py-3.5 px-4 rounded-2xl border text-sm font-black transition-all flex flex-col items-center justify-center gap-2 ${
+                            side === 'petitioner'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-100'
+                              : 'bg-white text-slate-700 font-extrabold border-slate-200 hover:border-blue-450'
                           }`}
                         >
-                          {t('petitioner')}
+                          <span className="text-xl">👨‍⚖️</span>
+                          <span className="text-center">{language === 'bn' ? 'বাদী পক্ষ (Plaintiff)' : 'Plaintiff / Petitioner'}</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setSide('respondent')}
-                          className={`py-3 px-4 rounded-xl border font-bold transition-all ${
-                            side === 'respondent' 
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100' 
-                              : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300'
+                          className={`py-3.5 px-4 rounded-2xl border text-sm font-black transition-all flex flex-col items-center justify-center gap-2 ${
+                            side === 'respondent'
+                              ? 'bg-amber-600 text-white border-amber-600 shadow-lg shadow-amber-100'
+                              : 'bg-white text-slate-700 font-extrabold border-slate-200 hover:border-amber-450'
                           }`}
                         >
-                          {t('respondent')}
+                          <span className="text-xl">⚖️</span>
+                          <span className="text-center">{language === 'bn' ? 'বিবাদী পক্ষ (Defendant)' : 'Defendant / Respondent'}</span>
                         </button>
                       </div>
                     </div>

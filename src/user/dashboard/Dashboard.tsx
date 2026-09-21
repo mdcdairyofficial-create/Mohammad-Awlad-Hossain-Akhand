@@ -2728,7 +2728,7 @@ export default function Dashboard({
     const targetCase = cases.find(c => c.caseNumber === caseNumber || c.rawCaseNumber === caseNumber);
     
     if (targetCase) {
-      let updatedCase = { ...targetCase };
+      let updatedCase = { ...targetCase, selectedParty: side };
       
       if (caseSection) updatedCase.caseSection = caseSection;
       if (authorityHolder) updatedCase.authorityHolder = authorityHolder;
@@ -2848,7 +2848,8 @@ export default function Dashboard({
         petitioner: side === 'petitioner' ? (lawyerInfo?.name || userName || 'বাদী') : '',
         respondent: side === 'respondent' && respondents?.length ? respondents.map(r => r.name).join(', ') : '',
         createdAt: new Date().toISOString(),
-        authorityHolder: authorityHolder || (currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? currentViewMode : 'lawyer')
+        authorityHolder: authorityHolder || (currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? currentViewMode : 'lawyer'),
+        selectedParty: side
       };
 
       if (side === 'respondent') {
