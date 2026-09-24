@@ -96,7 +96,11 @@ export default function JoinCaseForm({ onJoin, onCancel, language, existingCases
   const civilTypes = ['দেওয়ানী', 'পারিবারিক'];
 
   const caseNumber = React.useMemo(() => {
-    if (!caseType || !rawCaseNumber || !filingYear || !policeStation) return '';
+    if (!caseType || !rawCaseNumber || !policeStation) return '';
+    if (rawCaseNumber.includes('/') || rawCaseNumber.includes('\\')) {
+      return `${caseType}-${rawCaseNumber}(${policeStation})`;
+    }
+    if (!filingYear) return '';
     return `${caseType}-${rawCaseNumber}/${filingYear}(${policeStation})`;
   }, [caseType, rawCaseNumber, filingYear, policeStation]);
 

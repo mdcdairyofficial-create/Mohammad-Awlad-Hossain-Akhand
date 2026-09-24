@@ -20,7 +20,12 @@ import {
   CheckCircle,
   RefreshCw,
   Edit2,
-  Sparkles
+  Sparkles,
+  Scale,
+  User,
+  Gavel,
+  Users,
+  Save
 } from 'lucide-react';
 import { Case, CaseHistoryEntry, isCaseOnDate } from '../../../types';
 import { updateCase } from '../../../services/user/featureService';
@@ -43,6 +48,441 @@ interface CalendarViewProps {
   onOpenAiForCase?: (c: Case) => void;
 }
 
+const MiniCasebook = ({
+  c,
+  language,
+  t,
+  buttonLabels,
+  onUpdateCaseLocal,
+  onViewCard
+}: {
+  c: Case;
+  language: 'bn' | 'en' | 'hi' | 'ur';
+  t: (key: any) => string;
+  buttonLabels: any;
+  onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
+  onViewCard: (c: Case) => void;
+}) => {
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [prevDate, setPrevDate] = useState(c.lastDate || '');
+  const [caseNumber, setCaseNumber] = useState(c.caseNumber || '');
+  const [petitioner, setPetitioner] = useState(c.petitioner || '');
+  const [respondent, setRespondent] = useState(c.respondent || '');
+  const [nextDate, setNextDate] = useState(c.nextDate || '');
+  const [order, setOrder] = useState(c.order || 'আদেশ');
+  const [clientNotes1, setClientNotes1] = useState(c.petitionerDetails?.[0]?.name || '');
+  const [clientNotes2, setClientNotes2] = useState(c.additionalOrder || '');
+  const [oppositeNotes, setOppositeNotes] = useState(c.respondentDetails?.[0]?.name || '');
+
+  // Synchronize state when c changes
+  useEffect(() => {
+    setPrevDate(c.lastDate || '');
+    setCaseNumber(c.caseNumber || '');
+    setPetitioner(c.petitioner || '');
+    setRespondent(c.respondent || '');
+    setNextDate(c.nextDate || '');
+    setOrder(c.order || 'আদেশ');
+    setClientNotes1(c.petitionerDetails?.[0]?.name || '');
+    setClientNotes2(c.additionalOrder || '');
+    setOppositeNotes(c.respondentDetails?.[0]?.name || '');
+  }, [c]);
+
+  const handleSave = () => {
+    if (onUpdateCaseLocal) {
+      const updatedPetDetails = [...(c.petitionerDetails || [])];
+      if (updatedPetDetails[0]) {
+        updatedPetDetails[0] = { ...updatedPetDetails[0], name: clientNotes1 };
+      } else if (clientNotes1) {
+        updatedPetDetails.push({ name: clientNotes1, phone: '', serial: 1 });
+      }
+
+      const updatedResDetails = [...(c.respondentDetails || [])];
+      if (updatedResDetails[0]) {
+        updatedResDetails[0] = { ...updatedResDetails[0], name: oppositeNotes };
+      } else if (oppositeNotes) {
+        updatedResDetails.push({ name: oppositeNotes, phone: '', serial: 1 });
+      }
+
+      onUpdateCaseLocal(c.id, {
+        lastDate: prevDate,
+        caseNumber,
+        petitioner,
+        respondent,
+        nextDate,
+        order,
+        additionalOrder: clientNotes2,
+        petitionerDetails: updatedPetDetails,
+        respondentDetails: updatedResDetails
+      });
+    }
+    setIsEditMode(false);
+  };
+
+  const isPastForCase = c.nextDate !== c.lastDate;
+
+  return (
+    <div className="w-full bg-white/95 dark:bg-slate-850 rounded-2xl border border-amber-200/50 dark:border-slate-800 p-3.5 shadow-xs hover:shadow-md transition-all">
+      {/* Small top header with original action buttons */}
+      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-dashed border-amber-200/40 dark:border-slate-800">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+            ID: {c.id}
+          </span>
+          {isPastForCase && (
+            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-50 text-amber-700 border border-amber-200/60 rounded-full">
+              {language === 'bn' ? 'বিগত ধার্য তারিখ' : 'Past Date'}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {c.petitionerMobile && (
+            <a 
+              href={`tel:${c.petitionerMobile}`} 
+              className="w-5 h-5 rounded-full bg-emerald-600 hover:brightness-105 flex items-center justify-center border border-slate-200 shadow-3xs active:scale-95 transition-all shrink-0" 
+              title={`কল করুন (বাদী): ${c.petitionerMobile}`}
+            >
+              <Phone size={10} className="text-white fill-white" />
+            </a>
+          )}
+          {c.respondentMobile && (
+            <a 
+              href={`tel:${c.respondentMobile}`} 
+              className="w-5 h-5 rounded-full bg-emerald-600 hover:brightness-105 flex items-center justify-center border border-slate-200 shadow-3xs active:scale-95 transition-all shrink-0" 
+              title={`কল করুন (বিবাদী): ${c.respondentMobile}`}
+            >
+              <Phone size={10} className="text-white fill-white" />
+            </a>
+          )}
+          <button 
+            onClick={() => onViewCard(c)}
+            className="p-1 bg-amber-50 dark:bg-slate-800 text-amber-700 dark:text-amber-400 rounded-md hover:bg-amber-700 hover:text-white border border-amber-200 dark:border-slate-700 transition-all active:scale-95 shrink-0 shadow-3xs"
+            title="ভিউ কার্ড"
+          >
+            <CreditCard size={11} />
+          </button>
+        </div>
+      </div>
+
+      {/* RESPONSIVE ULTRA-COMPACT PANEL */}
+      <div className="w-full select-none mt-2">
+        <div className="flex flex-nowrap items-stretch gap-1 w-full overflow-x-auto scrollbar-none pb-1.5">
+          
+          {/* 1. LEFT ARROW */}
+          <button 
+            type="button"
+            className="shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-b from-blue-600 to-indigo-700 text-white cursor-pointer hover:from-blue-500 hover:to-indigo-600 active:scale-95 transition-all flex items-center justify-center shadow-3xs"
+          >
+            <ArrowLeft className="w-3 h-3" />
+          </button>
+
+          {/* 2. পূর্ববর্তী তারিখ (PREVIOUS DATE) */}
+          <div className="flex-1 min-w-[55px] sm:min-w-[75px] md:w-[90px] md:shrink-0 bg-gradient-to-br from-blue-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-blue-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-blue-500 uppercase tracking-widest leading-none mb-0.5">
+                {language === 'bn' ? 'পূর্ববর্তী' : 'PREV'}
+              </p>
+              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
+                {language === 'bn' ? 'তারিখ' : 'DATE'}
+              </p>
+            </div>
+            <div className="pt-0.5">
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={prevDate}
+                  onChange={(e) => setPrevDate(e.target.value)}
+                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-blue-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                />
+              ) : (
+                <p className="text-[9px] md:text-xs font-black text-slate-800 dark:text-white leading-none">
+                  {prevDate || '---'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 3. মামলা নং (CASE NUMBER) - LARGE CENTRAL GRADIENT */}
+          <div className="flex-2 min-w-[80px] sm:min-w-[100px] md:w-[120px] md:shrink-0 bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-1 shadow-2xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-indigo-200 uppercase tracking-widest leading-none">
+                {language === 'bn' ? 'মামলা নং' : 'CASE NO'}
+              </p>
+            </div>
+            <div className="pt-0.5">
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={caseNumber}
+                  onChange={(e) => setCaseNumber(e.target.value)}
+                  className="w-full px-1 py-0.5 bg-indigo-900/60 border border-indigo-450 rounded text-[8px] font-bold text-white focus:outline-none"
+                />
+              ) : (
+                <p className="text-[9px] md:text-xs font-black tracking-tight leading-none truncate">
+                  {caseNumber || '---'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 4. বাদীর নাম (PLAINTIFF) */}
+          <div className="flex-1.5 min-w-[65px] sm:min-w-[80px] md:w-[100px] md:shrink-0 bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-orange-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-orange-500 uppercase tracking-widest leading-none mb-0.5">
+                {language === 'bn' ? 'বাদীর' : 'PLAINTIFF'}
+              </p>
+              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
+                {language === 'bn' ? 'নাম' : 'NAME'}
+              </p>
+            </div>
+            <div className="pt-0.5">
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={petitioner}
+                  onChange={(e) => setPetitioner(e.target.value)}
+                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-orange-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                />
+              ) : (
+                <p className="text-[8px] md:text-[10px] font-black text-slate-800 dark:text-white leading-tight truncate">
+                  {petitioner || '---'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 5. V/S (VERSUS) */}
+          <div className="shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-3xs flex items-center justify-center self-center">
+            <p className="text-[9px] font-black tracking-tighter leading-none">
+              V/S
+            </p>
+          </div>
+
+          {/* 6. আসামীর নাম (DEFENDANT) */}
+          <div className="flex-1.5 min-w-[65px] sm:min-w-[80px] md:w-[100px] md:shrink-0 bg-gradient-to-br from-emerald-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-emerald-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-emerald-500 uppercase tracking-widest leading-none mb-0.5">
+                {language === 'bn' ? 'আসামীর' : 'DEFENDANT'}
+              </p>
+              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
+                {language === 'bn' ? 'নাম' : 'NAME'}
+              </p>
+            </div>
+            <div className="pt-0.5">
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={respondent}
+                  onChange={(e) => setRespondent(e.target.value)}
+                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-emerald-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                />
+              ) : (
+                <p className="text-[8px] md:text-[10px] font-black text-slate-800 dark:text-white leading-tight truncate">
+                  {respondent || '---'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 7. পরবর্তী তারিখ (NEXT DATE) */}
+          <div className="flex-1 min-w-[55px] sm:min-w-[75px] md:w-[90px] md:shrink-0 bg-gradient-to-br from-sky-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-sky-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-sky-500 uppercase tracking-widest leading-none mb-0.5">
+                {language === 'bn' ? 'পরবর্তী' : 'NEXT'}
+              </p>
+              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
+                {language === 'bn' ? 'তারিখ' : 'DATE'}
+              </p>
+            </div>
+            <div className="pt-0.5">
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={nextDate}
+                  onChange={(e) => setNextDate(e.target.value)}
+                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-sky-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                />
+              ) : (
+                <p className="text-[9px] md:text-xs font-black text-slate-800 dark:text-white leading-none">
+                  {nextDate || '---'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 8. ACTION SECTION - 2X2 MINI GRID */}
+          <div className="flex-2 min-w-[90px] sm:min-w-[110px] md:w-[120px] md:shrink-0 p-0.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/50 dark:border-slate-750/50 flex flex-col justify-center min-h-[40px] md:min-h-[60px]">
+            <div className="grid grid-cols-2 gap-0.5 h-full">
+              
+              <button
+                type="button"
+                onClick={() => setOrder('আদেশ')}
+                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
+                  order === 'আদেশ' 
+                    ? 'bg-emerald-600 text-white shadow-3xs' 
+                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
+                }`}
+              >
+                <span className="text-[6px] md:text-[8px] font-black leading-none">
+                  {language === 'bn' ? 'আদেশ' : 'ORDER'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOrder('পদক্ষেপ')}
+                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
+                  order === 'পদক্ষেপ' 
+                    ? 'bg-cyan-500 text-white shadow-3xs' 
+                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
+                }`}
+              >
+                <span className="text-[6px] md:text-[8px] font-black leading-none">
+                  {language === 'bn' ? 'পদক্ষেপ' : 'STEP'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOrder('হাজিরা')}
+                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
+                  order === 'হাজিরা' 
+                    ? 'bg-purple-600 text-white shadow-3xs' 
+                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
+                }`}
+              >
+                <span className="text-[6px] md:text-[8px] font-black leading-none">
+                  {language === 'bn' ? 'হাজিরা' : 'ATTEND'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOrder('জরি')}
+                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
+                  order === 'জরি' 
+                    ? 'bg-rose-500 text-white shadow-3xs' 
+                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
+                }`}
+              >
+                <span className="text-[6px] md:text-[8px] font-black leading-none">
+                  {language === 'bn' ? 'জরি' : 'FINE'}
+                </span>
+              </button>
+
+            </div>
+          </div>
+
+          {/* 9. EDIT BUTTON */}
+          <button
+            type="button"
+            onClick={() => setIsEditMode(!isEditMode)}
+            className={`shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-auto rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all self-center ${
+              isEditMode 
+                ? 'bg-amber-500 text-slate-900 scale-[1.02]' 
+                : 'bg-gradient-to-b from-blue-600 to-indigo-700 text-white hover:from-blue-500 hover:to-indigo-600 active:scale-95'
+            }`}
+          >
+            <Edit2 className="w-3 h-3" />
+            <span className="text-[6px] md:text-[8px] font-black mt-0.5">EDIT</span>
+          </button>
+
+          {/* 10. PARTY BOXES - 3 separate cards */}
+          
+          {/* Column A: নিজ পক্ষ */}
+          <div className="flex-1.5 min-w-[75px] sm:min-w-[90px] md:w-[110px] md:shrink-0 bg-gradient-to-br from-purple-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-purple-150/40 dark:border-slate-750 p-1 flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-purple-600 dark:text-purple-400 uppercase leading-none">
+                {language === 'bn' ? 'নিজ পক্ষ' : 'OUR SIDE'}
+              </p>
+            </div>
+            <div className="flex-1 bg-purple-50/50 dark:bg-purple-950/20 rounded-lg p-0.5 mt-0.5 overflow-y-auto max-h-[30px] md:max-h-none">
+              {isEditMode ? (
+                <textarea
+                  value={clientNotes1}
+                  onChange={(e) => setClientNotes1(e.target.value)}
+                  className="w-full h-full bg-white dark:bg-slate-800 border border-purple-300 rounded p-0.5 text-[8px] font-bold text-slate-800 dark:text-white resize-none"
+                />
+              ) : (
+                <p className="text-[8px] md:text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
+                  {clientNotes1 || (language === 'bn' ? 'তথ্য নেই।' : 'No info.')}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Column B: নিজ পক্ষ */}
+          <div className="flex-1.5 min-w-[75px] sm:min-w-[90px] md:w-[110px] md:shrink-0 bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-orange-150/40 dark:border-slate-750 p-1 flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-orange-600 dark:text-orange-400 uppercase leading-none">
+                {language === 'bn' ? 'নিজ পক্ষ' : 'OUR SIDE B'}
+              </p>
+            </div>
+            <div className="flex-1 bg-orange-50/50 dark:bg-orange-950/20 rounded-lg p-0.5 mt-0.5 overflow-y-auto max-h-[30px] md:max-h-none">
+              {isEditMode ? (
+                <textarea
+                  value={clientNotes2}
+                  onChange={(e) => setClientNotes2(e.target.value)}
+                  className="w-full h-full bg-white dark:bg-slate-800 border border-orange-300 rounded p-0.5 text-[8px] font-bold text-slate-800 dark:text-white resize-none"
+                />
+              ) : (
+                <p className="text-[8px] md:text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
+                  {clientNotes2 || (language === 'bn' ? 'তথ্য নেই।' : 'No info.')}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 11. SAVE BUTTON */}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!isEditMode}
+            className={`shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-auto rounded-lg flex flex-col items-center justify-center transition-all self-center ${
+              isEditMode 
+                ? 'bg-gradient-to-b from-teal-500 to-emerald-600 text-white scale-[1.02]' 
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none'
+            }`}
+          >
+            <Save className="w-3 h-3" />
+            <span className="text-[6px] md:text-[8px] font-black mt-0.5">SAVE</span>
+          </button>
+
+          {/* Column C: উত্তর পক্ষ */}
+          <div className="flex-1.5 min-w-[75px] sm:min-w-[90px] md:w-[110px] md:shrink-0 bg-gradient-to-br from-emerald-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-emerald-150/40 dark:border-slate-750 p-1 flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
+            <div>
+              <p className="text-[6px] md:text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase leading-none">
+                {language === 'bn' ? 'উত্তর পক্ষ' : 'OPPOSITE'}
+              </p>
+            </div>
+            <div className="flex-1 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg p-0.5 mt-0.5 overflow-y-auto max-h-[30px] md:max-h-none">
+              {isEditMode ? (
+                <textarea
+                  value={oppositeNotes}
+                  onChange={(e) => setOppositeNotes(e.target.value)}
+                  className="w-full h-full bg-white dark:bg-slate-800 border border-emerald-300 rounded p-0.5 text-[8px] font-bold text-slate-800 dark:text-white resize-none"
+                />
+              ) : (
+                <p className="text-[8px] md:text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
+                  {oppositeNotes || (language === 'bn' ? 'তথ্য নেই।' : 'No info.')}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* 12. RIGHT ARROW */}
+          <button 
+            type="button"
+            className="shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-b from-blue-600 to-indigo-700 text-white cursor-pointer hover:from-blue-500 hover:to-indigo-600 active:scale-95 transition-all flex items-center justify-center shadow-3xs"
+          >
+            <ArrowRight className="w-3 h-3" />
+          </button>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BookView = ({ 
   date, 
   cases, 
@@ -50,7 +490,10 @@ const BookView = ({
   onPrev, 
   onNext, 
   onViewCard, 
-  t 
+  t,
+  buttonLabels,
+  onUpdateCaseLocal,
+  language
 }: { 
   date: string; 
   cases: Case[]; 
@@ -59,6 +502,9 @@ const BookView = ({
   onNext: () => void; 
   onViewCard: (c: Case) => void;
   t: (key: any) => string;
+  buttonLabels: any;
+  onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
+  language: 'bn' | 'en' | 'hi' | 'ur';
 }) => {
   const groupedByCourt = cases.reduce((acc, c) => {
     if (!acc[c.courtName]) acc[c.courtName] = [];
@@ -66,7 +512,13 @@ const BookView = ({
     return acc;
   }, {} as Record<string, Case[]>);
 
-  const steps = ["সমন", "স্বাক্ষী", "জেরা", "যক্তিতর্ক", "রায়"];
+  const steps = [
+    buttonLabels.stepSummons || "সমন",
+    buttonLabels.stepWitness || "স্বাক্ষী",
+    buttonLabels.stepCross || "জেরা",
+    buttonLabels.stepArgument || "যক্তিতর্ক",
+    buttonLabels.stepJudgment || "রায়"
+  ];
   
   const getGroupedByStep = (courtCases: Case[]) => {
     return courtCases.reduce((acc, c) => {
@@ -84,165 +536,110 @@ const BookView = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-8"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-6"
     >
       <motion.div 
         initial={{ rotateY: -90, originX: 0 }}
         animate={{ rotateY: 0 }}
         exit={{ rotateY: -90 }}
         transition={{ type: "spring", damping: 20, stiffness: 100 }}
-        className="bg-white w-full max-w-5xl h-[90vh] rounded-r-3xl shadow-2xl flex flex-col relative overflow-hidden border-l-[12px] border-indigo-900"
+        className="bg-[#fdfaf3] w-full max-w-6xl h-[92vh] rounded-2xl shadow-2xl flex flex-col relative overflow-hidden border-[12px] sm:border-[16px] border-[#4a2e1b] ring-4 ring-[#8c5a3c]/30"
       >
         {/* Book Header */}
-        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between bg-slate-50 gap-4">
+        <div className="p-4 sm:p-5 border-b border-amber-200/50 flex flex-col sm:flex-row items-start sm:items-center justify-between bg-[#fbf8ee] gap-4 z-10 shadow-xs">
           <div className="flex items-center gap-3 sm:gap-4 overflow-hidden w-full sm:w-auto">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-900 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
-              <Book size={20} className="sm:w-6 sm:h-6" />
+            <div className="w-10 h-10 sm:w-11 sm:h-11 bg-amber-800 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 border border-amber-950/20">
+              <Book size={20} className="sm:w-5 sm:h-5 text-amber-100" />
             </div>
             <div className="overflow-hidden">
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight truncate">
-                {t('date_diary')}
+              <h3 className="text-lg sm:text-xl font-black text-slate-800 tracking-tight truncate flex items-center gap-2">
+                📖 {t('date_diary')}
               </h3>
-              <p className="text-indigo-600 font-bold text-sm sm:text-base">{date}</p>
+              <p className="text-amber-800 font-extrabold text-xs sm:text-sm mt-0.5">{date}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-            <button onClick={onPrev} className="p-2 sm:p-3 hover:bg-white rounded-xl transition-all border border-slate-200 text-slate-600 shadow-sm">
-              <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
+            <button onClick={onPrev} className="p-2 sm:p-2.5 hover:bg-white rounded-xl transition-all border border-amber-200/60 text-amber-900 bg-amber-50/55 shadow-3xs active:scale-95">
+              <ArrowLeft size={16} className="sm:w-4 sm:h-4" />
             </button>
-            <button onClick={onNext} className="p-2 sm:p-3 hover:bg-white rounded-xl transition-all border border-slate-200 text-slate-600 shadow-sm">
-              <ArrowRight size={18} className="sm:w-5 sm:h-5" />
+            <button onClick={onNext} className="p-2 sm:p-2.5 hover:bg-white rounded-xl transition-all border border-amber-200/60 text-amber-900 bg-amber-50/55 shadow-3xs active:scale-95">
+              <ArrowRight size={16} className="sm:w-4 sm:h-4" />
             </button>
-            <button onClick={onClose} className="p-2 sm:p-3 hover:bg-rose-50 hover:text-rose-600 rounded-xl transition-all border border-slate-200 text-slate-400 shadow-sm ml-2 sm:ml-4">
-              <X size={18} className="sm:w-5 sm:h-5" />
+            <button onClick={onClose} className="p-2 sm:p-2.5 hover:bg-rose-100 hover:text-rose-700 rounded-xl transition-all border border-rose-200 text-rose-500 bg-rose-50/55 shadow-3xs ml-2 sm:ml-4 active:scale-95">
+              <X size={16} className="sm:w-4 sm:h-4 font-black" />
             </button>
           </div>
         </div>
 
         {/* Book Content */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar bg-[url('https://www.transparenttextures.com/patterns/paper-fibers.png')]">
-          {cases.length > 0 ? (
-            <div className="space-y-12">
-              {Object.entries(groupedByCourt).map(([court, courtCases]) => (
-                <div key={court} className="space-y-6">
-                  <div className="flex items-center gap-4 border-b-2 border-indigo-100 pb-2">
-                    <div className="w-2 h-8 bg-indigo-600 rounded-full"></div>
-                    <h4 className="text-xl font-black text-slate-800">{court}</h4>
-                  </div>
+        <div 
+          className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar bg-[#fdfaf3] relative"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, transparent 50px, #ff8a8a 50px, #ff8a8a 52px, transparent 52px),
+              linear-gradient(to bottom, rgba(99, 102, 241, 0.05) 94%, rgba(99, 102, 241, 0.12) 100%)
+            `,
+            backgroundSize: '100% 100%, 100% 2.4rem',
+          }}
+        >
+          {/* Shaded Book Spine Effect in the middle (only on desktop md+) */}
+          <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-12 bg-gradient-to-r from-black/8 via-black/15 to-transparent -ml-6 pointer-events-none z-10" />
+          <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-12 bg-gradient-to-l from-black/8 via-black/15 to-transparent -ml-6 pointer-events-none z-10" />
+          <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-[4px] bg-gradient-to-r from-amber-900/30 via-amber-950/60 to-amber-900/30 -ml-[2px] pointer-events-none z-15 shadow-inner" />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {Object.entries(getGroupedByStep(courtCases)).map(([step, stepCases]) => (
-                      <div key={step} className="space-y-4">
-                        <h5 className="text-sm font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-lg inline-block">
-                          {step === 'সমন' ? t('action_summons') : 
-                           step === 'স্বাক্ষী' ? t('action_witness') : 
-                           step === 'জেরা' ? t('action_cross_exam') : 
-                           step === 'যক্তিতর্ক' ? t('action_argument') : 
-                           step === 'রায়' ? t('action_judgment') : 
-                           t('other_label')}
-                        </h5>
-                        <div className="space-y-4">
-                          {stepCases.map(c => {
-                            const isPastForCase = c.nextDate !== date;
-                            const histEntry = c.history?.find(h => h.date === date);
-                            const displayOrder = histEntry?.order || c.order;
-                            return (
-                            <div key={c.id} className="p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
-                              <div className="flex items-start justify-between mb-3">
-                                <div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <h6 className="font-bold text-slate-900 text-lg">{c.caseNumber}</h6>
-                                    {isPastForCase ? (
-                                      <span className="text-[10px] font-bold px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full inline-flex items-center gap-1">
-                                        <span>বিগত ধার্য তারিখ</span>
-                                        <span className="text-amber-400">•</span>
-                                        <span className="text-indigo-700 font-semibold">পরবর্তী: {c.nextDate || 'নির্ধারিত নয়'}</span>
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] font-bold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full inline-flex items-center gap-1">
-                                        <span>আগামী ধার্য তারিখ</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-1.5 font-medium">
-                                    <span className="font-bold text-slate-800">{c.petitioner}</span>
-                                    {c.petitionerMobile && (
-                                      <a 
-                                        href={`tel:${c.petitionerMobile}`} 
-                                        className="w-5 h-5 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_2px_5px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
-                                        title={`কল করুন (বাদী): ${c.petitionerMobile}`}
-                                      >
-                                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
-                                        <Phone size={8} className="text-white fill-white relative z-10" />
-                                      </a>
-                                    )}
-                                    <span className="text-slate-300 font-black px-1">VS</span>
-                                    <span className="font-bold text-slate-800">
-                                      {c.respondentDetails && c.respondentDetails.length > 0 ? (
-                                        `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
-                                      ) : (
-                                        c.respondent ? (
-                                          c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
-                                            `${c.respondent.split(',')[0].trim()} গং` : c.respondent
-                                        ) : ''
-                                      )}
-                                    </span>
-                                    {c.respondentMobile && (
-                                      <a 
-                                        href={`tel:${c.respondentMobile}`} 
-                                        className="w-5 h-5 rounded-full bg-gradient-to-b from-[#22c55e] to-[#15803d] hover:brightness-105 flex items-center justify-center border border-slate-300 shadow-[0_2px_5px_rgba(34,197,94,0.3)] relative overflow-hidden active:scale-95 transition-all shrink-0 inline-flex" 
-                                        title={`কল করুন (বিবাদী): ${c.respondentMobile}`}
-                                      >
-                                        <div className="absolute top-0 inset-x-0 h-[40%] bg-white/35 rounded-t-full pointer-events-none" />
-                                        <Phone size={8} className="text-white fill-white relative z-10" />
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                                <button 
-                                  onClick={() => onViewCard(c)}
-                                  className="p-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"
-                                >
-                                  <CreditCard size={18} />
-                                </button>
-                              </div>
+          {/* Lined Notebook Pages Layout */}
+          <div className="relative z-10 pl-12 pr-2">
+            {cases.length > 0 ? (
+              <div className="space-y-10">
+                {Object.entries(groupedByCourt).map(([court, courtCases]) => (
+                  <div key={court} className="space-y-6">
+                    <div className="flex items-center gap-3 border-b-2 border-amber-200 pb-1.5">
+                      <div className="w-2 h-6 bg-amber-700 rounded-full"></div>
+                      <h4 className="text-lg font-black text-slate-800 tracking-tight">🏛️ {court}</h4>
+                    </div>
 
-                              {displayOrder && (
-                                <div className="text-xs text-slate-700 bg-slate-50 border border-slate-100 rounded-xl p-2.5 my-2">
-                                  <span className="font-bold text-indigo-900 mr-1.5">আদেশ/কার্যবিবরণী:</span>
-                                  <span>{displayOrder}</span>
-                                </div>
-                              )}
-                              
-                              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-50">
-                                <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-[10px] font-bold hover:bg-slate-100 transition-all">
-                                  <FileText size={14} /> {t('documents')}
-                                </button>
-                                <button className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold hover:bg-emerald-600 hover:text-white transition-all">
-                                  <Video size={14} /> {t('face_to_face')}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                          })}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                      {Object.entries(getGroupedByStep(courtCases)).map(([step, stepCases]) => (
+                        <div key={step} className="space-y-3">
+                          <h5 className="text-xs font-black text-amber-800 bg-amber-100/70 border border-amber-200 px-3 py-1 rounded-lg inline-block tracking-wider uppercase">
+                            {step === 'সমন' || step === buttonLabels.stepSummons ? buttonLabels.stepSummons || t('action_summons') : 
+                             step === 'স্বাক্ষী' || step === buttonLabels.stepWitness ? buttonLabels.stepWitness || t('action_witness') : 
+                             step === 'জেরা' || step === buttonLabels.stepCross ? buttonLabels.stepCross || t('action_cross_exam') : 
+                             step === 'যক্তিতর্ক' || step === buttonLabels.stepArgument ? buttonLabels.stepArgument || t('action_argument') : 
+                             step === 'রায়' || step === buttonLabels.stepJudgment ? buttonLabels.stepJudgment || t('action_judgment') : 
+                             t('other_label')}
+                          </h5>
+                          <div className="space-y-4">
+                            {stepCases.map(c => (
+                              <MiniCasebook
+                                key={c.id}
+                                c={c}
+                                language={language}
+                                t={t}
+                                buttonLabels={buttonLabels}
+                                onUpdateCaseLocal={onUpdateCaseLocal}
+                                onViewCard={onViewCard}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
-              <CalendarIcon size={64} className="text-slate-300" />
-              <p className="text-xl font-bold text-slate-500">{t('no_case_on_date')}</p>
-            </div>
-          )}
+                ))}
+              </div>
+            ) : (
+              <div className="h-full py-16 flex flex-col items-center justify-center text-center space-y-4 opacity-50">
+                <CalendarIcon size={56} className="text-slate-400" />
+                <p className="text-lg font-black text-slate-600">{t('no_case_on_date')}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Book Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">© {t('digital_diary')} - {date}</p>
+        <div className="p-3 bg-[#fbf8ee] border-t border-amber-200/50 text-center z-10">
+          <p className="text-[10px] font-extrabold text-amber-800 uppercase tracking-widest">© {t('digital_diary')} - {date}</p>
         </div>
       </motion.div>
     </motion.div>
@@ -268,6 +665,34 @@ export const CalendarView = ({
   const [showBookView, setShowBookView] = useState(false);
   const [hoveredHolidayReason, setHoveredHolidayReason] = useState<string | null>(null);
   const [focusedCaseId, setFocusedCaseId] = useState<string | number | null>(null);
+
+  // Dynamic Button Customizer States
+  const [buttonLabels, setButtonLabels] = useState(() => {
+    const saved = localStorage.getItem('custom_button_labels');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { }
+    }
+    return {
+      btnDocuments: language === 'bn' ? 'ডকুমেন্টস' : 'Documents',
+      btnFaceToFace: language === 'bn' ? 'সামনাসামনি হতে চাই' : 'Face to Face',
+      btnAskAi: language === 'bn' ? 'এআই সহায়ক' : 'Ask AI',
+      btnEditInfo: language === 'bn' ? 'তথ্য সংশোধন' : 'Edit Info',
+      btnViewCard: language === 'bn' ? 'কার্ড দেখুন' : 'View Card',
+      btnViewHistory: language === 'bn' ? 'ইতিহাস দেখুন' : 'View History',
+      btnConfirmFinalize: language === 'bn' ? 'চুড়ান্ত আদেশ ও পরবর্তী তারিখ আপডেট করুন' : 'Confirm Finalize & Update',
+      btnDraftNotes: language === 'bn' ? 'কোর্ট সেশন খসড়া নোট' : 'Court Session Draft Notes',
+      sectionAttendance: language === 'bn' ? '📂 হাজিরা বা সময়' : '📂 Attendance / Time',
+      sectionCharge: language === 'bn' ? '⚡ চার্জ / শুনানি / জবাব' : '⚡ Charge / Argument / WS',
+      sectionWitness: language === 'bn' ? '📝 সাক্ষী / জেরা / PH' : '📝 Witness / Cross / PH',
+      sectionWarrant: language === 'bn' ? '🚨 W/A (ওয়ারেন্ট)' : '🚨 W/A (Warrant)',
+      stepSummons: language === 'bn' ? 'সমন' : 'Summons',
+      stepWitness: language === 'bn' ? 'স্বাক্ষী' : 'Witness',
+      stepCross: language === 'bn' ? 'জেরা' : 'Cross Exam',
+      stepArgument: language === 'bn' ? 'যক্তিতর্ক' : 'Argument',
+      stepJudgment: language === 'bn' ? 'রায়' : 'Judgment'
+    };
+  });
+  const [showButtonCustomizer, setShowButtonCustomizer] = useState(false);
 
   // Court Session Draft and Finalize States
   const [draftNotes, setDraftNotes] = useState<string>('');
@@ -709,6 +1134,7 @@ export const CalendarView = ({
     setSelectedDate(dateStr);
     setBookDate(dateStr);
     setFocusedCaseId(null);
+    setShowBookView(true); // Always auto-open the skeuomorphic open book Daily Hearing Diary!
   };
 
   const navigateDate = (direction: 'prev' | 'next') => {
@@ -785,6 +1211,9 @@ export const CalendarView = ({
             onNext={() => navigateDate('next')}
             onViewCard={onViewCard}
             t={t}
+            buttonLabels={buttonLabels}
+            onUpdateCaseLocal={onUpdateCaseLocal}
+            language={language}
           />
         )}
       </AnimatePresence>
@@ -961,7 +1390,14 @@ export const CalendarView = ({
                 {selectedDate ? `${language === 'bn' ? 'তারিখ:' : 'Date:'} ${selectedDate}` : t('today_schedule')}
               </p>
             </div>
-            <div className="text-right">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowButtonCustomizer(true)}
+                className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-800 rounded-lg text-[9px] font-black transition-all flex items-center gap-1 cursor-pointer"
+                title={language === 'bn' ? 'বাটন এডিট করুন' : 'Edit Buttons'}
+              >
+                📝 {language === 'bn' ? 'বাটন এডিট' : 'Edit Buttons'}
+              </button>
               <span className="text-[9px] font-bold bg-[#e3dcc4]/50 text-[#524933] px-2.5 py-0.5 rounded-full border border-[#d2c9ab]">
                 {language === 'bn' ? 'মোট: ' : 'Total: '}
                 {language === 'bn' 
@@ -1360,22 +1796,22 @@ export const CalendarView = ({
                         {/* Categorized sub-sections (Chronological order) */}
                         <div className="space-y-3 pl-1">
                           {categories.attendance.length > 0 && renderSubgroupSection(
-                            language === 'bn' ? '📂 হাজিরা বা সময়' : '📂 Attendance / Time', 
+                            buttonLabels.sectionAttendance || (language === 'bn' ? '📂 হাজিরা বা সময়' : '📂 Attendance / Time'), 
                             categories.attendance, 
                             'bg-slate-50 text-slate-700 border-slate-200'
                           )}
                           {categories.charge.length > 0 && renderSubgroupSection(
-                            language === 'bn' ? '⚡ চার্জ / শুনানি / জবাব' : '⚡ Charge / Argument / WS', 
+                            buttonLabels.sectionCharge || (language === 'bn' ? '⚡ চার্জ / শুনানি / জবাব' : '⚡ Charge / Argument / WS'), 
                             categories.charge, 
                             'bg-amber-50 text-amber-700 border-amber-200'
                           )}
                           {categories.witness.length > 0 && renderSubgroupSection(
-                            language === 'bn' ? '📝 সাক্ষী / জেরা / PH' : '📝 Witness / Cross / PH', 
+                            buttonLabels.sectionWitness || (language === 'bn' ? '📝 সাক্ষী / জেরা / PH' : '📝 Witness / Cross / PH'), 
                             categories.witness, 
                             'bg-emerald-50 text-emerald-700 border-emerald-200'
                           )}
                           {categories.wa.length > 0 && renderSubgroupSection(
-                            language === 'bn' ? '🚨 W/A (ওয়ারেন্ট)' : '🚨 W/A (Warrant)', 
+                            buttonLabels.sectionWarrant || (language === 'bn' ? '🚨 W/A (ওয়ারেন্ট)' : '🚨 W/A (Warrant)'), 
                             categories.wa, 
                             'bg-rose-50 text-rose-700 border-rose-200'
                           )}
@@ -1671,6 +2107,320 @@ export const CalendarView = ({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Button Customizer Modal */}
+      <AnimatePresence>
+        {showButtonCustomizer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowButtonCustomizer(false)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#fdfaf3] rounded-3xl w-full max-w-2xl overflow-hidden border-[6px] border-[#4a2e1b] shadow-2xl p-6 space-y-4 relative"
+            >
+              <div className="flex items-center justify-between border-b border-amber-200 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📝</span>
+                  <h3 className="text-sm sm:text-base font-black text-slate-800">
+                    {language === 'bn' ? 'বাটন এবং ক্যাটাগরি লেবেল কাস্টমাইজ করুন' : 'Customize Button & Category Labels'}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowButtonCustomizer(false)}
+                  className="p-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 transition-all cursor-pointer border border-amber-300"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[50vh] overflow-y-auto pr-1">
+                {/* Documents button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'ডকুমেন্টস বাটন লেবেল' : 'Documents Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnDocuments}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnDocuments: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Face-to-face button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'সামনাসামনি বাটন লেবেল' : 'Face to Face Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnFaceToFace}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnFaceToFace: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Ask AI button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'এআই সহায়ক বাটন লেবেল' : 'Ask AI Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnAskAi}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnAskAi: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Edit info button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'তথ্য সংশোধন বাটন লেবেল' : 'Edit Info Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnEditInfo}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnEditInfo: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* View card button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'কার্ড দেখুন বাটন লেবেল' : 'View Card Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnViewCard}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnViewCard: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* View history button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'ইতিহাস দেখুন বাটন লেবেল' : 'View History Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnViewHistory}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnViewHistory: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Confirm finalize button label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'পরবর্তী তারিখ আপডেট বাটন লেবেল' : 'Confirm Update Button Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnConfirmFinalize}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnConfirmFinalize: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Draft notes label */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'কোর্ট সেশন খসড়া নোট লেবেল' : 'Draft Notes Title Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.btnDraftNotes}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, btnDraftNotes: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 border-t border-amber-200 my-1 pt-2">
+                  <span className="text-[11px] font-black text-amber-900 uppercase tracking-wider block">
+                    📂 {language === 'bn' ? 'ডায়েরী ক্যাটাগরি লেবেল' : 'Diary Category Labels'}
+                  </span>
+                </div>
+
+                {/* Section attendance */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'হাজিরা বা সময় ক্যাটাগরি' : 'Attendance Category Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.sectionAttendance}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, sectionAttendance: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Section charge */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'চার্জ / শুনানি / জবাব ক্যাটাগরি' : 'Charge Category Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.sectionCharge}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, sectionCharge: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Section witness */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'সাক্ষী / জেরা / PH ক্যাটাগরি' : 'Witness Category Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.sectionWitness}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, sectionWitness: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Section warrant */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'W/A (ওয়ারেন্ট) ক্যাটাগরি' : 'Warrant Category Label'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.sectionWarrant}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, sectionWarrant: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 border-t border-amber-200 my-1 pt-2">
+                  <span className="text-[11px] font-black text-amber-900 uppercase tracking-wider block">
+                    ⚖️ {language === 'bn' ? 'ডায়েরী বুক স্টেপ সমূহ' : 'Diary Book Steps'}
+                  </span>
+                </div>
+
+                {/* step Summons */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'সমন স্টেপ' : 'Summons Step'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.stepSummons}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, stepSummons: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* step Witness */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'স্বাক্ষী স্টেপ' : 'Witness Step'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.stepWitness}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, stepWitness: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* step Cross */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'জেরা স্টেপ' : 'Cross Exam Step'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.stepCross}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, stepCross: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* step Argument */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'যক্তিতর্ক স্টেপ' : 'Argument Step'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.stepArgument}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, stepArgument: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* step Judgment */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-amber-900 block">
+                    {language === 'bn' ? 'রায় স্টেপ' : 'Judgment Step'}
+                  </label>
+                  <input
+                    type="text"
+                    value={buttonLabels.stepJudgment}
+                    onChange={(e) => setButtonLabels({ ...buttonLabels, stepJudgment: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-amber-200 text-xs font-bold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 pt-3 border-t border-amber-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaults = {
+                      btnDocuments: language === 'bn' ? 'ডকুমেন্টস' : 'Documents',
+                      btnFaceToFace: language === 'bn' ? 'সামনাসামনি হতে চাই' : 'Face to Face',
+                      btnAskAi: language === 'bn' ? 'এআই সহায়ক' : 'Ask AI',
+                      btnEditInfo: language === 'bn' ? 'তথ্য সংশোধন' : 'Edit Info',
+                      btnViewCard: language === 'bn' ? 'কার্ড দেখুন' : 'View Card',
+                      btnViewHistory: language === 'bn' ? 'ইতিহাস দেখুন' : 'View History',
+                      btnConfirmFinalize: language === 'bn' ? 'চুড়ান্ত আদেশ ও পরবর্তী তারিখ আপডেট করুন' : 'Confirm Finalize & Update',
+                      btnDraftNotes: language === 'bn' ? 'কোর্ট সেশন খসড়া নোট' : 'Court Session Draft Notes',
+                      sectionAttendance: language === 'bn' ? '📂 হাজিরা বা সময়' : '📂 Attendance / Time',
+                      sectionCharge: language === 'bn' ? '⚡ চার্জ / শুনানি / জবাব' : '⚡ Charge / Argument / WS',
+                      sectionWitness: language === 'bn' ? '📝 সাক্ষী / জেরা / PH' : '📝 Witness / Cross / PH',
+                      sectionWarrant: language === 'bn' ? '🚨 W/A (ওয়ারেন্ট)' : '🚨 W/A (Warrant)',
+                      stepSummons: language === 'bn' ? 'সমন' : 'Summons',
+                      stepWitness: language === 'bn' ? 'স্বাক্ষী' : 'Witness',
+                      stepCross: language === 'bn' ? 'জেরা' : 'Cross Exam',
+                      stepArgument: language === 'bn' ? 'যক্তিতর্ক' : 'Argument',
+                      stepJudgment: language === 'bn' ? 'রায়' : 'Judgment'
+                    };
+                    setButtonLabels(defaults);
+                    localStorage.setItem('custom_button_labels', JSON.stringify(defaults));
+                  }}
+                  className="px-4 py-2.5 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 rounded-xl text-xs font-black transition-all cursor-pointer"
+                >
+                  {language === 'bn' ? 'রিসেট' : 'Reset to Defaults'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem('custom_button_labels', JSON.stringify(buttonLabels));
+                    setShowButtonCustomizer(false);
+                  }}
+                  className="flex-1 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm text-center"
+                >
+                  {language === 'bn' ? 'পরিবর্তনসমূহ সংরক্ষণ করুন' : 'Save Changes'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

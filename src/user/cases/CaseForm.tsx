@@ -154,6 +154,17 @@ export default function CaseForm({
         caseSection: initialData.caseSection || ''
       });
       
+      if (initialData.caseYear) {
+        setJoinFilingYear(initialData.caseYear);
+      } else if (initialData.filingDate) {
+        setJoinFilingYear(new Date(initialData.filingDate).getFullYear().toString());
+      } else if (initialData.caseNumber) {
+        const match = initialData.caseNumber.match(/\/(\d{4}|\d{2})/);
+        if (match) {
+          setJoinFilingYear(match[1]);
+        }
+      }
+      
       setDetailedTotalRespondents(initialData.totalRespondents || '');
       setQuickTotalRespondents(initialData.totalRespondents || '');
       setJoinTotalRespondents(initialData.totalRespondents || '');
@@ -262,7 +273,9 @@ export default function CaseForm({
     if (mode === 'join') {
       year = joinFilingYear;
     } else {
-      year = formData.filingDate ? new Date(formData.filingDate).getFullYear().toString() : '';
+      year = formData.filingDate 
+        ? new Date(formData.filingDate).getFullYear().toString() 
+        : (mode === 'quick' ? new Date().getFullYear().toString() : '');
     }
     
     if (!rawNumber) return '';
@@ -270,7 +283,7 @@ export default function CaseForm({
     const parts = [];
     if (type) parts.push(`${type}-`);
     parts.push(rawNumber);
-    if (year) parts.push(`/${year}`);
+    if (year && !rawNumber.includes('/') && !rawNumber.includes('\\')) parts.push(`/${year}`);
     if (thana) parts.push(`(${thana})`);
     return parts.join('');
   }, [mode, formData.rawCaseNumber, formData.caseType, formData.policeStation, joinFilingYear, formData.filingDate]);
@@ -344,7 +357,7 @@ export default function CaseForm({
       const parts = [];
       if (type) parts.push(`${type}-`);
       parts.push(rawNumber);
-      if (year) parts.push(`/${year}`);
+      if (year && !rawNumber.includes('/') && !rawNumber.includes('\\')) parts.push(`/${year}`);
       if (thana) parts.push(`(${thana})`);
       formattedCaseNumber = parts.join('');
     }

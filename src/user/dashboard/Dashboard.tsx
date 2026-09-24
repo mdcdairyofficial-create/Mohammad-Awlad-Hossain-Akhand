@@ -146,6 +146,7 @@ import { ClerkAssistantsAssignmentView } from './views/ClerkAssistantsAssignment
 import { NotificationsView } from './views/NotificationsView';
 import SocialView from './views/SocialView';
 import SynchronizeView from './views/SynchronizeView';
+import Casebook from '../../components/Casebook';
 
 import { ProfessionalIDCard } from './components/ProfessionalIDCard';
 import { AdFlexiplan } from './components/AdFlexiplan';
@@ -876,7 +877,7 @@ export default function Dashboard({
   const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'clerk_assistants_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'clerk_assistants_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize' | 'casebook_panel'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
   const [chamberAssociates, setChamberAssociates] = useState<ChamberAssociate[]>(() => {
     try {
@@ -2062,6 +2063,7 @@ export default function Dashboard({
       title: t('case_management'),
       items: [
         { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
+        { id: 'casebook_panel', label: language === 'bn' ? 'কেসবুক প্যানেল 📋' : 'Casebook Panel 📋', icon: BookOpen },
         ...(currentViewMode === 'clerk' ? [
           { id: 'performance', label: t('performance_nav'), icon: Award, requiresSubscription: isSubRequired },
           { id: 'cause_list', label: t('cause_list'), icon: FileText, requiresSubscription: isSubRequired },
@@ -5852,6 +5854,12 @@ export default function Dashboard({
                 </div>
               )}
 
+              {activeTab === 'casebook_panel' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <Casebook language={language} />
+                </div>
+              )}
+
               {activeTab === 'social' && (
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <SocialView language={language} />
@@ -5868,7 +5876,7 @@ export default function Dashboard({
                 </div>
               )}
 
-              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'library' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && activeTab !== 'lottery' && activeTab !== 'social' && activeTab !== 'synchronize' && (
+              {activeTab !== 'dashboard' && activeTab !== 'calendar' && activeTab !== 'cases' && activeTab !== 'news' && activeTab !== 'emergency' && activeTab !== 'settings' && activeTab !== 'recharge' && activeTab !== 'affiliate_zone' && activeTab !== 'medigen' && activeTab !== 'media' && activeTab !== 'admin_panel' && activeTab !== 'profile' && activeTab !== 'case_timeline' && activeTab !== 'religious' && activeTab !== 'invoices' && activeTab !== 'legal_drafts' && activeTab !== 'library' && activeTab !== 'lawyer_directory' && activeTab !== 'clerk_directory' && activeTab !== 'subscription' && activeTab !== 'lottery' && activeTab !== 'social' && activeTab !== 'synchronize' && activeTab !== 'casebook_panel' && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <AdBanner isPremium={isAdFree} />
                   <div className="bg-indigo-100 p-6 rounded-full mb-6 mt-8">
