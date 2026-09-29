@@ -80,89 +80,97 @@ export function checkWhatsAppNumber(phone: string, language: 'en' | 'bn' | 'hi' 
 }
 
 /**
- * Generates formatted WhatsApp message containing case details and active referral link
+ * Gets the direct Magic Tracking URL for a case
+ */
+export function getMagicCaseTrackUrl(params: {
+  caseId?: string | number;
+  caseNumber?: string;
+  referralCode?: string;
+}): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mdccasebook.vercel.app';
+  const query = new URLSearchParams();
+  if (params.caseId) {
+    query.set('track', String(params.caseId));
+  } else if (params.caseNumber) {
+    query.set('track', params.caseNumber);
+  }
+  query.set('role', 'client');
+  if (params.referralCode) {
+    query.set('ref', params.referralCode);
+  }
+  return `${origin}/?${query.toString()}`;
+}
+
+/**
+ * Generates formatted WhatsApp message containing case details, magic case tracking link,
+ * and automatic push notification opt-in.
  */
 export function generateCaseWhatsAppMessage(params: {
+  caseId?: string | number;
   caseNumber?: string;
   courtName?: string;
   nextDate?: string;
   order?: string;
-  partyType: 'petitioner' | 'respondent';
+  partyType?: 'petitioner' | 'respondent' | 'all';
   partyName?: string;
   lawyerName?: string;
   referralCode?: string;
   language?: 'en' | 'bn';
 }): string {
   const {
+    caseId,
     caseNumber = 'N/A',
     courtName = 'বিজ্ঞ আদালত',
     nextDate,
     order,
-    partyType,
+    partyType = 'petitioner',
     partyName = '',
     lawyerName = 'আপনার বিজ্ঞ আইনজীবী',
     referralCode = '',
     language = 'bn'
   } = params;
 
-  const origin = typeof window !== 'undefined' && !window.location.origin.includes('localhost') && !window.location.origin.includes('ais-')
-    ? window.location.origin
-    : 'https://mdccasebook.vercel.app';
-
-  const refUrl = referralCode
-    ? `${origin}/register?ref=${referralCode}`
-    : `${origin}/register`;
+  const trackUrl = getMagicCaseTrackUrl({
+    caseId,
+    caseNumber,
+    referralCode
+  });
 
   if (language === 'bn') {
-    if (partyType === 'petitioner') {
-      return `সম্মানিত ${partyName ? partyName : 'ক্লায়েন্ট'},
-আপনার মামলাটি MDC Casebook লিগ্যাল সিস্টেমে অন্তর্ভুক্ত করা হয়েছে।
+    const salutation = partyName ? `শ্রদ্ধেয় ${partyName}` : 'শ্রদ্ধেয় মক্কেল';
+    return `${salutation},
+আপনার মামলার সর্বশেষ তথ্য ও পরবর্তী ধার্য তারিখ MDC Casebook লিগ্যাল সিস্টেমে হালনাগাদ করা হয়েছে।
 
 📋 মামলার বিবরণ:
 • মামলা নং: ${caseNumber}
 • আদালত: ${courtName}
 ${nextDate ? `• পরবর্তী ধার্য তারিখ: ${nextDate}` : ''}
-${order ? `• ধার্য বিষয় / আদেশ: ${order}` : ''}
+${order ? `• আদালতের পদক্ষেপ / আদেশ: ${order}` : ''}
 
-মামলার প্রতিটি তারিখের আপডেট, তথ্য ও সরাসরি নোটিফিকেশন পেতে নিচের লিংকে ক্লিক করে অ্যাপে যুক্ত হোন:
-🔗 ${refUrl}
+🔔 পরবর্তী তারিখের অটো পুশ নোটিফিকেশন ও সরাসরি মামলার অগ্রগতি দেখতে নিচের লিংকে প্রবেশ করুন:
+👉 ${trackUrl}
 
-ধন্যবাদান্তে,
-${lawyerName}
-(MDC Casebook ডিজিটাল লিগ্যাল অ্যাসিস্ট্যান্ট)`;
-    } else {
-      return `সম্মানিত ${partyName ? partyName : 'ক্লায়েন্ট'},
-আপনার মামলাটির তথ্য MDC Casebook লিগ্যাল সিস্টেমে অন্তর্ভুক্ত করা হয়েছে।
-
-📋 মামলার বিবরণ:
-• মামলা নং: ${caseNumber}
-• আদালত: ${courtName}
-${nextDate ? `• পরবর্তী ধার্য তারিখ: ${nextDate}` : ''}
-${order ? `• ধার্য বিষয় / আদেশ: ${order}` : ''}
-
-মামলার প্রতিটি তারিখের আপডেট, আদালতের তথ্য ও সরাসরি নোটিফিকেশন পেতে নিচের লিংকে ক্লিক করে অ্যাপে যুক্ত হোন:
-🔗 ${refUrl}
+(কোনো অ্যাপ ডাউনলোড ছাড়াই লিংকে ক্লিক করে আপনার মোবাইলে অটো এলার্ট চালু করতে পারবেন এবং ১-ক্লিকে হোমস্ক্রিনে সেভ করতে পারবেন)
 
 ধন্যবাদান্তে,
 ${lawyerName}
 (MDC Casebook ডিজিটাল লিগ্যাল অ্যাসিস্ট্যান্ট)`;
-    }
   }
 
   // English fallback
   return `Dear ${partyName || 'Client'},
-Your case has been successfully recorded in MDC Casebook.
+Your case details and next hearing date have been updated in MDC Casebook.
 
-Case Details:
+📋 Case Details:
 • Case No: ${caseNumber}
 • Court: ${courtName}
 ${nextDate ? `• Next Date: ${nextDate}` : ''}
 ${order ? `• Order/Step: ${order}` : ''}
 
-To track your case dates and get real-time legal updates, register using this link:
-${refUrl}
+🔔 To view live case status and receive instant automatic push notifications on your phone, click here:
+👉 ${trackUrl}
 
 Regards,
 ${lawyerName}
-(MDC Casebook)`;
+(MDC Casebook Legal Assistant)`;
 }

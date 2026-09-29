@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/casebook.css';
+import { formatMultiplePersons } from '../user/dashboard/views/CalendarView';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -19,15 +20,67 @@ import {
   AlertCircle
 } from 'lucide-react';
 
+// Helper to display only Day and Month (e.g. 02/11), removing the year
+export const formatDayMonth = (dateStr?: string): string => {
+  if (!dateStr || !dateStr.trim()) return '';
+  const s = dateStr.trim();
+
+  // If already DD/MM (2 parts)
+  if (/^\d{1,2}[-/.]\d{1,2}$/.test(s)) {
+    const [d, m] = s.split(/[-/.]/);
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}`;
+  }
+
+  // If YYYY-MM-DD
+  if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(s)) {
+    const [, m, d] = s.split(/[-/.]/);
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}`;
+  }
+
+  // If DD-MM-YYYY or DD/MM/YYYY
+  if (/^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}$/.test(s)) {
+    const [d, m] = s.split(/[-/.]/);
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}`;
+  }
+
+  // Bengali digits with year: e.g. ১২/০৯/২০২৬ -> ১২/০৯
+  const withoutBnYear = s.replace(/[/.-][০-৯]{4}$/, '').replace(/^[০-৯]{4}[/.-]/, '');
+  if (withoutBnYear !== s) {
+    return withoutBnYear;
+  }
+
+  // English 4-digit year at end or beginning
+  const withoutEnYear = s.replace(/[/.-]\d{4}$/, '').replace(/^\d{4}[/.-]/, '');
+  if (withoutEnYear !== s) {
+    const parts = withoutEnYear.split(/[-/.]/);
+    if (parts.length === 2 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+      return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}`;
+    }
+    return withoutEnYear;
+  }
+
+  // If ISO string
+  if (s.includes('T') || s.includes('Z')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      return `${day}/${month}`;
+    }
+  }
+
+  return s;
+};
+
 // Sample Dataset representing different professional legal cases
 const INITIAL_CASES = [
   {
     id: 1,
-    prevDate: '১২/০৯/২০২৬',
+    prevDate: '12/09',
     caseNo: 'সি.আর ১২৩/২০২৬',
     plaintiff: 'মোঃ আব্দুল করিম',
     defendant: 'মোঃ রহিম উদ্দিন',
-    nextDate: '২৫/০৯/২০২৬',
+    nextDate: '25/09',
     actionActive: 'আদেশ', // আদেশ, পদক্ষেপ, হাজিরা, জরি
     parties: {
       clientSide1: 'বাদী জবানবন্দী দাখিল সমাপ্ত হয়েছে। জেরা মুলতবি।',
@@ -37,11 +90,11 @@ const INITIAL_CASES = [
   },
   {
     id: 2,
-    prevDate: '০৫/০৮/২০২৬',
+    prevDate: '05/08',
     caseNo: 'জি.আর ৪৫৬/২০২৬',
     plaintiff: 'রাষ্ট্র বনাম',
     defendant: 'মোঃ শফিকুল ইসলাম',
-    nextDate: '৩০/০৯/২০২৬',
+    nextDate: '30/09',
     actionActive: 'পদক্ষেপ',
     parties: {
       clientSide1: 'জামিন শুনানির জন্য কজলিস্টে অন্তর্ভুক্ত করা হয়েছে।',
@@ -51,12 +104,12 @@ const INITIAL_CASES = [
   },
   {
     id: 3,
-    prevDate: '১০/০৯/২০২৬',
+    prevDate: '10/09',
     caseNo: 'দেওয়ানী ৭৮৯/২০২৬',
     plaintiff: 'মোসাঃ রহিমা খাতুন',
     defendant: 'আবুল হাসেম',
-    nextDate: '০৫/১০/২০২৬',
-    actionActive: 'হাজিরা',
+    nextDate: '05/10',
+    actionActive: 'আদেশ',
     parties: {
       clientSide1: 'স্থায়ী নিষেধাজ্ঞার দরখাস্তের শুনানি চলমান।',
       clientSide2: 'আদালতের কোর্ট ফি দাখিল সম্পন্ন।',
@@ -65,12 +118,12 @@ const INITIAL_CASES = [
   },
   {
     id: 4,
-    prevDate: '১৫/০৯/২০২৬',
+    prevDate: '15/09',
     caseNo: 'পারিবারিক ৪৩২/২০২৬',
     plaintiff: 'মোসাঃ ফাতেমা বেগম',
     defendant: 'মোঃ জহিরুল ইসলাম',
-    nextDate: '১২/১০/২০২৬',
-    actionActive: 'জরি',
+    nextDate: '12/10',
+    actionActive: 'পদক্ষেপ',
     parties: {
       clientSide1: 'দেনমোহর ও ভরণপোষণের দাবি সংক্রান্ত আরজি দাখিল।',
       clientSide2: 'নথি তলব করার আবেদন মঞ্জুর।',
@@ -79,11 +132,11 @@ const INITIAL_CASES = [
   },
   {
     id: 5,
-    prevDate: '১৮/০৯/২০২৬',
+    prevDate: '18/09',
     caseNo: 'অর্থঋণ ৮৭৬/২০২৬',
     plaintiff: 'সোনালী ব্যাংক পিএলসি',
     defendant: 'মেসার্স রূপালী ট্রেডার্স',
-    nextDate: '১৫/১০/২০২৬',
+    nextDate: '15/10',
     actionActive: 'আদেশ',
     parties: {
       clientSide1: 'ঋণ খেলাপীর দায়ে বন্ধকী সম্পত্তি নিলামের আদেশ জারি।',
@@ -208,6 +261,9 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
     ? 'আইনজীবী, মুহুরি এবং সহকারীদের জন্য অত্যন্ত শক্তিশালী রিয়েল-টাইম মামলা ব্যবস্থাপনা ড্যাশবোর্ড।' 
     : 'A powerful real-time legal case management system designed for Advocates, Lawyers, and Clerks.';
 
+  const plaintiffInfo = formatMultiplePersons(formPlaintiff, undefined, language);
+  const defendantInfo = formatMultiplePersons(formDefendant, undefined, language);
+
   return (
     <div className="space-y-6 w-full animate-in fade-in duration-500">
       
@@ -293,11 +349,12 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
                   type="text"
                   value={formPrevDate}
                   onChange={(e) => setFormPrevDate(e.target.value)}
+                  placeholder="02/11"
                   className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-blue-300 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               ) : (
                 <p className="text-sm sm:text-base font-black text-slate-800 dark:text-white leading-none">
-                  {formPrevDate || '---'}
+                  {formatDayMonth(formPrevDate) || '---'}
                 </p>
               )}
             </div>
@@ -354,8 +411,11 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
                   className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-orange-300 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               ) : (
-                <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-white leading-tight truncate">
-                  {formPlaintiff || '---'}
+                <p 
+                  title={plaintiffInfo.fullNames ? `${language === 'bn' ? 'বাদী' : 'Plaintiff'}:\n${plaintiffInfo.fullNames}` : ''}
+                  className="text-xs sm:text-sm font-black text-slate-800 dark:text-white leading-tight truncate"
+                >
+                  {plaintiffInfo.formatted || '---'}
                 </p>
               )}
             </div>
@@ -392,8 +452,11 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
                   className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-emerald-300 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               ) : (
-                <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-white leading-tight truncate">
-                  {formDefendant || '---'}
+                <p 
+                  title={defendantInfo.fullNames ? `${language === 'bn' ? 'আসামী' : 'Defendant'}:\n${defendantInfo.fullNames}` : ''}
+                  className="text-xs sm:text-sm font-black text-slate-800 dark:text-white leading-tight truncate"
+                >
+                  {defendantInfo.formatted || '---'}
                 </p>
               )}
             </div>
@@ -418,81 +481,52 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
                   type="text"
                   value={formNextDate}
                   onChange={(e) => setFormNextDate(e.target.value)}
+                  placeholder="02/11"
                   className="w-full px-2 py-1.5 bg-white dark:bg-slate-800 border border-sky-300 rounded-xl text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
               ) : (
                 <p className="text-sm sm:text-base font-black text-slate-800 dark:text-white leading-none">
-                  {formNextDate || '---'}
+                  {formatDayMonth(formNextDate) || '---'}
                 </p>
               )}
             </div>
           </div>
 
-          {/* 8. ACTION SECTION (আদেশ / পদক্ষেপ / হাজিরা / জরি) - 2X2 GRID */}
-          <div className="shrink-0 w-[200px] p-2 bg-slate-55/40 dark:bg-slate-800/40 rounded-3xl border border-slate-200/50 dark:border-slate-750/50 flex flex-col justify-center">
-            <div className="grid grid-cols-2 gap-2 h-full">
+          {/* 8. ACTION SECTION - উপরে আদেশ ও নিচে পদক্ষেপ (একটার পর একটা উপর নিচে) */}
+          <div className="shrink-0 w-[140px] p-2 bg-slate-55/40 dark:bg-slate-800/40 rounded-3xl border border-slate-200/50 dark:border-slate-750/50 flex flex-col justify-center">
+            <div className="flex flex-col gap-2 h-full justify-between">
               
-              {/* আদেশ */}
+              {/* উপরে আদেশ */}
               <button
                 type="button"
                 onClick={() => setFormActionActive('আদেশ')}
-                className={`rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all ${
+                className={`flex-1 rounded-2xl p-2.5 flex items-center justify-center gap-2 transition-all ${
                   formActionActive === 'আদেশ' 
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 scale-[1.03]' 
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200 scale-[1.02]' 
                     : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 hover:bg-emerald-50 border border-slate-100 dark:border-slate-800'
                 }`}
+                title="আদেশ"
               >
                 <FileText size={16} className={formActionActive === 'আদেশ' ? 'text-white' : 'text-emerald-500'} />
-                <span className="text-[10px] font-black tracking-tight mt-1">
+                <span className="text-xs font-black tracking-tight">
                   {language === 'bn' ? 'আদেশ' : 'ORDER'}
                 </span>
               </button>
 
-              {/* পদক্ষেপ */}
+              {/* নিচে পদক্ষেপ */}
               <button
                 type="button"
                 onClick={() => setFormActionActive('পদক্ষেপ')}
-                className={`rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all ${
+                className={`flex-1 rounded-2xl p-2.5 flex items-center justify-center gap-2 transition-all ${
                   formActionActive === 'পদক্ষেপ' 
-                    ? 'bg-cyan-500 text-white shadow-md shadow-cyan-200 scale-[1.03]' 
+                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-200 scale-[1.02]' 
                     : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 hover:bg-cyan-50 border border-slate-100 dark:border-slate-800'
                 }`}
+                title="পদক্ষেপ"
               >
                 <Gavel size={16} className={formActionActive === 'পদক্ষেপ' ? 'text-white' : 'text-cyan-500'} />
-                <span className="text-[10px] font-black tracking-tight mt-1">
+                <span className="text-xs font-black tracking-tight">
                   {language === 'bn' ? 'পদক্ষেপ' : 'STEP'}
-                </span>
-              </button>
-
-              {/* হাজিরা */}
-              <button
-                type="button"
-                onClick={() => setFormActionActive('হাজিরা')}
-                className={`rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all ${
-                  formActionActive === 'হাজিরা' 
-                    ? 'bg-purple-600 text-white shadow-md shadow-purple-200 scale-[1.03]' 
-                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 hover:bg-purple-50 border border-slate-100 dark:border-slate-800'
-                }`}
-              >
-                <Users size={16} className={formActionActive === 'হাজিরা' ? 'text-white' : 'text-purple-500'} />
-                <span className="text-[10px] font-black tracking-tight mt-1">
-                  {language === 'bn' ? 'হাজিরা' : 'ATTENDANCE'}
-                </span>
-              </button>
-
-              {/* জরি */}
-              <button
-                type="button"
-                onClick={() => setFormActionActive('জরি')}
-                className={`rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all ${
-                  formActionActive === 'জরি' 
-                    ? 'bg-rose-500 text-white shadow-md shadow-rose-200 scale-[1.03]' 
-                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 hover:bg-rose-50 border border-slate-100 dark:border-slate-800'
-                }`}
-              >
-                <FileText size={16} className={formActionActive === 'জরি' ? 'text-white' : 'text-rose-500'} />
-                <span className="text-[10px] font-black tracking-tight mt-1">
-                  {language === 'bn' ? 'জরি' : 'FINE/INFO'}
                 </span>
               </button>
 
@@ -544,17 +578,17 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
             </div>
           </div>
 
-          {/* Column B: নিজ পক্ষ (Orange) */}
+          {/* Column B: বিচারকের আদেশ (Orange) */}
           <div className="shrink-0 w-[180px] bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-3xl border border-orange-150/60 dark:border-slate-750 p-4 shadow-md flex flex-col justify-between">
             <div>
               <div className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400 mb-1">
                 <ShieldCheck size={14} />
                 <span className="text-[10px] font-black uppercase tracking-wider">
-                  {language === 'bn' ? 'নিজ পক্ষ' : 'OUR SIDE B'}
+                  {language === 'bn' ? 'বিচারকের আদেশ' : "JUDGE'S ORDER"}
                 </span>
               </div>
               <p className="text-xs font-black text-slate-500 dark:text-slate-400 mb-2">
-                {language === 'bn' ? 'মুহুরি/সহকারী' : 'Clerk Action'}
+                {language === 'bn' ? 'আদেশ বিবরণ' : 'Order Description'}
               </p>
             </div>
             
@@ -563,11 +597,12 @@ export default function Casebook({ language = 'bn' }: { language?: 'bn' | 'en' |
                 <textarea
                   value={formClientSide2}
                   onChange={(e) => setFormClientSide2(e.target.value)}
+                  placeholder={language === 'bn' ? 'বিচারক যে আদেশ দেন তা এখানে লিপিবদ্ধ করুন...' : 'Record the order given by the judge here...'}
                   className="w-full h-full bg-white dark:bg-slate-800 border border-orange-300 rounded-xl p-1.5 text-[10px] font-bold text-slate-800 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               ) : (
                 <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 leading-normal">
-                  {formClientSide2 || (language === 'bn' ? 'কোনো তথ্য নেই।' : 'No entries yet.')}
+                  {formClientSide2 || (language === 'bn' ? 'কোনো আদেশ লিপিবদ্ধ নেই।' : 'No order recorded.')}
                 </p>
               )}
             </div>

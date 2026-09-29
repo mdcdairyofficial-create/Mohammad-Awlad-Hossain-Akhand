@@ -19,6 +19,7 @@ import type { UserRole } from "./types";
 
 import FacebookGate from "./user/auth/FacebookGate";
 import TelegramGate from "./user/auth/TelegramGate";
+import MagicCaseTracker from "./user/cases/MagicCaseTracker";
 
 interface UserProfile {
   id?: number;
@@ -78,6 +79,18 @@ export default function App() {
 
   const [showTelegramGate, setShowTelegramGate] = useState(() => {
     return localStorage.getItem("telegramVerifiedCompleted") !== "true";
+  });
+
+  const [trackCaseId, setTrackCaseId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const trackParam = params.get("track") || params.get("caseId") || params.get("case");
+      if (trackParam) return trackParam;
+      if (window.location.pathname === "/track") {
+        return params.get("id") || "";
+      }
+    }
+    return null;
   });
 
   useEffect(() => {
@@ -437,6 +450,29 @@ export default function App() {
                 role: user?.userType === "admin" ? "admin" : "client",
                 country: user?.country,
                 district: user?.district,
+              }}
+            />
+          ) : trackCaseId ? (
+            <MagicCaseTracker
+              trackQuery={trackCaseId}
+              isLoggedIn={!!user}
+              onGoToAuth={() => {
+                setTrackCaseId(null);
+                try {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("track");
+                  url.searchParams.delete("caseId");
+                  window.history.replaceState({}, document.title, url.pathname || "/");
+                } catch {}
+              }}
+              onGoToDashboard={() => {
+                setTrackCaseId(null);
+                try {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete("track");
+                  url.searchParams.delete("caseId");
+                  window.history.replaceState({}, document.title, url.pathname || "/");
+                } catch {}
               }}
             />
           ) : !user ? (

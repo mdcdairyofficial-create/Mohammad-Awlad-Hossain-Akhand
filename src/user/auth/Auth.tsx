@@ -40,10 +40,13 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const urlParams = new URLSearchParams(window.location.search);
   const refCodeFromUrl = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('referredBy') || urlParams.get('referred_by') || '';
   const initialRefCode = refCodeFromUrl || localStorage.getItem('pending_referral_code') || '';
+  const roleFromUrl = urlParams.get('role');
+  const targetRole = (roleFromUrl as UserRole) || (localStorage.getItem('registration_target_role') as UserRole) || (localStorage.getItem('pending_claim_case') ? 'client' : null);
 
-  const [isLogin, setIsLogin] = useState(!initialRefCode && !window.location.pathname.includes('/register'));
+  const [isLogin, setIsLogin] = useState(!initialRefCode && !window.location.pathname.includes('/register') && !roleFromUrl);
   const [resetMode, setResetMode] = useState(false);
-  const [userType, setUserType] = useState<UserRole>('lawyer');
+  const [userType, setUserType] = useState<UserRole>(targetRole || 'lawyer');
+  const [isFromTracking] = useState(targetRole === 'client' || !!localStorage.getItem('pending_claim_case'));
   const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
@@ -493,31 +496,56 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
             {!resetMode && !isLogin && (
               <>
-                <div className="bg-slate-50 p-2 rounded-2xl flex flex-wrap gap-2 mb-2 border border-slate-200">
-                  {([ 'lawyer', 'clerk', 'client', 'advertiser'] as UserRole[]).map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setUserType(type)}
-                      className={cn(
-                        "flex-1 min-w-[80px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 border-2",
-                        userType === type 
-                          ? "bg-indigo-50 border-indigo-500 text-indigo-700 shadow-md" 
-                          : "bg-white/50 border-slate-200 text-slate-600 hover:bg-white hover:border-indigo-300"
-                      )}
-                    >
-                      <div className="flex flex-col items-center gap-1">
-                        <div className="flex items-center gap-2 text-center">
-                          <span className="font-bold text-[10px]">
-                            {type === 'lawyer' ? 'আইনজীবী' : 
-                             type === 'clerk' ? 'মুহুরী' : 
-                             type === 'client' ? 'পক্ষ' :
-                             'বিজ্ঞাপনদাতা'}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                {/* Client Role Guarantee Card */}
+                {userType === 'client' && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 font-bold flex items-start gap-2.5 mb-2 shadow-xs animate-in fade-in duration-200">
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-black text-emerald-800">মক্কেল / পক্ষ একাউন্ট (Client Account)</p>
+                      <p className="text-[11px] text-emerald-700 font-medium mt-0.5 leading-relaxed">
+                        মামলার তারিখ দেখা ও স্বয়ংক্রিয় পুশ নোটিফিকেশন পেতে এই একাউন্টটি সম্পূর্ণ বিনামূল্যে চালু হচ্ছে।
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-slate-50 p-1.5 rounded-2xl flex flex-wrap gap-1.5 mb-2 border border-slate-200">
+                  {([ 'client', 'lawyer', 'clerk', 'advertiser'] as UserRole[]).map((type) => {
+                    const isCurrent = userType === type;
+                    const label = type === 'client' ? 'মক্কেল / পক্ষ' :
+                                  type === 'lawyer' ? 'আইনজীবী' : 
+                                  type === 'clerk' ? 'মুহুরী' : 'বিজ্ঞাপনদাতা';
+                    const sub = type === 'client' ? 'তারিখ দেখতে' : 
+                                type === 'lawyer' ? 'উকিল' : 
+                                type === 'clerk' ? 'সহকারী' : 'বিজ্ঞাপন';
+
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          if (isFromTracking && type !== 'client') {
+                            const proceed = window.confirm(
+                              'আপনি মামলার তারিখ দেখতে এসেছেন। সাধারণ মক্কেলদের জন্য "মক্কেল / পক্ষ" একাউন্টেই বিনামূল্যে সকল তারিখ ও নোটিফিকেশন পাওয়া যায়।\n\nআপনি কি নিশ্চিত যে আপনি পেশাদার ' + (type === 'lawyer' ? 'আইনজীবী' : 'মুহুরী') + ' হিসেবে একাউন্ট খুলতে চান?'
+                            );
+                            if (!proceed) return;
+                          }
+                          setUserType(type);
+                        }}
+                        className={cn(
+                          "flex-1 min-w-[75px] py-2 px-1 text-xs font-bold rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 border-2",
+                          isCurrent 
+                            ? (type === 'client' ? "bg-emerald-50 border-emerald-500 text-emerald-800 shadow-md ring-1 ring-emerald-500/20" : "bg-indigo-50 border-indigo-500 text-indigo-700 shadow-md")
+                            : "bg-white/50 border-slate-200 text-slate-600 hover:bg-white hover:border-indigo-300"
+                        )}
+                      >
+                        <span className="font-black text-[11px] leading-tight text-center">{label}</span>
+                        <span className={cn("text-[9px] font-bold leading-none", isCurrent ? (type === 'client' ? 'text-emerald-600' : 'text-indigo-600') : 'text-slate-400')}>
+                          {sub}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}

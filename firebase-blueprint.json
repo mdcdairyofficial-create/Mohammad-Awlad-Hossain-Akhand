@@ -94,6 +94,20 @@
         "message": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" }
       }
+    },
+    "CaseTrackingSubscriber": {
+      "title": "CaseTrackingSubscriber",
+      "description": "Client push notification subscribers for tracking case dates",
+      "type": "object",
+      "properties": {
+        "case_id": { "type": "string" },
+        "case_number": { "type": "string" },
+        "court_name": { "type": "string" },
+        "phone": { "type": "string" },
+        "device_info": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["active", "unsubscribed"] }
+      }
     }
   },
   "firestore": {
@@ -104,6 +118,10 @@
     "/cases/{caseId}": {
       "schema": "Case",
       "description": "Legal cases"
+    },
+    "/case_tracking_subscribers/{subId}": {
+      "schema": "CaseTrackingSubscriber",
+      "description": "Push notification subscriber records for case date tracking"
     },
     "/recharge_orders/{orderId}": {
       "schema": "RechargeOrder",

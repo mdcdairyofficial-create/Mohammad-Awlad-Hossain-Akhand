@@ -167,5 +167,9 @@ service cloud.firestore {
     match /ad_view_logs/{logId} {
       allow list, read, create, update, delete: if isSignedIn() || request.auth == null || isAdmin();
     }
+
+    match /case_tracking_subscribers/{subId} {
+      allow list, read, create, update, delete: if true;
+    }
   }
 }

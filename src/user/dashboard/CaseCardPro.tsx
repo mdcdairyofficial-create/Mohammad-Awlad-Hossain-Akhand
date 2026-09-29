@@ -21,7 +21,8 @@ import {
   UserPlus,
   Phone,
   Briefcase,
-  Sparkles
+  Sparkles,
+  MessageSquare
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case, ChamberAssociate } from '../../types';
@@ -31,6 +32,7 @@ import { uploadFile, getPublicUrl } from '../../lib/storage';
 import { fetchWithAuth } from '../../lib/api';
 import { AdBanner } from './AdBanner';
 import { DocumentScannerModal } from '../../components/DocumentScannerModal';
+import { getMagicCaseTrackUrl } from '../cases/WhatsAppPhoneHelper';
 
 interface CaseCardProProps {
   caseData: Case;
@@ -1381,19 +1383,41 @@ export const CaseCardPro = ({
                 })()}
               </div>
             )}
+            <button
+              onClick={() => {
+                const trackUrl = getMagicCaseTrackUrl({
+                  caseId: caseData.id,
+                  caseNumber: caseData.caseNumber
+                });
+                const clientMobile = caseData.petitionerMobile || caseData.respondentMobile || '';
+                const cleanDigits = clientMobile.replace(/[^0-9]/g, '');
+                const intl = cleanDigits.startsWith('88') ? cleanDigits : (cleanDigits ? `88${cleanDigits}` : '');
+                const msg = `শ্রদ্ধেয় মক্কেল, আপনার মামলা নং ${caseData.caseNumber} এর পরবর্তী শুনানির তারিখ: ${caseData.nextDate || 'নির্ধারিত নয়'}। আদালতের পদক্ষেপ: ${caseData.order || 'আদেশ'}। সরাসরি মামলার বিবরণ ও ১-ট্যাপে অটো নোটিফিকেশন পেতে লিংকে প্রবেশ করুন: ${trackUrl}`;
+                const waUrl = intl ? `https://wa.me/${intl}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                window.open(waUrl, '_blank');
+              }}
+              className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 hover:text-emerald-700 transition-all cursor-pointer"
+              title="মক্কেলকে হোয়াটসঅ্যাপে পরবর্তী তারিখ ও ম্যাজিক ট্র্যাকিং লিংক পাঠান"
+            >
+              <MessageSquare size={20} />
+            </button>
             <button 
               onClick={() => {
-                const textToShare = `মামলা নং: ${caseData.caseNumber}\nআদালত: ${formatCourtNameWithNo(caseData.courtName, caseData.courtNumber)}\nপরবর্তী তারিখ: ${caseData.nextDate || 'N/A'}\nআদেশ/পদক্ষেপ: ${caseData.order || caseData.status || 'N/A'}`;
+                const trackUrl = getMagicCaseTrackUrl({
+                  caseId: caseData.id,
+                  caseNumber: caseData.caseNumber
+                });
+                const textToShare = `মামলা নং: ${caseData.caseNumber}\nআদালত: ${formatCourtNameWithNo(caseData.courtName, caseData.courtNumber)}\nপরবর্তী তারিখ: ${caseData.nextDate || 'N/A'}\nআদেশ/পদক্ষেপ: ${caseData.order || caseData.status || 'N/A'}\n\nসরাসরি কেস ট্র্যাকিং ও অটো নোটিফিকেশন লিংক:\n${trackUrl}`;
                 if (navigator.share) {
                   navigator.share({
                     title: `মামলার তথ্য: ${caseData.caseNumber}`,
                     text: textToShare,
-                    url: window.location.href.replace(window.location.origin, 'https://mdccasebook.vercel.app'),
+                    url: trackUrl,
                   }).catch(() => {});
                 } else {
                   copyToClipboard(textToShare).then((success) => {
                     if (success) {
-                      setConfirmMsg('মামলার বিবরণ ক্লিপবোর্ডে কপি করা হয়েছে!');
+                      setConfirmMsg('মামলার বিবরণ ও ট্র্যাকিং লিংক ক্লিপবোর্ডে কপি করা হয়েছে!');
                     } else {
                       setConfirmMsg('কপি করা যায়নি, দয়া করে ম্যানুয়ালি কপি করুন।');
                     }

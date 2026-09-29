@@ -1286,6 +1286,24 @@ export default function Dashboard({
   const [selectedCaseForHistory, _setSelectedCaseForHistory] = useState<Case | null>(null);
   const [selectedCaseForCard, _setSelectedCaseForCard] = useState<Case | null>(null);
 
+  useEffect(() => {
+    const pendingClaim = localStorage.getItem('pending_claim_case');
+    if (pendingClaim) {
+      localStorage.removeItem('pending_claim_case');
+      setNotifications(prev => [
+        {
+          id: Date.now(),
+          title: 'মামলা ড্যাশবোর্ডে যুক্ত হয়েছে 🔔',
+          message: 'আপনার ট্র্যাকিং করা মামলাটি সফলভাবে ড্যাশবোর্ডে সংরক্ষিত হয়েছে। এখন থেকে সকল আপডেট সরাসরি এখানে পাবেন।',
+          time: 'এইমাত্র',
+          type: 'update',
+          isRead: false
+        },
+        ...prev
+      ]);
+    }
+  }, []);
+
   const normalizeMobile = (m?: string | null) => {
     if (!m) return '';
     let clean = m.trim();
@@ -3735,6 +3753,9 @@ export default function Dashboard({
                   getBanglaDate={getBanglaDate}
                   onUpdateCaseLocal={(caseId, updatedFields) => {
                     setCases(prev => prev.map(c => c.id === caseId ? { ...c, ...updatedFields } : c));
+                  }}
+                  onWhatsAppShare={(c, side) => {
+                    setSavedCaseForWhatsApp({ caseData: c, targetSide: side || 'petitioner' });
                   }}
                   onOpenAiForCase={(c) => {
                     setSelectedCaseForCard(c);

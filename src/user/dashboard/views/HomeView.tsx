@@ -19,11 +19,18 @@ import {
   ShieldAlert,
   ExternalLink,
   Sparkles,
-  Gift
+  Gift,
+  Bell,
+  BellRing
 } from 'lucide-react';
 import { AdBanner } from '../AdBanner';
 import { Case, Task } from '../../../types';
 import { AnimatePresence } from 'motion/react';
+import { 
+  checkNotificationSupport, 
+  requestNotificationPermission, 
+  sendLocalNotification 
+} from '../../../lib/pushNotifications';
 import { 
   ResponsiveContainer, 
   BarChart, 
@@ -94,6 +101,29 @@ export const HomeView = ({
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
   const [totalDue, setTotalDue] = React.useState(0);
   const [showScoreModal, setShowScoreModal] = React.useState(initialShowScoreModal);
+
+  const [clientPushGranted, setClientPushGranted] = React.useState(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission === 'granted';
+    }
+    return false;
+  });
+
+  const handleEnableClientNotification = async () => {
+    const res = await requestNotificationPermission();
+    if (res === 'granted') {
+      setClientPushGranted(true);
+      sendLocalNotification('MDC Casebook এলার্ট 🔔', {
+        body: 'আপনার মক্কেল অ্যাকাউন্টে অটো পুশ নোটিফিকেশন সফলভাবে সক্রিয় হয়েছে!'
+      });
+    }
+  };
+
+  const handleTestClientNotification = () => {
+    sendLocalNotification('MDC Casebook টেস্ট এলার্ট 🔔', {
+      body: 'আপনার ফোনের নোটিফিকেশন সফলভাবে কাজ করছে। পরবর্তী ধার্য তারিখের আপডেট সরাসরি এখানে আসবে।'
+    });
+  };
 
   React.useEffect(() => {
     if (initialShowScoreModal) {
@@ -324,6 +354,55 @@ export const HomeView = ({
                     }
                   </button>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Smart Push Notification card for Client User */}
+            {userType === 'client' && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] sm:min-w-[320px] shadow-inner"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-emerald-400 rounded-lg text-emerald-950">
+                      <Bell size={16} />
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">
+                      {language === 'bn' ? 'অটো পুশ নোটিফিকেশন' : 'Push Notifications'}
+                    </span>
+                  </div>
+                  <div className={`text-[10px] font-black px-2.5 py-0.5 rounded-full text-white ${
+                    clientPushGranted ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}>
+                    {clientPushGranted ? (language === 'bn' ? 'সক্রিয়' : 'ACTIVE') : (language === 'bn' ? 'অপেক্ষমান' : 'PENDING')}
+                  </div>
+                </div>
+
+                <p className="text-xs text-indigo-100 leading-relaxed mb-4">
+                  {language === 'bn'
+                    ? 'আদালত থেকে আপনার মামলার পরবর্তী ধার্য তারিখ বা নতুন আদেশ আসার সাথে সাথে আপনার মোবাইলে সরাসরি এলার্ট পৌঁছে যাবে।'
+                    : 'Get real-time push alerts on your phone whenever case hearing dates or orders change.'}
+                </p>
+
+                {clientPushGranted ? (
+                  <button
+                    onClick={handleTestClientNotification}
+                    className="w-full py-2.5 rounded-2xl text-xs font-black bg-white text-indigo-700 hover:bg-indigo-50 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <BellRing size={14} />
+                    <span>{language === 'bn' ? 'টেস্ট এলার্ট পাঠান' : 'Send Test Alert'}</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEnableClientNotification}
+                    className="w-full py-2.5 rounded-2xl text-xs font-black bg-emerald-400 text-slate-950 hover:bg-emerald-300 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer font-sans active:scale-95"
+                  >
+                    <Bell size={14} />
+                    <span>{language === 'bn' ? '১-ট্যাপে নোটিফিকেশন চালু করুন' : 'Enable 1-Tap Alerts'}</span>
+                  </button>
+                )}
               </motion.div>
             )}
           </div>

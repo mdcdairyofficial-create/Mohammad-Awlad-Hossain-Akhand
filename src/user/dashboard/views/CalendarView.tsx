@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import jsPDF from 'jspdf';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -25,11 +26,163 @@ import {
   User,
   Gavel,
   Users,
-  Save
+  Save,
+  Image as ImageIcon,
+  Trash2,
+  Paperclip,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FileCheck,
+  MessageSquare,
+  Send
 } from 'lucide-react';
 import { Case, CaseHistoryEntry, isCaseOnDate } from '../../../types';
 import { updateCase } from '../../../services/user/featureService';
 import { uploadFile, getPublicUrl } from '../../../lib/storage';
+import { getMagicCaseTrackUrl } from '../../cases/WhatsAppPhoneHelper';
+
+// Helper to auto-crop, resize and compress images for minimal data usage
+export const processAndCompressImage = (
+  file: File,
+  targetFileName: string,
+  maxWidth = 1280,
+  maxHeight = 1280,
+  quality = 0.72
+): Promise<File> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Auto-scale to fit within maxWidth / maxHeight preserving aspect ratio
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(file);
+          return;
+        }
+
+        // Draw with white background to eliminate transparency artifacts
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(file);
+              return;
+            }
+            const compressedFile = new File([blob], targetFileName, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            resolve(compressedFile);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
+
+// Helper to compile multiple compressed images into a single compact, high-efficiency PDF
+export const createCompressedPdfFromImages = async (
+  images: Array<{ previewUrl: string; file: File; compressedSize?: number }>,
+  caseNo: string,
+  dateStr: string,
+  stepTitle: string
+): Promise<{ file: File; size: number; previewUrl: string }> => {
+  const pdf = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4',
+    compress: true
+  });
+
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 8;
+  const contentWidth = pageWidth - (margin * 2);
+  const contentHeight = pageHeight - (margin * 2);
+
+  const loadImage = (url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = (e) => reject(e);
+      img.src = url;
+    });
+  };
+
+  for (let i = 0; i < images.length; i++) {
+    if (i > 0) pdf.addPage();
+    const item = images[i];
+    try {
+      const img = await loadImage(item.previewUrl);
+      const imgRatio = (img.width || 1) / (img.height || 1);
+
+      // Header at the top of each page
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(60, 60, 60);
+      const headerText = `Case: ${caseNo || 'N/A'}  |  Date: ${dateStr || ''}  |  Step: ${stepTitle || ''}  |  Page ${i + 1} of ${images.length}`;
+      pdf.text(headerText, margin, margin + 4);
+      pdf.setDrawColor(210, 210, 210);
+      pdf.setLineWidth(0.3);
+      pdf.line(margin, margin + 6, pageWidth - margin, margin + 6);
+
+      const usableHeight = contentHeight - 12;
+      let renderWidth = contentWidth;
+      let renderHeight = renderWidth / imgRatio;
+
+      if (renderHeight > usableHeight) {
+        renderHeight = usableHeight;
+        renderWidth = renderHeight * imgRatio;
+      }
+
+      const x = margin + (contentWidth - renderWidth) / 2;
+      const y = margin + 8 + (usableHeight - renderHeight) / 2;
+
+      pdf.addImage(img, 'JPEG', x, y, renderWidth, renderHeight, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Failed adding image to PDF:', e);
+    }
+  }
+
+  const pdfBlob = pdf.output('blob');
+  const sanitizedCaseNo = (caseNo || 'case').replace(/[\/\\?#%*:|"<>\s]/g, '-');
+  const sanitizedDate = (dateStr || new Date().toISOString().split('T')[0]).replace(/[/.]/g, '-');
+  const pdfName = `${sanitizedCaseNo}_${sanitizedDate}_documents.pdf`;
+  const pdfFile = new File([pdfBlob], pdfName, {
+    type: 'application/pdf',
+    lastModified: Date.now()
+  });
+  const previewUrl = URL.createObjectURL(pdfBlob);
+
+  return {
+    file: pdfFile,
+    size: pdfFile.size,
+    previewUrl
+  };
+};
 
 interface CalendarViewProps {
   currentMonth: Date;
@@ -46,7 +199,153 @@ interface CalendarViewProps {
   t: (key: any) => string;
   onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
   onOpenAiForCase?: (c: Case) => void;
+  onWhatsAppShare?: (c: Case, side?: 'petitioner' | 'respondent') => void;
 }
+
+// Helper to display only Day and Month (e.g. 02/11), removing the year
+export const formatDayMonth = (dateStr?: string): string => {
+  if (!dateStr || !dateStr.trim()) return '';
+  const s = dateStr.trim();
+
+  // If already DD/MM (2 parts)
+  if (/^\d{1,2}[-/.]\d{1,2}$/.test(s)) {
+    const [d, m] = s.split(/[-/.]/);
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}`;
+  }
+
+  // If YYYY-MM-DD
+  if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(s)) {
+    const [, m, d] = s.split(/[-/.]/);
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}`;
+  }
+
+  // If DD-MM-YYYY or DD/MM/YYYY
+  if (/^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}$/.test(s)) {
+    const [d, m] = s.split(/[-/.]/);
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}`;
+  }
+
+  // Bengali digits with year: e.g. ১২/০৯/২০২৬ -> ১২/০৯
+  const withoutBnYear = s.replace(/[/.-][০-৯]{4}$/, '').replace(/^[০-৯]{4}[/.-]/, '');
+  if (withoutBnYear !== s) {
+    return withoutBnYear;
+  }
+
+  // English 4-digit year at end or beginning
+  const withoutEnYear = s.replace(/[/.-]\d{4}$/, '').replace(/^\d{4}[/.-]/, '');
+  if (withoutEnYear !== s) {
+    const parts = withoutEnYear.split(/[-/.]/);
+    if (parts.length === 2 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1])) {
+      return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}`;
+    }
+    return withoutEnYear;
+  }
+
+  // If ISO string like 2026-09-24T18:26:41.725Z
+  if (s.includes('T') || s.includes('Z')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      return `${day}/${month}`;
+    }
+  }
+
+  return s;
+};
+
+// Helper to convert numbers to Bengali digits
+export const toBn = (n: number | string): string => {
+  const bnNums = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(n).replace(/[0-9]/g, d => bnNums[+d] || d);
+};
+
+// Helper to format multiple persons: [First Name] গং (count), hiding rest of names
+export const formatMultiplePersons = (
+  rawName?: string, 
+  details?: Array<{ name: string }>, 
+  language: string = 'bn'
+): { formatted: string; fullNames: string; count: number } => {
+
+  // Case 1: Structured details array with multiple entries
+  if (details && Array.isArray(details) && details.length > 0) {
+    const validNames = details.map(d => d?.name?.trim()).filter(Boolean);
+    if (validNames.length > 1) {
+      const cleanFirst = validNames[0]
+        .replace(/\s+গং(\s*\([০-৯0-9]+\))?$/g, '')
+        .replace(/\s+&\s+others(\s*\([0-9]+\))?$/gi, '')
+        .trim();
+      const count = validNames.length;
+      const countStr = language === 'bn' ? toBn(count) : count;
+      const suffix = language === 'bn' ? `গং (${countStr})` : `& others (${countStr})`;
+      return {
+        formatted: `${cleanFirst} ${suffix}`,
+        fullNames: validNames.map((n, i) => `${i + 1}. ${n}`).join('\n'),
+        count
+      };
+    } else if (validNames.length === 1) {
+      return {
+        formatted: validNames[0],
+        fullNames: validNames[0],
+        count: 1
+      };
+    }
+  }
+
+  if (!rawName || !rawName.trim()) {
+    return { formatted: '', fullNames: '', count: 0 };
+  }
+
+  const s = rawName.trim();
+
+  // If already formatted like "নাম গং (৩)" or "নাম গং (3)"
+  const alreadyGangWithCount = s.match(/^(.*?)\s+গং\s*\(([০-৯0-9]+)\)$/);
+  if (alreadyGangWithCount) {
+    const cleanFirst = alreadyGangWithCount[1].trim();
+    const countVal = alreadyGangWithCount[2];
+    const countStr = language === 'bn' ? toBn(countVal) : countVal;
+    return {
+      formatted: `${cleanFirst} ${language === 'bn' ? 'গং' : '& others'} (${countStr})`,
+      fullNames: s,
+      count: parseInt(countVal, 10) || 2
+    };
+  }
+
+  // Case 2: Comma, semicolon, newline or ' ও ' separated in string
+  const splitNames = s
+    .split(/[,;\n]+|\s+ও\s+/)
+    .map(n => n.trim())
+    .filter(Boolean);
+
+  if (splitNames.length > 1) {
+    const cleanFirst = splitNames[0]
+      .replace(/\s+গং(\s*\([০-৯0-9]+\))?$/g, '')
+      .replace(/\s+&\s+others(\s*\([0-9]+\))?$/gi, '')
+      .trim();
+    const count = splitNames.length;
+    const countStr = language === 'bn' ? toBn(count) : count;
+    const suffix = language === 'bn' ? `গং (${countStr})` : `& others (${countStr})`;
+    return {
+      formatted: `${cleanFirst} ${suffix}`,
+      fullNames: splitNames.map((n, i) => `${i + 1}. ${n}`).join('\n'),
+      count
+    };
+  }
+
+  // Case 3: Ends with 'গং' without count
+  if (/\s+গং$/.test(s)) {
+    const cleanFirst = s.replace(/\s+গং$/, '').trim();
+    const count = details && details.length > 1 ? details.length : 2;
+    const countStr = language === 'bn' ? toBn(count) : count;
+    return {
+      formatted: `${cleanFirst} ${language === 'bn' ? 'গং' : '& others'} (${countStr})`,
+      fullNames: s,
+      count
+    };
+  }
+
+  return { formatted: s, fullNames: s, count: 1 };
+};
 
 const MiniCasebook = ({
   c,
@@ -54,7 +353,9 @@ const MiniCasebook = ({
   t,
   buttonLabels,
   onUpdateCaseLocal,
-  onViewCard
+  onViewCard,
+  currentDiaryDate,
+  onWhatsAppShare
 }: {
   c: Case;
   language: 'bn' | 'en' | 'hi' | 'ur';
@@ -62,6 +363,8 @@ const MiniCasebook = ({
   buttonLabels: any;
   onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
   onViewCard: (c: Case) => void;
+  currentDiaryDate?: string;
+  onWhatsAppShare?: (c: Case, side?: 'petitioner' | 'respondent') => void;
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [prevDate, setPrevDate] = useState(c.lastDate || '');
@@ -73,6 +376,274 @@ const MiniCasebook = ({
   const [clientNotes1, setClientNotes1] = useState(c.petitionerDetails?.[0]?.name || '');
   const [clientNotes2, setClientNotes2] = useState(c.additionalOrder || '');
   const [oppositeNotes, setOppositeNotes] = useState(c.respondentDetails?.[0]?.name || '');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [copiedOrder, setCopiedOrder] = useState(false);
+  const [showStepModal, setShowStepModal] = useState(false);
+  const [selectedStepType, setSelectedStepType] = useState<'criminal' | 'civil'>(() => {
+    return (c.caseType?.toLowerCase().includes('civil') || c.caseType?.includes('দেওয়ানী')) ? 'civil' : 'criminal';
+  });
+  const [selectedStep, setSelectedStep] = useState(order !== 'আদেশ' && order !== 'পদক্ষেপ' ? order : 'হাজিরা');
+  const [stepCustomNotes, setStepCustomNotes] = useState('');
+  const [stepImages, setStepImages] = useState<Array<{ file: File; previewUrl: string; originalSize: number; compressedSize: number }>>([]);
+  const [compiledPdf, setCompiledPdf] = useState<{ file: File; size: number; previewUrl: string } | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [saveFormat, setSaveFormat] = useState<'pdf' | 'images' | 'both'>('pdf');
+  const [selectedUploadFormat, setSelectedUploadFormat] = useState<'image' | 'pdf'>('pdf');
+  const [uploadedPdfFile, setUploadedPdfFile] = useState<{ file: File; size: number; previewUrl: string } | null>(null);
+  const [showPdfPreviewModal, setShowPdfPreviewModal] = useState(false);
+  const [isProcessingImages, setIsProcessingImages] = useState(false);
+  const [isUploadingStep, setIsUploadingStep] = useState(false);
+  const [stepUploadSuccess, setStepUploadSuccess] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const pdfFileInputRef = useRef<HTMLInputElement>(null);
+  const [pickerMonth, setPickerMonth] = useState<Date>(() => new Date());
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  const handlePdfFileAdded = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert(language === 'bn' ? 'অনুগ্রহ করে শুধুমাত্র PDF ফাইল নির্বাচন করুন।' : 'Please select a PDF file.');
+      return;
+    }
+    const sanitizedCaseNo = (caseNumber || c.caseNumber || 'case').replace(/[\/\\?#%*:|"<>\s]/g, '-');
+    const datePart = (currentDiaryDate || c.lastDate || new Date().toISOString().split('T')[0]).replace(/[/.]/g, '-');
+    const autoPdfName = `${sanitizedCaseNo}_${datePart}_document.pdf`;
+    const renamedFile = new File([file], autoPdfName, { type: 'application/pdf', lastModified: Date.now() });
+    const previewUrl = URL.createObjectURL(file);
+    setUploadedPdfFile({
+      file: renamedFile,
+      size: file.size,
+      previewUrl
+    });
+    setSaveFormat('pdf');
+    e.target.value = '';
+  };
+
+  const handleFilesAdded = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const rawFiles = Array.from(e.target.files);
+    setIsProcessingImages(true);
+
+    try {
+      const sanitizedCaseNo = (caseNumber || c.caseNumber || 'case').replace(/[\/\\?#%*:|"<>\s]/g, '-');
+      const datePart = (currentDiaryDate || c.lastDate || new Date().toISOString().split('T')[0]).replace(/[/.]/g, '-');
+      
+      const processed: Array<{ file: File; previewUrl: string; originalSize: number; compressedSize: number }> = [];
+
+      for (let i = 0; i < rawFiles.length; i++) {
+        const rawFile = rawFiles[i];
+        const idx = stepImages.length + i + 1;
+        const autoName = `${sanitizedCaseNo}_${datePart}_doc_${idx}.jpg`;
+        
+        // Auto-crop & compress using canvas for minimal data usage
+        const compressedFile = await processAndCompressImage(rawFile, autoName, 1280, 1280, 0.72);
+        const previewUrl = URL.createObjectURL(compressedFile);
+
+        processed.push({
+          file: compressedFile,
+          previewUrl,
+          originalSize: rawFile.size,
+          compressedSize: compressedFile.size
+        });
+      }
+
+      setStepImages(prev => [...prev, ...processed]);
+    } catch (err) {
+      console.error("Error compressing images:", err);
+    } finally {
+      setIsProcessingImages(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    setStepImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  // Automatically compile or update single compressed PDF whenever images change
+  useEffect(() => {
+    let isCancelled = false;
+    if (stepImages.length === 0) {
+      setCompiledPdf(null);
+      return;
+    }
+
+    const generatePdf = async () => {
+      setIsGeneratingPdf(true);
+      try {
+        const diaryDate = currentDiaryDate || c.lastDate || new Date().toISOString().split('T')[0];
+        const res = await createCompressedPdfFromImages(
+          stepImages,
+          caseNumber || c.caseNumber || 'case',
+          diaryDate,
+          selectedStep
+        );
+        if (!isCancelled) {
+          setCompiledPdf(res);
+        }
+      } catch (err) {
+        console.error("Failed to generate PDF:", err);
+      } finally {
+        if (!isCancelled) {
+          setIsGeneratingPdf(false);
+        }
+      }
+    };
+
+    generatePdf();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [stepImages, caseNumber, currentDiaryDate, selectedStep, c.caseNumber, c.lastDate]);
+
+  const handleSaveStepAndImages = async () => {
+    setIsUploadingStep(true);
+    try {
+      const diaryDate = currentDiaryDate || c.nextDate || new Date().toISOString().split('T')[0];
+      const uploadedDocs: { name: string; type: string; url: string; size?: number; date?: string }[] = [];
+
+      // 1. If direct PDF was uploaded
+      if (uploadedPdfFile && selectedUploadFormat === 'pdf') {
+        try {
+          const snapshot = await uploadFile('documents', uploadedPdfFile.file.name, uploadedPdfFile.file);
+          let downloadUrl = '';
+          if (snapshot && (snapshot as any).metadata?.downloadUrl) {
+            downloadUrl = (snapshot as any).metadata.downloadUrl;
+          } else {
+            downloadUrl = await getPublicUrl('documents', uploadedPdfFile.file.name);
+          }
+          uploadedDocs.push({
+            name: uploadedPdfFile.file.name,
+            type: 'pdf',
+            url: downloadUrl,
+            size: uploadedPdfFile.size,
+            date: diaryDate
+          });
+        } catch (uploadPdfErr) {
+          console.warn("Direct PDF Upload fallback to preview URL:", uploadPdfErr);
+          uploadedDocs.push({
+            name: uploadedPdfFile.file.name,
+            type: 'pdf',
+            url: uploadedPdfFile.previewUrl,
+            size: uploadedPdfFile.size,
+            date: diaryDate
+          });
+        }
+      }
+
+      // 2. If compiled PDF from camera/photos exists and PDF format is selected
+      if ((saveFormat === 'pdf' || saveFormat === 'both' || selectedUploadFormat === 'pdf') && compiledPdf && !uploadedPdfFile) {
+        try {
+          const snapshot = await uploadFile('documents', compiledPdf.file.name, compiledPdf.file);
+          let downloadUrl = '';
+          if (snapshot && (snapshot as any).metadata?.downloadUrl) {
+            downloadUrl = (snapshot as any).metadata.downloadUrl;
+          } else {
+            downloadUrl = await getPublicUrl('documents', compiledPdf.file.name);
+          }
+          uploadedDocs.push({
+            name: compiledPdf.file.name,
+            type: 'pdf',
+            url: downloadUrl,
+            size: compiledPdf.size,
+            date: diaryDate
+          });
+        } catch (uploadPdfErr) {
+          console.warn("PDF Upload fallback to preview URL:", uploadPdfErr);
+          uploadedDocs.push({
+            name: compiledPdf.file.name,
+            type: 'pdf',
+            url: compiledPdf.previewUrl,
+            size: compiledPdf.size,
+            date: diaryDate
+          });
+        }
+      }
+
+      // 3. If saveFormat includes individual images or image format is selected
+      if (saveFormat === 'images' || saveFormat === 'both' || (selectedUploadFormat === 'image' && stepImages.length > 0)) {
+        for (const item of stepImages) {
+          try {
+            const snapshot = await uploadFile('documents', item.file.name, item.file);
+            let downloadUrl = '';
+            if (snapshot && (snapshot as any).metadata?.downloadUrl) {
+              downloadUrl = (snapshot as any).metadata.downloadUrl;
+            } else {
+              downloadUrl = await getPublicUrl('documents', item.file.name);
+            }
+            uploadedDocs.push({
+              name: item.file.name,
+              type: 'image',
+              url: downloadUrl,
+              size: item.compressedSize,
+              date: diaryDate
+            });
+          } catch (uploadErr) {
+            console.warn("Image upload fallback to preview URL:", uploadErr);
+            uploadedDocs.push({
+              name: item.file.name,
+              type: 'image',
+              url: item.previewUrl,
+              size: item.compressedSize,
+              date: diaryDate
+            });
+          }
+        }
+      }
+
+      // 3. Prepare step text
+      const finalStepText = stepCustomNotes ? `${selectedStep} (${stepCustomNotes})` : selectedStep;
+      setOrder(selectedStep);
+      if (stepCustomNotes) {
+        setClientNotes2(stepCustomNotes);
+      }
+
+      // 4. Prepare updated case history and documents
+      const allDocs = [...(c.documents || []), ...uploadedDocs];
+      const newHistoryEntry: CaseHistoryEntry = {
+        id: Date.now().toString(),
+        date: diaryDate,
+        actionBy: 'court',
+        description: finalStepText,
+        order: selectedStep,
+        documents: uploadedDocs
+      };
+      const updatedHistory = [...(c.history || []), newHistoryEntry];
+
+      const updatedFields: Partial<Case> = {
+        order: selectedStep,
+        additionalOrder: stepCustomNotes || c.additionalOrder,
+        documents: allDocs,
+        history: updatedHistory
+      };
+
+      // 5. Update local state
+      if (onUpdateCaseLocal) {
+        onUpdateCaseLocal(c.id, updatedFields);
+      }
+
+      // 6. Persist to Firestore
+      await updateCase(c.id.toString(), updatedFields);
+
+      setStepUploadSuccess(true);
+      setTimeout(() => {
+        setStepUploadSuccess(false);
+        setShowStepModal(false);
+        setStepImages([]);
+        setUploadedPdfFile(null);
+      }, 1500);
+
+    } catch (err) {
+      console.error("Failed to save step and documents:", err);
+      alert(language === 'bn' ? 'সংরক্ষণ করতে সমস্যা হয়েছে, অনুগ্রহ করে আবার চেষ্টা করুন।' : 'Failed to save. Please try again.');
+    } finally {
+      setIsUploadingStep(false);
+    }
+  };
 
   // Synchronize state when c changes
   useEffect(() => {
@@ -87,398 +658,1539 @@ const MiniCasebook = ({
     setOppositeNotes(c.respondentDetails?.[0]?.name || '');
   }, [c]);
 
-  const handleSave = () => {
-    if (onUpdateCaseLocal) {
-      const updatedPetDetails = [...(c.petitionerDetails || [])];
-      if (updatedPetDetails[0]) {
-        updatedPetDetails[0] = { ...updatedPetDetails[0], name: clientNotes1 };
-      } else if (clientNotes1) {
-        updatedPetDetails.push({ name: clientNotes1, phone: '', serial: 1 });
-      }
-
-      const updatedResDetails = [...(c.respondentDetails || [])];
-      if (updatedResDetails[0]) {
-        updatedResDetails[0] = { ...updatedResDetails[0], name: oppositeNotes };
-      } else if (oppositeNotes) {
-        updatedResDetails.push({ name: oppositeNotes, phone: '', serial: 1 });
-      }
-
-      onUpdateCaseLocal(c.id, {
-        lastDate: prevDate,
-        caseNumber,
-        petitioner,
-        respondent,
-        nextDate,
-        order,
-        additionalOrder: clientNotes2,
-        petitionerDetails: updatedPetDetails,
-        respondentDetails: updatedResDetails
-      });
+  const openDatePicker = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (nextDate && /^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      const [y, m] = nextDate.split('-');
+      setPickerMonth(new Date(parseInt(y, 10), parseInt(m, 10) - 1, 1));
+    } else {
+      setPickerMonth(new Date());
     }
+    setShowDatePicker(true);
+  };
+
+  const handleSave = async () => {
+    const updatedPetDetails = [...(c.petitionerDetails || [])];
+    if (updatedPetDetails[0]) {
+      updatedPetDetails[0] = { ...updatedPetDetails[0], name: clientNotes1 };
+    } else if (clientNotes1) {
+      updatedPetDetails.push({ name: clientNotes1, phone: '', serial: 1 });
+    }
+
+    const updatedResDetails = [...(c.respondentDetails || [])];
+    if (updatedResDetails[0]) {
+      updatedResDetails[0] = { ...updatedResDetails[0], name: oppositeNotes };
+    } else if (oppositeNotes) {
+      updatedResDetails.push({ name: oppositeNotes, phone: '', serial: 1 });
+    }
+
+    const updatedFields: Partial<Case> = {
+      lastDate: prevDate,
+      caseNumber,
+      petitioner,
+      respondent,
+      nextDate,
+      order,
+      additionalOrder: clientNotes2,
+      petitionerDetails: updatedPetDetails,
+      respondentDetails: updatedResDetails
+    };
+
+    if (onUpdateCaseLocal) {
+      onUpdateCaseLocal(c.id, updatedFields);
+    }
+
+    try {
+      await updateCase(c.id.toString(), updatedFields);
+    } catch (err) {
+      console.error('Failed to save case in database:', err);
+    }
+
     setIsEditMode(false);
   };
 
+  const handleSelectNextDate = async (newDateStr: string) => {
+    // 1. Immediately set the next date in component state
+    setNextDate(newDateStr);
+
+    // 2. Determine diary/current hearing date to keep case preserved in current diary session
+    const diaryDate = currentDiaryDate || c.nextDate || new Date().toISOString().split('T')[0];
+    const prevDateToSet = (c.nextDate && c.nextDate !== newDateStr) ? c.nextDate : (c.lastDate || diaryDate);
+    setPrevDate(prevDateToSet);
+
+    const updatedPastDates = Array.from(new Set([
+      ...(c.pastDates || []),
+      ...(c.lastDate ? [c.lastDate] : []),
+      diaryDate
+    ]));
+
+    const newHistoryEntry: CaseHistoryEntry = {
+      id: Date.now().toString(),
+      date: diaryDate,
+      actionBy: 'court',
+      description: order || (language === 'bn' ? 'পরবর্তী শুনানির তারিখ নির্ধারণ' : 'Next hearing date scheduled'),
+      order: order || (language === 'bn' ? 'পরবর্তী শুনানির তারিখ নির্ধারণ' : 'Next hearing date scheduled')
+    };
+
+    const updatedHistory = [...(c.history || []), newHistoryEntry];
+
+    const updatedFields: Partial<Case> = {
+      nextDate: newDateStr,
+      lastDate: prevDateToSet,
+      pastDates: updatedPastDates,
+      history: updatedHistory
+    };
+
+    // 3. Immediately update parent UI state
+    if (onUpdateCaseLocal) {
+      onUpdateCaseLocal(c.id, updatedFields);
+    }
+
+    // 4. Persist to Firestore database
+    try {
+      await updateCase(c.id.toString(), updatedFields);
+    } catch (err) {
+      console.error('Failed to persist next date to database:', err);
+    }
+
+    // 5. Close date picker
+    setShowDatePicker(false);
+  };
+
+  const monthNamesBn = [
+    "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
+    "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"
+  ];
+  const weekDaysShort = language === 'bn'
+    ? ["রবি", "সোম", "মঙ্গল", "বুধ", "বৃহঃ", "শুক্র", "শনি"]
+    : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
   const isPastForCase = c.nextDate !== c.lastDate;
 
+  const petitionerInfo = formatMultiplePersons(petitioner, c.petitionerDetails, language);
+  const respondentInfo = formatMultiplePersons(respondent, c.respondentDetails, language);
+
   return (
-    <div className="w-full bg-white/95 dark:bg-slate-850 rounded-2xl border border-amber-200/50 dark:border-slate-800 p-3.5 shadow-xs hover:shadow-md transition-all">
+    <div className="w-full bg-white/95 dark:bg-slate-850 rounded-xl sm:rounded-2xl border border-amber-200/50 dark:border-slate-800 p-1.5 sm:p-2.5 md:p-3 shadow-xs hover:shadow-md transition-all overflow-hidden">
       {/* Small top header with original action buttons */}
-      <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-dashed border-amber-200/40 dark:border-slate-800">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+      <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-dashed border-amber-200/40 dark:border-slate-800">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <span className="text-[8px] sm:text-[9px] md:text-[10px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded-md">
             ID: {c.id}
           </span>
           {isPastForCase && (
-            <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-50 text-amber-700 border border-amber-200/60 rounded-full">
+            <span className="text-[7px] sm:text-[8px] md:text-[9px] font-bold px-1.5 py-0.2 bg-amber-50 text-amber-700 border border-amber-200/60 rounded-full">
               {language === 'bn' ? 'বিগত ধার্য তারিখ' : 'Past Date'}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5">
           {c.petitionerMobile && (
             <a 
               href={`tel:${c.petitionerMobile}`} 
-              className="w-5 h-5 rounded-full bg-emerald-600 hover:brightness-105 flex items-center justify-center border border-slate-200 shadow-3xs active:scale-95 transition-all shrink-0" 
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-emerald-600 hover:brightness-105 flex items-center justify-center border border-slate-200 shadow-3xs active:scale-95 transition-all shrink-0" 
               title={`কল করুন (বাদী): ${c.petitionerMobile}`}
             >
-              <Phone size={10} className="text-white fill-white" />
+              <Phone size={9} className="text-white fill-white" />
             </a>
           )}
           {c.respondentMobile && (
             <a 
               href={`tel:${c.respondentMobile}`} 
-              className="w-5 h-5 rounded-full bg-emerald-600 hover:brightness-105 flex items-center justify-center border border-slate-200 shadow-3xs active:scale-95 transition-all shrink-0" 
+              className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-emerald-600 hover:brightness-105 flex items-center justify-center border border-slate-200 shadow-3xs active:scale-95 transition-all shrink-0" 
               title={`কল করুন (বিবাদী): ${c.respondentMobile}`}
             >
-              <Phone size={10} className="text-white fill-white" />
+              <Phone size={9} className="text-white fill-white" />
             </a>
           )}
           <button 
             onClick={() => onViewCard(c)}
-            className="p-1 bg-amber-50 dark:bg-slate-800 text-amber-700 dark:text-amber-400 rounded-md hover:bg-amber-700 hover:text-white border border-amber-200 dark:border-slate-700 transition-all active:scale-95 shrink-0 shadow-3xs"
+            className="p-0.5 sm:p-1 bg-amber-50 dark:bg-slate-800 text-amber-700 dark:text-amber-400 rounded-md hover:bg-amber-700 hover:text-white border border-amber-200 dark:border-slate-700 transition-all active:scale-95 shrink-0 shadow-3xs"
             title="ভিউ কার্ড"
           >
-            <CreditCard size={11} />
+            <CreditCard size={10} />
           </button>
         </div>
       </div>
 
-      {/* RESPONSIVE ULTRA-COMPACT PANEL */}
-      <div className="w-full select-none mt-2">
-        <div className="flex flex-nowrap items-stretch gap-1 w-full overflow-x-auto scrollbar-none pb-1.5">
+      {/* RESPONSIVE ULTRA-COMPACT EXPANDABLE PANEL - WORDS DO NOT BREAK, BOXES EXPAND SIDEWAYS */}
+      <div className="w-full select-none mt-1 sm:mt-1.5">
+        <div className="flex items-stretch gap-0.5 sm:gap-1 w-full">
           
           {/* 1. LEFT ARROW */}
           <button 
             type="button"
-            className="shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-b from-blue-600 to-indigo-700 text-white cursor-pointer hover:from-blue-500 hover:to-indigo-600 active:scale-95 transition-all flex items-center justify-center shadow-3xs"
+            onClick={() => rowRef.current?.scrollBy({ left: -140, behavior: 'smooth' })}
+            title={language === 'bn' ? 'বামে স্ক্রোল করুন' : 'Scroll Left'}
+            className="shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md bg-gradient-to-b from-blue-600 to-indigo-700 text-white cursor-pointer hover:from-blue-500 hover:to-indigo-600 active:scale-95 transition-all flex items-center justify-center shadow-3xs z-10"
           >
-            <ArrowLeft className="w-3 h-3" />
+            <ArrowLeft className="w-2.5 h-2.5 sm:w-3 sm:h-3.5 md:w-3.5 md:h-4" />
           </button>
 
-          {/* 2. পূর্ববর্তী তারিখ (PREVIOUS DATE) */}
-          <div className="flex-1 min-w-[55px] sm:min-w-[75px] md:w-[90px] md:shrink-0 bg-gradient-to-br from-blue-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-blue-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-blue-500 uppercase tracking-widest leading-none mb-0.5">
-                {language === 'bn' ? 'পূর্ববর্তী' : 'PREV'}
-              </p>
-              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
-                {language === 'bn' ? 'তারিখ' : 'DATE'}
-              </p>
-            </div>
-            <div className="pt-0.5">
+          {/* HORIZONTALLY SCROLLABLE INNER ROW */}
+          <div 
+            ref={rowRef}
+            className="flex-1 min-w-0 flex flex-nowrap items-stretch gap-0.5 sm:gap-1 overflow-x-auto scrollbar-none py-0.5 scroll-smooth"
+          >
+
+            {/* 2. পূর্ববর্তী তারিখ (PREVIOUS DATE) */}
+            <div 
+              title={language === 'bn' ? 'পূর্ববর্তী তারিখ' : 'Previous Date'}
+              className="shrink-0 min-w-fit bg-gradient-to-br from-blue-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-blue-150/40 dark:border-slate-750 px-2 sm:px-2.5 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]"
+            >
               {isEditMode ? (
                 <input
                   type="text"
                   value={prevDate}
                   onChange={(e) => setPrevDate(e.target.value)}
-                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-blue-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                  placeholder="02/11"
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-blue-300 rounded text-[8px] sm:text-[10px] md:text-[12px] font-black text-slate-800 dark:text-white text-center focus:outline-none whitespace-nowrap min-w-[50px]"
                 />
               ) : (
-                <p className="text-[9px] md:text-xs font-black text-slate-800 dark:text-white leading-none">
-                  {prevDate || '---'}
+                <p className="text-[8px] sm:text-[10px] md:text-[12px] font-black text-slate-800 dark:text-white leading-none text-center whitespace-nowrap">
+                  {formatDayMonth(prevDate) || (language === 'bn' ? 'পূর্ব তারিখ' : 'Prev')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* 3. মামলা নং (CASE NUMBER) - LARGE CENTRAL GRADIENT */}
-          <div className="flex-2 min-w-[80px] sm:min-w-[100px] md:w-[120px] md:shrink-0 bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-800 text-white rounded-xl p-1 shadow-2xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-indigo-200 uppercase tracking-widest leading-none">
-                {language === 'bn' ? 'মামলা নং' : 'CASE NO'}
-              </p>
-            </div>
-            <div className="pt-0.5">
+            {/* 3. মামলা নং (CASE NUMBER) - LARGE CENTRAL GRADIENT */}
+            <div 
+              title={language === 'bn' ? 'মামলা নং' : 'Case Number'}
+              className="shrink-0 min-w-fit bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-800 text-white rounded sm:rounded-lg px-2.5 sm:px-3 shadow-2xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]"
+            >
               {isEditMode ? (
                 <input
                   type="text"
                   value={caseNumber}
                   onChange={(e) => setCaseNumber(e.target.value)}
-                  className="w-full px-1 py-0.5 bg-indigo-900/60 border border-indigo-450 rounded text-[8px] font-bold text-white focus:outline-none"
+                  placeholder={language === 'bn' ? 'মামলা নং' : 'Case No'}
+                  className="px-1 py-0 bg-indigo-900/60 border border-indigo-450 rounded text-[8.5px] sm:text-[10.5px] md:text-[12.5px] font-black text-white text-center focus:outline-none whitespace-nowrap min-w-[75px]"
                 />
               ) : (
-                <p className="text-[9px] md:text-xs font-black tracking-tight leading-none truncate">
-                  {caseNumber || '---'}
+                <p className="text-[8.5px] sm:text-[10.5px] md:text-[12.5px] font-black tracking-tight leading-none text-center whitespace-nowrap">
+                  {caseNumber || (language === 'bn' ? 'মামলা নং' : 'CASE NO')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* 4. বাদীর নাম (PLAINTIFF) */}
-          <div className="flex-1.5 min-w-[65px] sm:min-w-[80px] md:w-[100px] md:shrink-0 bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-orange-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-orange-500 uppercase tracking-widest leading-none mb-0.5">
-                {language === 'bn' ? 'বাদীর' : 'PLAINTIFF'}
-              </p>
-              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
-                {language === 'bn' ? 'নাম' : 'NAME'}
-              </p>
-            </div>
-            <div className="pt-0.5">
+            {/* 4. বাদীর নাম (PLAINTIFF) */}
+            <div 
+              title={petitionerInfo.fullNames ? `${language === 'bn' ? 'বাদী' : 'Plaintiff'}:\n${petitionerInfo.fullNames}` : (language === 'bn' ? 'বাদীর নাম' : 'Plaintiff')}
+              className="shrink-0 min-w-fit bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-orange-150/40 dark:border-slate-750 px-2.5 sm:px-3 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]"
+            >
               {isEditMode ? (
                 <input
                   type="text"
                   value={petitioner}
                   onChange={(e) => setPetitioner(e.target.value)}
-                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-orange-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                  placeholder={language === 'bn' ? 'বাদী' : 'Plaintiff'}
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-orange-300 rounded text-[8px] sm:text-[9.5px] md:text-[11.5px] font-black text-slate-800 dark:text-white text-center focus:outline-none whitespace-nowrap min-w-[75px]"
                 />
               ) : (
-                <p className="text-[8px] md:text-[10px] font-black text-slate-800 dark:text-white leading-tight truncate">
-                  {petitioner || '---'}
+                <p className="text-[8px] sm:text-[9.5px] md:text-[11.5px] font-black text-slate-800 dark:text-white leading-none text-center whitespace-nowrap">
+                  {petitionerInfo.formatted || (language === 'bn' ? 'বাদী' : 'Plaintiff')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* 5. V/S (VERSUS) */}
-          <div className="shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded-lg shadow-3xs flex items-center justify-center self-center">
-            <p className="text-[9px] font-black tracking-tighter leading-none">
-              V/S
-            </p>
-          </div>
-
-          {/* 6. আসামীর নাম (DEFENDANT) */}
-          <div className="flex-1.5 min-w-[65px] sm:min-w-[80px] md:w-[100px] md:shrink-0 bg-gradient-to-br from-emerald-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-emerald-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-emerald-500 uppercase tracking-widest leading-none mb-0.5">
-                {language === 'bn' ? 'আসামীর' : 'DEFENDANT'}
-              </p>
-              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
-                {language === 'bn' ? 'নাম' : 'NAME'}
+            {/* 5. V/S (VERSUS) */}
+            <div className="shrink-0 px-1.5 sm:px-2 bg-gradient-to-br from-purple-600 to-indigo-700 text-white rounded sm:rounded-md shadow-3xs flex items-center justify-center self-stretch">
+              <p className="text-[8.5px] sm:text-[10px] md:text-[12px] font-black tracking-tighter leading-none whitespace-nowrap">
+                V/S
               </p>
             </div>
-            <div className="pt-0.5">
+
+            {/* 6. আসামীর নাম (DEFENDANT) */}
+            <div 
+              title={respondentInfo.fullNames ? `${language === 'bn' ? 'আসামী' : 'Defendant'}:\n${respondentInfo.fullNames}` : (language === 'bn' ? 'আসামীর নাম' : 'Defendant')}
+              className="shrink-0 min-w-fit bg-gradient-to-br from-emerald-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-emerald-150/40 dark:border-slate-750 px-2.5 sm:px-3 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]"
+            >
               {isEditMode ? (
                 <input
                   type="text"
                   value={respondent}
                   onChange={(e) => setRespondent(e.target.value)}
-                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-emerald-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                  placeholder={language === 'bn' ? 'আসামী' : 'Defendant'}
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-emerald-300 rounded text-[8px] sm:text-[9.5px] md:text-[11.5px] font-black text-slate-800 dark:text-white text-center focus:outline-none whitespace-nowrap min-w-[75px]"
                 />
               ) : (
-                <p className="text-[8px] md:text-[10px] font-black text-slate-800 dark:text-white leading-tight truncate">
-                  {respondent || '---'}
+                <p className="text-[8px] sm:text-[9.5px] md:text-[11.5px] font-black text-slate-800 dark:text-white leading-none text-center whitespace-nowrap">
+                  {respondentInfo.formatted || (language === 'bn' ? 'আসামী' : 'Defendant')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* 7. পরবর্তী তারিখ (NEXT DATE) */}
-          <div className="flex-1 min-w-[55px] sm:min-w-[75px] md:w-[90px] md:shrink-0 bg-gradient-to-br from-sky-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-sky-150/40 dark:border-slate-750 p-1 shadow-3xs flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-sky-500 uppercase tracking-widest leading-none mb-0.5">
-                {language === 'bn' ? 'পরবর্তী' : 'NEXT'}
-              </p>
-              <p className="text-[7px] md:text-[9px] font-black text-slate-800 dark:text-white leading-none">
-                {language === 'bn' ? 'তারিখ' : 'DATE'}
-              </p>
-            </div>
-            <div className="pt-0.5">
+            {/* 7. পরবর্তী তারিখ (NEXT DATE) */}
+            <div 
+              onClick={openDatePicker}
+              title={language === 'bn' ? 'পরবর্তী তারিখ (ক্যালেন্ডার খুলতে ক্লিক করুন)' : 'Next Date (Click to open calendar)'}
+              className="shrink-0 min-w-fit bg-gradient-to-br from-sky-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-sky-150/40 dark:border-slate-750 px-2 sm:px-2.5 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px] cursor-pointer hover:border-sky-300 dark:hover:border-sky-500 hover:shadow-2xs active:scale-[0.98] transition-all"
+            >
               {isEditMode ? (
                 <input
                   type="text"
-                  value={nextDate}
+                  value={formatDayMonth(nextDate) || nextDate}
+                  onClick={openDatePicker}
                   onChange={(e) => setNextDate(e.target.value)}
-                  className="w-full px-1 py-0.5 bg-white dark:bg-slate-800 border border-sky-300 rounded text-[8px] font-bold text-slate-800 dark:text-white focus:outline-none"
+                  placeholder="02/11"
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-sky-300 rounded text-[8px] sm:text-[10px] md:text-[12px] font-black text-slate-800 dark:text-white text-center focus:outline-none whitespace-nowrap min-w-[50px] cursor-pointer"
                 />
               ) : (
-                <p className="text-[9px] md:text-xs font-black text-slate-800 dark:text-white leading-none">
-                  {nextDate || '---'}
+                <p className="text-[8px] sm:text-[10px] md:text-[12px] font-black text-slate-800 dark:text-white leading-none text-center whitespace-nowrap">
+                  {formatDayMonth(nextDate) || (language === 'bn' ? 'পর তারিখ' : 'Next')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* 8. ACTION SECTION - 2X2 MINI GRID */}
-          <div className="flex-2 min-w-[90px] sm:min-w-[110px] md:w-[120px] md:shrink-0 p-0.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/50 dark:border-slate-750/50 flex flex-col justify-center min-h-[40px] md:min-h-[60px]">
-            <div className="grid grid-cols-2 gap-0.5 h-full">
-              
-              <button
-                type="button"
-                onClick={() => setOrder('আদেশ')}
-                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
-                  order === 'আদেশ' 
-                    ? 'bg-emerald-600 text-white shadow-3xs' 
-                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
-                }`}
-              >
-                <span className="text-[6px] md:text-[8px] font-black leading-none">
-                  {language === 'bn' ? 'আদেশ' : 'ORDER'}
-                </span>
-              </button>
+            {/* 8. ACTION SECTION - উপরে আদেশ ও নিচে পদক্ষেপ */}
+            <div className="shrink-0 min-w-fit px-1.5 py-0.5 bg-slate-50 dark:bg-slate-800/40 rounded sm:rounded-lg border border-slate-200/50 dark:border-slate-750/50 flex flex-col justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]">
+              <div className="flex flex-col gap-0.5 h-full justify-between">
+                
+                {/* উপরে আদেশ */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrder('আদেশ');
+                    setShowOrderModal(true);
+                  }}
+                  className={`flex-1 rounded px-1.5 flex items-center justify-center transition-all leading-none cursor-pointer ${
+                    order === 'আদেশ' 
+                      ? 'bg-emerald-600 text-white shadow-3xs' 
+                      : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-emerald-50'
+                  }`}
+                  title={language === 'bn' ? 'মামলার আদেশ বিবরণ দেখুন (ক্লিক করুন)' : 'View Order Details (Click)'}
+                >
+                  <span className="text-[6.5px] sm:text-[8px] md:text-[9.5px] font-black leading-none whitespace-nowrap">
+                    {language === 'bn' ? 'আদেশ' : 'ORDER'}
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setOrder('পদক্ষেপ')}
-                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
-                  order === 'পদক্ষেপ' 
-                    ? 'bg-cyan-500 text-white shadow-3xs' 
-                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
-                }`}
-              >
-                <span className="text-[6px] md:text-[8px] font-black leading-none">
-                  {language === 'bn' ? 'পদক্ষেপ' : 'STEP'}
-                </span>
-              </button>
+                {/* নিচে পদক্ষেপ */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrder('পদক্ষেপ');
+                    setShowStepModal(true);
+                  }}
+                  className={`flex-1 rounded px-1.5 flex items-center justify-center transition-all leading-none cursor-pointer ${
+                    order === 'পদক্ষেপ' 
+                      ? 'bg-cyan-600 text-white shadow-3xs' 
+                      : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-cyan-50'
+                  }`}
+                  title={language === 'bn' ? 'পদক্ষেপ ও ছবি আপলোড (ক্লিক করুন)' : 'Step & Photo Upload (Click)'}
+                >
+                  <span className="text-[6.5px] sm:text-[8px] md:text-[9.5px] font-black leading-none whitespace-nowrap">
+                    {language === 'bn' ? 'পদক্ষেপ' : 'STEP'}
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setOrder('হাজিরা')}
-                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
-                  order === 'হাজিরা' 
-                    ? 'bg-purple-600 text-white shadow-3xs' 
-                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
-                }`}
-              >
-                <span className="text-[6px] md:text-[8px] font-black leading-none">
-                  {language === 'bn' ? 'হাজিরা' : 'ATTEND'}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setOrder('জরি')}
-                className={`rounded-lg p-0.5 flex flex-col items-center justify-center transition-all ${
-                  order === 'জরি' 
-                    ? 'bg-rose-500 text-white shadow-3xs' 
-                    : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 text-[7px] font-bold border border-slate-100 dark:border-slate-800'
-                }`}
-              >
-                <span className="text-[6px] md:text-[8px] font-black leading-none">
-                  {language === 'bn' ? 'জরি' : 'FINE'}
-                </span>
-              </button>
-
+              </div>
             </div>
-          </div>
 
-          {/* 9. EDIT BUTTON */}
-          <button
-            type="button"
-            onClick={() => setIsEditMode(!isEditMode)}
-            className={`shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-auto rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all self-center ${
-              isEditMode 
-                ? 'bg-amber-500 text-slate-900 scale-[1.02]' 
-                : 'bg-gradient-to-b from-blue-600 to-indigo-700 text-white hover:from-blue-500 hover:to-indigo-600 active:scale-95'
-            }`}
-          >
-            <Edit2 className="w-3 h-3" />
-            <span className="text-[6px] md:text-[8px] font-black mt-0.5">EDIT</span>
-          </button>
+            {/* 9. EDIT BUTTON */}
+            <button
+              type="button"
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md flex flex-col items-center justify-center cursor-pointer transition-all py-0.5 shadow-3xs ${
+                isEditMode 
+                  ? 'bg-amber-500 text-slate-900 scale-[1.02]' 
+                  : 'bg-gradient-to-b from-blue-600 to-indigo-700 text-white hover:from-blue-500 hover:to-indigo-600 active:scale-95'
+              }`}
+            >
+              <Edit2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5" />
+              <span className="text-[4.5px] sm:text-[5.5px] md:text-[6.5px] font-black mt-0.5 leading-none whitespace-nowrap">EDIT</span>
+            </button>
 
-          {/* 10. PARTY BOXES - 3 separate cards */}
-          
-          {/* Column A: নিজ পক্ষ */}
-          <div className="flex-1.5 min-w-[75px] sm:min-w-[90px] md:w-[110px] md:shrink-0 bg-gradient-to-br from-purple-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-purple-150/40 dark:border-slate-750 p-1 flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-purple-600 dark:text-purple-400 uppercase leading-none">
-                {language === 'bn' ? 'নিজ পক্ষ' : 'OUR SIDE'}
-              </p>
-            </div>
-            <div className="flex-1 bg-purple-50/50 dark:bg-purple-950/20 rounded-lg p-0.5 mt-0.5 overflow-y-auto max-h-[30px] md:max-h-none">
+            {/* 9.1 WHATSAPP NOTIFY BUTTON */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onWhatsAppShare) {
+                  onWhatsAppShare({
+                    ...c,
+                    nextDate: nextDate || c.nextDate,
+                    order: order || c.order
+                  }, 'petitioner');
+                } else {
+                  const mobile = c.petitionerMobile || c.respondentMobile || '';
+                  const cleanDigits = mobile.replace(/[^0-9]/g, '');
+                  const intl = cleanDigits.startsWith('88') ? cleanDigits : (cleanDigits ? `88${cleanDigits}` : '');
+                  const trackUrl = getMagicCaseTrackUrl({ caseId: c.id, caseNumber: c.caseNumber });
+                  const msg = `শ্রদ্ধেয় মক্কেল, আপনার মামলা নং ${c.caseNumber} এর পরবর্তী শুনানির তারিখ: ${nextDate || c.nextDate || 'নির্ধারিত নয়'}। আদালতের পদক্ষেপ: ${order || c.order || 'আদেশ'}। সরাসরি মামলার বিবরণ ও ১-ট্যাপে অটো নোটিফিকেশন পেতে লিংকে প্রবেশ করুন: ${trackUrl}`;
+                  const waUrl = intl ? `https://wa.me/${intl}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+                  window.open(waUrl, '_blank');
+                }
+              }}
+              title={language === 'bn' ? 'মক্কেলকে হোয়াটসঅ্যাপে তারিখ ও ম্যাজিক ট্র্যাকিং লিংক পাঠান' : 'Send Date & Magic Link to Client via WhatsApp'}
+              className="shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md bg-[#25D366] hover:bg-[#1fb355] text-white flex flex-col items-center justify-center cursor-pointer transition-all py-0.5 shadow-3xs active:scale-95"
+            >
+              <MessageSquare className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5" />
+              <span className="text-[4px] sm:text-[5px] md:text-[6px] font-black mt-0.5 leading-none whitespace-nowrap">WA</span>
+            </button>
+
+            {/* 10. PARTY BOXES - 3 separate cards */}
+            
+            {/* Column A: নিজ পক্ষ */}
+            <div 
+              title={language === 'bn' ? 'নিজ পক্ষ' : 'Our Side'}
+              className="shrink-0 min-w-fit px-2 sm:px-2.5 bg-gradient-to-br from-purple-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-purple-150/40 dark:border-slate-750 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]"
+            >
               {isEditMode ? (
-                <textarea
+                <input
+                  type="text"
                   value={clientNotes1}
                   onChange={(e) => setClientNotes1(e.target.value)}
-                  className="w-full h-full bg-white dark:bg-slate-800 border border-purple-300 rounded p-0.5 text-[8px] font-bold text-slate-800 dark:text-white resize-none"
+                  placeholder={language === 'bn' ? 'নিজ পক্ষ' : 'Our side'}
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-purple-300 rounded text-[7px] sm:text-[8.5px] md:text-[10px] font-bold text-slate-800 dark:text-white outline-none whitespace-nowrap min-w-[75px]"
                 />
               ) : (
-                <p className="text-[8px] md:text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
-                  {clientNotes1 || (language === 'bn' ? 'তথ্য নেই।' : 'No info.')}
+                <p className="text-[7.5px] sm:text-[9px] md:text-[10.5px] font-bold text-slate-800 dark:text-slate-200 leading-none text-center whitespace-nowrap">
+                  {clientNotes1 || (language === 'bn' ? 'নিজ পক্ষ' : 'Our side')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* Column B: নিজ পক্ষ */}
-          <div className="flex-1.5 min-w-[75px] sm:min-w-[90px] md:w-[110px] md:shrink-0 bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-orange-150/40 dark:border-slate-750 p-1 flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-orange-600 dark:text-orange-400 uppercase leading-none">
-                {language === 'bn' ? 'নিজ পক্ষ' : 'OUR SIDE B'}
-              </p>
-            </div>
-            <div className="flex-1 bg-orange-50/50 dark:bg-orange-950/20 rounded-lg p-0.5 mt-0.5 overflow-y-auto max-h-[30px] md:max-h-none">
+            {/* Column B: বিচারকের আদেশ */}
+            <div 
+              onClick={() => !isEditMode && setShowOrderModal(true)}
+              title={language === 'bn' ? 'বিচারকের আদেশ (ক্লিক করে বিস্তারিত দেখুন)' : 'Court Order (Click to view details)'}
+              className="shrink-0 min-w-fit px-2 sm:px-2.5 bg-gradient-to-br from-orange-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-orange-150/40 dark:border-slate-750 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px] cursor-pointer hover:border-orange-300 transition-all"
+            >
               {isEditMode ? (
-                <textarea
+                <input
+                  type="text"
                   value={clientNotes2}
                   onChange={(e) => setClientNotes2(e.target.value)}
-                  className="w-full h-full bg-white dark:bg-slate-800 border border-orange-300 rounded p-0.5 text-[8px] font-bold text-slate-800 dark:text-white resize-none"
+                  placeholder={language === 'bn' ? 'আদেশ...' : 'Order...'}
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-orange-300 rounded text-[7px] sm:text-[8.5px] md:text-[10px] font-bold text-slate-800 dark:text-white outline-none whitespace-nowrap min-w-[75px]"
                 />
               ) : (
-                <p className="text-[8px] md:text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
-                  {clientNotes2 || (language === 'bn' ? 'তথ্য নেই।' : 'No info.')}
+                <p className="text-[7.5px] sm:text-[9px] md:text-[10.5px] font-bold text-slate-800 dark:text-slate-200 leading-none text-center whitespace-nowrap">
+                  {clientNotes2 || (language === 'bn' ? 'আদেশ' : 'Order')}
                 </p>
               )}
             </div>
-          </div>
 
-          {/* 11. SAVE BUTTON */}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!isEditMode}
-            className={`shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-auto rounded-lg flex flex-col items-center justify-center transition-all self-center ${
-              isEditMode 
-                ? 'bg-gradient-to-b from-teal-500 to-emerald-600 text-white scale-[1.02]' 
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none'
-            }`}
-          >
-            <Save className="w-3 h-3" />
-            <span className="text-[6px] md:text-[8px] font-black mt-0.5">SAVE</span>
-          </button>
+            {/* 11. SAVE BUTTON */}
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!isEditMode}
+              className={`shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md flex flex-col items-center justify-center transition-all py-0.5 shadow-3xs ${
+                isEditMode 
+                  ? 'bg-gradient-to-b from-teal-500 to-emerald-600 text-white scale-[1.02]' 
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none'
+              }`}
+            >
+              <Save className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5" />
+              <span className="text-[4.5px] sm:text-[5.5px] md:text-[6.5px] font-black mt-0.5 leading-none whitespace-nowrap">SAVE</span>
+            </button>
 
-          {/* Column C: উত্তর পক্ষ */}
-          <div className="flex-1.5 min-w-[75px] sm:min-w-[90px] md:w-[110px] md:shrink-0 bg-gradient-to-br from-emerald-50 to-white dark:from-slate-800 dark:to-slate-850 rounded-xl border border-emerald-150/40 dark:border-slate-750 p-1 flex flex-col justify-between min-h-[40px] md:min-h-[60px]">
-            <div>
-              <p className="text-[6px] md:text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase leading-none">
-                {language === 'bn' ? 'উত্তর পক্ষ' : 'OPPOSITE'}
-              </p>
-            </div>
-            <div className="flex-1 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg p-0.5 mt-0.5 overflow-y-auto max-h-[30px] md:max-h-none">
+            {/* Column C: উত্তর পক্ষ */}
+            <div 
+              title={language === 'bn' ? 'উত্তর পক্ষ' : 'Opposite Side'}
+              className="shrink-0 min-w-fit px-2 sm:px-2.5 bg-gradient-to-br from-emerald-50 to-white dark:from-slate-800 dark:to-slate-850 rounded sm:rounded-lg border border-emerald-150/40 dark:border-slate-750 shadow-3xs flex items-center justify-center min-h-[20px] sm:min-h-[23px] md:min-h-[26px]"
+            >
               {isEditMode ? (
-                <textarea
+                <input
+                  type="text"
                   value={oppositeNotes}
                   onChange={(e) => setOppositeNotes(e.target.value)}
-                  className="w-full h-full bg-white dark:bg-slate-800 border border-emerald-300 rounded p-0.5 text-[8px] font-bold text-slate-800 dark:text-white resize-none"
+                  placeholder={language === 'bn' ? 'উত্তর পক্ষ' : 'Opposite'}
+                  className="px-1 py-0 bg-white dark:bg-slate-800 border border-emerald-300 rounded text-[7px] sm:text-[8.5px] md:text-[10px] font-bold text-slate-800 dark:text-white outline-none whitespace-nowrap min-w-[75px]"
                 />
               ) : (
-                <p className="text-[8px] md:text-[9px] font-bold text-slate-700 dark:text-slate-300 leading-tight">
-                  {oppositeNotes || (language === 'bn' ? 'তথ্য নেই।' : 'No info.')}
+                <p className="text-[7.5px] sm:text-[9px] md:text-[10.5px] font-bold text-slate-800 dark:text-slate-200 leading-none text-center whitespace-nowrap">
+                  {oppositeNotes || (language === 'bn' ? 'উত্তর পক্ষ' : 'Opposite')}
                 </p>
               )}
             </div>
+
           </div>
 
           {/* 12. RIGHT ARROW */}
           <button 
             type="button"
-            className="shrink-0 w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-b from-blue-600 to-indigo-700 text-white cursor-pointer hover:from-blue-500 hover:to-indigo-600 active:scale-95 transition-all flex items-center justify-center shadow-3xs"
+            onClick={() => rowRef.current?.scrollBy({ left: 140, behavior: 'smooth' })}
+            title={language === 'bn' ? 'ডানে স্ক্রোল করুন' : 'Scroll Right'}
+            className="shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md bg-gradient-to-b from-blue-600 to-indigo-700 text-white cursor-pointer hover:from-blue-500 hover:to-indigo-600 active:scale-95 transition-all flex items-center justify-center shadow-3xs z-10"
           >
-            <ArrowRight className="w-3 h-3" />
+            <ArrowRight className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4" />
           </button>
 
         </div>
       </div>
+
+      {/* 13. Month Calendar Picker Modal - CURRENT MONTH VIEW */}
+      {showDatePicker && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-3 bg-black/50 backdrop-blur-[2px] animate-in fade-in duration-150 select-none"
+          onClick={() => setShowDatePicker(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-sky-200 dark:border-slate-750 w-full max-w-[310px] p-4 flex flex-col gap-3 text-slate-800 dark:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: Title and Close button */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-sky-500 text-white flex items-center justify-center shadow-xs">
+                  <CalendarIcon size={15} />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 leading-tight">
+                    {language === 'bn' ? 'পরবর্তী তারিখ নির্বাচন' : 'Select Next Date'}
+                  </h4>
+                  <p className="text-[9.5px] font-bold text-sky-600 dark:text-sky-400">
+                    {language === 'bn' ? 'তারিখে ক্লিক করলে পরবর্তী তারিখ হিসেবে সেট হবে' : 'Click any date to set as Next Date'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowDatePicker(false)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Month Navigation Row */}
+            <div className="flex items-center justify-between px-1">
+              <button
+                type="button"
+                onClick={() => setPickerMonth(new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() - 1, 1))}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg transition-all cursor-pointer"
+                title={language === 'bn' ? 'পূর্ববর্তী মাস' : 'Previous Month'}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              
+              <div className="text-center">
+                <span className="text-xs font-black text-slate-800 dark:text-white">
+                  {monthNamesBn[pickerMonth.getMonth()] || pickerMonth.toLocaleString('default', { month: 'long' })}{' '}
+                  {language === 'bn' ? toBn(pickerMonth.getFullYear()) : pickerMonth.getFullYear()}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPickerMonth(new Date())}
+                  className="px-2 py-0.5 text-[9px] font-bold rounded-md bg-sky-50 dark:bg-slate-800 text-sky-600 dark:text-sky-300 hover:bg-sky-100 transition-all border border-sky-150 dark:border-slate-700 cursor-pointer"
+                  title={language === 'bn' ? 'চলতি মাস' : 'Current Month'}
+                >
+                  {language === 'bn' ? 'চলতি মাস' : 'Current'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPickerMonth(new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 1))}
+                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg transition-all cursor-pointer"
+                  title={language === 'bn' ? 'পরবর্তী মাস' : 'Next Month'}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Days of Week Header */}
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {weekDaysShort.map((dayName, idx) => {
+                const isWeekend = idx === 5 || idx === 6; // Friday & Saturday
+                return (
+                  <span 
+                    key={dayName} 
+                    className={`text-[9px] font-black uppercase tracking-wider py-1 ${
+                      isWeekend ? 'text-rose-500' : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    {dayName}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* Month Days Grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {/* Blank days before 1st of month */}
+              {Array.from({ length: new Date(pickerMonth.getFullYear(), pickerMonth.getMonth(), 1).getDay() }, (_, i) => (
+                <div key={`blank-${i}`} className="w-full aspect-square" />
+              ))}
+
+              {/* Days of the month */}
+              {Array.from(
+                { length: new Date(pickerMonth.getFullYear(), pickerMonth.getMonth() + 1, 0).getDate() },
+                (_, i) => i + 1
+              ).map(day => {
+                const y = pickerMonth.getFullYear();
+                const m = String(pickerMonth.getMonth() + 1).padStart(2, '0');
+                const d = String(day).padStart(2, '0');
+                const dateStr = `${y}-${m}-${d}`;
+                const dmStr = `${d}/${m}`;
+
+                const todayObj = new Date();
+                const isToday = todayObj.getFullYear() === y && todayObj.getMonth() === pickerMonth.getMonth() && todayObj.getDate() === day;
+                const isCurrentNextDate = (
+                  nextDate === dateStr || 
+                  nextDate === dmStr || 
+                  formatDayMonth(nextDate) === dmStr
+                );
+                const dayOfWeek = new Date(y, pickerMonth.getMonth(), day).getDay();
+                const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectNextDate(dateStr);
+                    }}
+                    title={language === 'bn' ? `${toBn(day)} তারিখ পরবর্তী তারিখ হিসেবে সেট করুন` : `Set ${dateStr} as Next Date`}
+                    className={`w-full aspect-square rounded-lg flex flex-col items-center justify-center text-xs transition-all cursor-pointer relative active:scale-95 ${
+                      isCurrentNextDate
+                        ? 'bg-sky-600 text-white font-black shadow-sm scale-105 z-10'
+                        : isToday
+                          ? 'border border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-black'
+                          : isWeekend
+                            ? 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-slate-800 font-bold'
+                    }`}
+                  >
+                    <span>{language === 'bn' ? toBn(day) : day}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer with Today quick select and Cancel */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const today = new Date();
+                  const y = today.getFullYear();
+                  const m = String(today.getMonth() + 1).padStart(2, '0');
+                  const d = String(today.getDate()).padStart(2, '0');
+                  handleSelectNextDate(`${y}-${m}-${d}`);
+                }}
+                className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-all cursor-pointer active:scale-95"
+              >
+                {language === 'bn' ? 'আজকের তারিখ' : 'Today'}
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDatePicker(false);
+                }}
+                className="px-2.5 py-1 rounded-md text-slate-500 hover:text-slate-700 dark:text-slate-400 font-bold transition-all cursor-pointer active:scale-95"
+              >
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 14. Case Order Details Screen / Modal */}
+      {showOrderModal && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-150 select-none"
+          onClick={() => setShowOrderModal(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-emerald-200 dark:border-slate-750 w-full max-w-[390px] sm:max-w-[440px] p-4 sm:p-5 flex flex-col gap-3 text-slate-800 dark:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-xs">
+                  <Gavel size={16} />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 leading-tight">
+                    {language === 'bn' ? 'মামলার আদেশ বিবরণী' : 'Case Order Details'}
+                  </h4>
+                  <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    {language === 'bn' ? 'গত ধার্য তারিখের আদেশ' : 'Previous Hearing Order'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowOrderModal(false)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Case Info Ribbon */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="px-2 py-0.5 bg-indigo-600 text-white font-black text-[10px] rounded-md">
+                  {caseNumber || c.caseNumber || (language === 'bn' ? 'মামলা নং' : 'Case No')}
+                </span>
+                <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400">
+                  {c.courtName || (language === 'bn' ? 'আদালত' : 'Court')}
+                </span>
+              </div>
+              <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate">
+                <span>{petitionerInfo.formatted || petitioner || (language === 'bn' ? 'বাদী' : 'Petitioner')}</span>
+                <span className="text-purple-600 mx-1 font-black">VS</span>
+                <span>{respondentInfo.formatted || respondent || (language === 'bn' ? 'আসামী' : 'Respondent')}</span>
+              </div>
+              <div className="flex items-center justify-between text-[9px] font-bold text-slate-500 pt-1 border-t border-slate-200/40 dark:border-slate-700/40">
+                <span>
+                  {language === 'bn' ? 'গত তারিখ: ' : 'Prev Date: '}
+                  <strong className="text-slate-800 dark:text-slate-200">
+                    {formatDayMonth(prevDate || c.lastDate) || prevDate || c.lastDate || (language === 'bn' ? 'নির্ধারিত নয়' : 'None')}
+                  </strong>
+                </span>
+                <span>
+                  {language === 'bn' ? 'পরবর্তী তারিখ: ' : 'Next Date: '}
+                  <strong className="text-sky-600 dark:text-sky-400">
+                    {formatDayMonth(nextDate || c.nextDate) || nextDate || c.nextDate || (language === 'bn' ? 'নির্ধারিত নয়' : 'None')}
+                  </strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Core Section: গত তারিখের আদেশ */}
+            {(() => {
+              const lastDateStr = prevDate || c.lastDate;
+              const lastDateHistory = (c.history || []).find(h => h && (h.date === lastDateStr || h.date === c.lastDate));
+              const mostRecentHistory = (c.history || []).slice().reverse().find(h => h && h.date !== nextDate);
+              const previousOrder = lastDateHistory?.order || mostRecentHistory?.order || c.order || order || (language === 'bn' ? 'আদেশ' : 'Order');
+              const previousOrderDetails = lastDateHistory?.description || mostRecentHistory?.description || clientNotes2 || c.additionalOrder || '';
+
+              return (
+                <div className="p-3 bg-gradient-to-br from-emerald-50 to-teal-50/40 dark:from-emerald-950/40 dark:to-slate-850 rounded-xl border border-emerald-200 dark:border-emerald-800/60 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10.5px] font-black uppercase text-emerald-800 dark:text-emerald-400 flex items-center gap-1">
+                      ⚖️ {language === 'bn' ? 'গত তারিখের আদেশ' : 'Previous Date Order'}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black shadow-3xs">
+                      {previousOrder}
+                    </span>
+                  </div>
+
+                  {previousOrderDetails ? (
+                    <div className="bg-white dark:bg-slate-850 p-2.5 rounded-lg border border-emerald-200/60 dark:border-emerald-900/60 shadow-3xs">
+                      <p className="text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 leading-relaxed whitespace-pre-wrap">
+                        {previousOrderDetails}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-white/80 dark:bg-slate-850/80 p-2.5 rounded-lg border border-emerald-150 dark:border-emerald-900/40 text-center">
+                      <p className="text-[10.5px] font-semibold text-slate-600 dark:text-slate-300">
+                        {language === 'bn' 
+                          ? `গত তারিখে "${previousOrder}" আদেশ হিসেবে সিলেক্ট করা ছিল।` 
+                          : `"${previousOrder}" was selected as the order on the previous date.`
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Quick Order Selection Buttons */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[9.5px] font-black text-slate-500 uppercase tracking-wider">
+                {language === 'bn' ? 'আদেশ নির্বাচন / পরিবর্তন করুন' : 'Select / Change Order'}
+              </span>
+              <div className="grid grid-cols-4 gap-1">
+                {[
+                  { name: 'আদেশ', color: 'bg-emerald-600' },
+                  { name: 'হাজিরা', color: 'bg-blue-600' },
+                  { name: 'চার্জ', color: 'bg-amber-600' },
+                  { name: 'সাক্ষী', color: 'bg-teal-600' },
+                  { name: 'জেরা', color: 'bg-indigo-600' },
+                  { name: 'যুক্তিতর্ক', color: 'bg-purple-600' },
+                  { name: 'পদক্ষেপ', color: 'bg-cyan-600' },
+                  { name: 'সময়ের আবেদন', color: 'bg-rose-600' }
+                ].map(item => (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => {
+                      setOrder(item.name);
+                      if (onUpdateCaseLocal) {
+                        onUpdateCaseLocal(c.id, { order: item.name });
+                      }
+                      updateCase(c.id.toString(), { order: item.name }).catch(() => {});
+                    }}
+                    className={`py-1 px-1 rounded-md text-[9px] font-bold text-center transition-all cursor-pointer ${
+                      order === item.name 
+                        ? `${item.color} text-white shadow-3xs scale-102 font-black` 
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                    }`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Past orders list if available in history */}
+            {c.history && c.history.length > 0 && (
+              <div className="flex flex-col gap-1 max-h-[85px] overflow-y-auto pr-1">
+                <span className="text-[9px] font-black text-slate-400 uppercase">
+                  {language === 'bn' ? 'বিগত তারিখসমূহের আদেশের রেকর্ড' : 'Past Order Records'}
+                </span>
+                {c.history.slice(-3).reverse().map((h, i) => (
+                  <div key={i} className="flex items-center justify-between text-[9px] bg-slate-50 dark:bg-slate-800/40 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-800">
+                    <span className="font-bold text-slate-500">{formatDayMonth(h.date) || h.date}</span>
+                    <span className="font-black text-slate-700 dark:text-slate-200">{h.order || h.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Attached Documents / PDFs */}
+            {c.documents && c.documents.length > 0 && (
+              <div className="flex flex-col gap-1 max-h-[95px] overflow-y-auto pr-1">
+                <span className="text-[9px] font-black text-slate-400 uppercase flex items-center gap-1">
+                  <Paperclip size={10} />
+                  {language === 'bn' ? 'সংযুক্ত নথিপত্র ও পিডিএফ' : 'Attached Documents & PDFs'}
+                </span>
+                <div className="grid grid-cols-1 gap-1">
+                  {c.documents.map((doc, idx) => (
+                    <div 
+                      key={idx} 
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-[9px]"
+                    >
+                      <div className="flex items-center gap-1.5 truncate max-w-[210px]">
+                        {doc.type === 'pdf' || doc.name.endsWith('.pdf') ? (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-black text-[8px] flex items-center gap-0.5 shrink-0">
+                            📄 PDF
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-black text-[8px] flex items-center gap-0.5 shrink-0">
+                            🖼️ IMG
+                          </span>
+                        )}
+                        <span className="font-bold text-slate-700 dark:text-slate-200 truncate" title={doc.name}>
+                          {doc.name}
+                        </span>
+                      </div>
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-0.8 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[8.5px] flex items-center gap-1 shrink-0"
+                      >
+                        <Eye size={9} />
+                        <span>{language === 'bn' ? 'দেখুন' : 'View'}</span>
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const lastDateStr = prevDate || c.lastDate;
+                  const lastDateHistory = (c.history || []).find(h => h && (h.date === lastDateStr || h.date === c.lastDate));
+                  const mostRecentHistory = (c.history || []).slice().reverse().find(h => h && h.date !== nextDate);
+                  const pOrder = lastDateHistory?.order || mostRecentHistory?.order || c.order || order || 'আদেশ';
+                  const pDesc = lastDateHistory?.description || mostRecentHistory?.description || clientNotes2 || c.additionalOrder || '';
+                  const copyText = `${caseNumber || c.caseNumber} - ${language === 'bn' ? 'গত তারিখের আদেশ' : 'Previous Order'}: ${pOrder} ${pDesc ? `(${pDesc})` : ''}`;
+                  navigator.clipboard.writeText(copyText);
+                  setCopiedOrder(true);
+                  setTimeout(() => setCopiedOrder(false), 2000);
+                }}
+                className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+              >
+                {copiedOrder ? (
+                  <>
+                    <CheckCircle size={11} className="text-emerald-500" />
+                    <span>{language === 'bn' ? 'কপি হয়েছে' : 'Copied'}</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText size={11} />
+                    <span>{language === 'bn' ? 'আদেশ কপি করুন' : 'Copy Order'}</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowOrderModal(false)}
+                className="px-3.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all cursor-pointer shadow-3xs active:scale-95"
+              >
+                {language === 'bn' ? 'ঠিক আছে' : 'OK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 15. Case Step & Photo Upload Modal - আলাদা ভিউ যাতে ২টি বক্স রয়েছে */}
+      {showStepModal && (
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-[2px] animate-in fade-in duration-150 select-none"
+          onClick={() => setShowStepModal(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-cyan-200 dark:border-slate-750 w-full max-w-[440px] sm:max-w-[480px] p-4 sm:p-5 flex flex-col gap-3.5 text-slate-800 dark:text-white max-h-[92vh] overflow-y-auto custom-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Hidden Camera, Gallery & PDF File Inputs */}
+            <input 
+              ref={cameraInputRef}
+              type="file" 
+              accept="image/*" 
+              capture="environment" 
+              className="hidden" 
+              onChange={handleFilesAdded} 
+            />
+            <input 
+              ref={galleryInputRef}
+              type="file" 
+              accept="image/*" 
+              multiple 
+              className="hidden" 
+              onChange={handleFilesAdded} 
+            />
+            <input 
+              ref={pdfFileInputRef}
+              type="file" 
+              accept="application/pdf,.pdf" 
+              className="hidden" 
+              onChange={handlePdfFileAdded} 
+            />
+
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center shadow-xs">
+                  <Camera size={16} />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 leading-tight">
+                    {language === 'bn' ? 'মামলার পদক্ষেপ ও ছবি আপলোড' : 'Case Step & Photo Upload'}
+                  </h4>
+                  <p className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400">
+                    {language === 'bn' ? 'পদক্ষেপ নির্বাচন এবং স্বয়ংক্রিয় রি-সাইজ ছবি আপলোড' : 'Select Step & Upload Optimized Photos'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowStepModal(false)}
+                className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Case Info Ribbon */}
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700 flex flex-col gap-1 text-[10px]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-2 py-0.5 bg-indigo-600 text-white font-black rounded-md">
+                    {caseNumber || c.caseNumber || 'মামলা নং'}
+                  </span>
+                  <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold ${
+                    c.caseType?.toLowerCase().includes('civil') || c.caseType?.includes('দেওয়ানী')
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                      : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                  }`}>
+                    {c.caseType || (selectedStepType === 'civil' ? 'Civil' : 'Criminal')}
+                  </span>
+                </div>
+                <span className="text-[9px] font-bold text-slate-500 truncate max-w-[150px]">
+                  {c.courtName || 'আদালত'}
+                </span>
+              </div>
+              <div className="font-semibold text-slate-700 dark:text-slate-300 truncate">
+                <span>{petitionerInfo.formatted || petitioner || 'বাদী'}</span>
+                <span className="text-purple-600 mx-1 font-black">VS</span>
+                <span>{respondentInfo.formatted || respondent || 'বিবাদী'}</span>
+              </div>
+            </div>
+
+            {/* ১ম বক্স: কি পদক্ষেপ নেওয়া হয়েছে তা নির্বাচন (BOX 1: STEP SELECTION) */}
+            <div className="p-3 bg-gradient-to-br from-cyan-50/70 to-blue-50/40 dark:from-cyan-950/30 dark:to-slate-850 rounded-2xl border border-cyan-200 dark:border-cyan-800/60 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase text-cyan-900 dark:text-cyan-300 flex items-center gap-1">
+                  📌 {language === 'bn' ? '১ম বক্স: পদক্ষেপ নির্বাচন করুন' : 'Box 1: Select Step Taken'}
+                </span>
+                <span className="text-[9.5px] font-bold px-2 py-0.5 rounded-full bg-cyan-600 text-white">
+                  {selectedStep}
+                </span>
+              </div>
+
+              {/* Case Type Toggle (ফৌজদারি / দেওয়ানী) */}
+              <div className="flex items-center gap-1 bg-white/80 dark:bg-slate-800 p-1 rounded-xl border border-cyan-150 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStepType('criminal')}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[9.5px] font-black transition-all cursor-pointer text-center ${
+                    selectedStepType === 'criminal'
+                      ? 'bg-rose-600 text-white shadow-3xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  ⚖️ {language === 'bn' ? 'ফৌজদারি পদক্ষেপ' : 'Criminal Steps'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStepType('civil')}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[9.5px] font-black transition-all cursor-pointer text-center ${
+                    selectedStepType === 'civil'
+                      ? 'bg-blue-600 text-white shadow-3xs'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  📜 {language === 'bn' ? 'দেওয়ানী পদক্ষেপ' : 'Civil Steps'}
+                </button>
+              </div>
+
+              {/* Step Chips Grid */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 max-h-[140px] overflow-y-auto pr-0.5 custom-scrollbar">
+                {(selectedStepType === 'criminal' ? [
+                  'হাজিরা',
+                  'সময় প্রার্থনা',
+                  'জামিন দরখাস্ত',
+                  'আত্মসমর্পণ ও জামিন',
+                  'চার্জ শুনানি',
+                  'চার্জ গঠন',
+                  'সাক্ষ্য গ্রহণ (PW)',
+                  'সাক্ষীর জেরা',
+                  '৩৪২ পরীক্ষা',
+                  'সাফাই সাক্ষী (DW)',
+                  'যুক্তিতর্ক',
+                  'রায়',
+                  'আপিল / রিভিশন',
+                  'ওয়ারেন্ট প্রত্যাহার',
+                  'নারাজি দরখাস্ত'
+                ] : [
+                  'সমন জারি / ফেরত',
+                  'লিখিত জবাব (WS)',
+                  'আপোষ মীমাংসা (ADR)',
+                  'বিচার্য বিষয় (ইস্যু)',
+                  'দালিলিক প্রমাণ (SD)',
+                  'চূড়ান্ত শুনানি (PH)',
+                  'বাদীর সাক্ষ্য (PW)',
+                  'জেরা',
+                  'বিবাদীর সাক্ষ্য (DW)',
+                  'যুক্তিতর্ক',
+                  'রায় ও ডিক্রি',
+                  'অস্থায়ী নিষেধাজ্ঞা',
+                  'তদন্ত / কমিশনার',
+                  'রিভিউ / আপিল',
+                  'সময় প্রার্থনা'
+                ]).map(stepName => (
+                  <button
+                    key={stepName}
+                    type="button"
+                    onClick={() => setSelectedStep(stepName)}
+                    className={`py-1 px-1 rounded-lg text-[9px] font-bold text-center transition-all cursor-pointer truncate ${
+                      selectedStep === stepName
+                        ? `${selectedStepType === 'criminal' ? 'bg-rose-600' : 'bg-blue-600'} text-white shadow-3xs font-black scale-102`
+                        : 'bg-white/90 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700 hover:bg-cyan-50'
+                    }`}
+                    title={stepName}
+                  >
+                    {stepName}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom step note or detail input */}
+              <div className="flex flex-col gap-1">
+                <input
+                  type="text"
+                  value={stepCustomNotes}
+                  onChange={(e) => setStepCustomNotes(e.target.value)}
+                  placeholder={language === 'bn' ? 'পদক্ষেপের অতিরিক্ত বিবরণ লিখুন (যেমন: ৫ দিন সময় মঞ্জুর)...' : 'Additional step notes (e.g., granted 5 days)...'}
+                  className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-800 border border-cyan-200 dark:border-slate-700 rounded-xl text-[10px] font-bold text-slate-800 dark:text-white outline-none focus:ring-1 focus:ring-cyan-500"
+                />
+              </div>
+            </div>
+
+            {/* ২য় বক্স: ছবি ও পিডিএফ আপলোড (BOX 2: PHOTO & PDF DOCUMENT UPLOAD) */}
+            <div className="p-3 bg-gradient-to-br from-amber-50/70 to-orange-50/40 dark:from-amber-950/30 dark:to-slate-850 rounded-2xl border border-amber-200 dark:border-amber-800/60 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                  📁 {language === 'bn' ? '২য় বক্স: ফাইল ও ডকুমেন্ট আপলোড' : 'Box 2: File & Document Upload'}
+                </span>
+                <span className="text-[8.5px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  ⚡ {language === 'bn' ? 'স্টোরেজ অপ্টিমাইজেশন' : 'Storage Optimization'}
+                </span>
+              </div>
+
+              {/* USER-FRIENDLY FORMAT TOGGLE: Image (Camera) vs PDF (Document Upload) */}
+              <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-amber-100/60 dark:bg-slate-800/80 border border-amber-200/80 dark:border-slate-700">
+                <div className="flex items-center justify-between text-[9px] font-bold text-slate-700 dark:text-slate-300">
+                  <span className="flex items-center gap-1">
+                    ⚖️ {language === 'bn' ? 'সংরক্ষণ ফরম্যাট পছন্দ করুন:' : 'Select Format to Optimize Storage:'}
+                  </span>
+                  <span className={`text-[8px] font-black px-1.5 py-0.2 rounded-full ${
+                    selectedUploadFormat === 'pdf' 
+                      ? 'bg-emerald-600 text-white' 
+                      : 'bg-blue-600 text-white'
+                  }`}>
+                    {selectedUploadFormat === 'pdf' 
+                      ? (language === 'bn' ? '🚀 PDF: ৭০-৯০% ডেটা সাশ্রয়ী' : '🚀 PDF: 70-90% Space Saved') 
+                      : (language === 'bn' ? '📷 ক্যামেরা ছবি ফরম্যাট' : '📷 Camera Photo Format')
+                    }
+                  </span>
+                </div>
+
+                {/* Segmented Control Toggle Buttons */}
+                <div className="grid grid-cols-2 p-1 bg-white/90 dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-750 shadow-inner">
+                  {/* Toggle 1: Image (Camera) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUploadFormat('image');
+                      setSaveFormat('images');
+                    }}
+                    className={`py-2 px-2.5 rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      selectedUploadFormat === 'image'
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs scale-[1.01]'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                    }`}
+                  >
+                    <Camera size={14} className={selectedUploadFormat === 'image' ? 'text-white' : 'text-blue-600'} />
+                    <span>{language === 'bn' ? 'ছবি (ক্যামেরা)' : 'Image (Camera)'}</span>
+                  </button>
+
+                  {/* Toggle 2: PDF (Document Upload) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUploadFormat('pdf');
+                      setSaveFormat('pdf');
+                    }}
+                    className={`py-2 px-2.5 rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
+                      selectedUploadFormat === 'pdf'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-xs scale-[1.01]'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-slate-850'
+                    }`}
+                  >
+                    <FileText size={14} className={selectedUploadFormat === 'pdf' ? 'text-white' : 'text-emerald-600'} />
+                    <span>{language === 'bn' ? 'পিডিএফ (ডকুমেন্ট আপলোড)' : 'PDF (Document Upload)'}</span>
+                    <span className={`text-[7px] font-black px-1.5 py-0.2 rounded-full uppercase leading-none ${
+                      selectedUploadFormat === 'pdf' 
+                        ? 'bg-white text-emerald-700' 
+                        : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      {language === 'bn' ? 'কম জায়গা' : 'Min Space'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic View based on User's Toggle Selection */}
+              {selectedUploadFormat === 'pdf' ? (
+                /* PDF DOCUMENT UPLOAD VIEW (SPACE OPTIMIZED) */
+                <div className="flex flex-col gap-2.5">
+                  <div className="p-2 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between text-[9px] text-emerald-900 dark:text-emerald-200">
+                    <span className="font-bold flex items-center gap-1">
+                      💡 {language === 'bn' 
+                        ? 'পিডিএফ ফরম্যাটে সর্বনিম্ন স্টোরেজ খরচ হয় এবং সমস্ত পৃষ্ঠা এক ফাইলে সুশৃঙ্খল থাকে।' 
+                        : 'PDF format consumes minimal storage and keeps all pages in a single file.'}
+                    </span>
+                  </div>
+
+                  {/* PDF Upload and Camera Scan Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => pdfFileInputRef.current?.click()}
+                      className="py-2.5 px-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-[10px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Upload size={13} />
+                      <span>{language === 'bn' ? 'সরাসরি PDF ফাইল দিন' : 'Upload PDF File'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="py-2.5 px-2 rounded-xl bg-white dark:bg-slate-800 border border-emerald-300 dark:border-slate-700 hover:bg-emerald-50 text-slate-800 dark:text-slate-200 font-black text-[10px] flex items-center justify-center gap-1.5 shadow-3xs active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Camera size={13} className="text-emerald-600" />
+                      <span>{language === 'bn' ? 'ক্যামেরা দিয়ে তুলে PDF' : 'Scan to PDF'}</span>
+                    </button>
+                  </div>
+
+                  {/* Direct Uploaded PDF File Card */}
+                  {uploadedPdfFile && (
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-emerald-300 dark:border-slate-700 shadow-3xs flex items-center justify-between">
+                      <div className="flex items-center gap-2 truncate max-w-[240px]">
+                        <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-600 flex items-center justify-center shrink-0">
+                          <FileText size={16} />
+                        </div>
+                        <div className="truncate">
+                          <p className="text-[9.5px] font-bold text-slate-800 dark:text-slate-200 truncate" title={uploadedPdfFile.file.name}>
+                            {uploadedPdfFile.file.name}
+                          </p>
+                          <p className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400">
+                            {Math.round(uploadedPdfFile.size / 1024)} KB • {language === 'bn' ? 'স্টোরেজ অপ্টিমাইজড PDF প্রস্তুত' : 'Optimized PDF Ready'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowPdfPreviewModal(true)}
+                          className="p-1.5 rounded-lg bg-indigo-50 dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-all cursor-pointer"
+                          title={language === 'bn' ? 'দেখুন' : 'View'}
+                        >
+                          <Eye size={12} />
+                        </button>
+                        <a
+                          href={uploadedPdfFile.previewUrl}
+                          download={uploadedPdfFile.file.name}
+                          className="p-1.5 rounded-lg bg-emerald-50 dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-all cursor-pointer"
+                          title={language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                        >
+                          <Download size={12} />
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setUploadedPdfFile(null)}
+                          className="p-1.5 rounded-lg bg-rose-50 dark:bg-slate-700 text-rose-600 hover:bg-rose-100 transition-all cursor-pointer"
+                          title={language === 'bn' ? 'মুছে ফেলুন' : 'Remove'}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Scanned Pages from Camera for PDF Mode */}
+                  {stepImages.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-[9px] font-bold text-slate-600 dark:text-slate-300">
+                        <span>{language === 'bn' ? `ক্যামেরা স্ক্যানকৃত পৃষ্ঠা (${stepImages.length} টি):` : `Scanned Pages (${stepImages.length}):`}</span>
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="text-emerald-600 hover:underline flex items-center gap-0.5 cursor-pointer"
+                        >
+                          + {language === 'bn' ? 'আরও পৃষ্ঠা তুলুন' : 'Add More Pages'}
+                        </button>
+                      </div>
+
+                      {/* Scanned Thumbnails */}
+                      <div className="grid grid-cols-3 gap-1.5 max-h-[110px] overflow-y-auto pr-0.5 custom-scrollbar">
+                        {stepImages.map((imgItem, idx) => (
+                          <div key={idx} className="relative rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 aspect-[3/4]">
+                            <img src={imgItem.previewUrl} alt={imgItem.file.name} className="w-full h-full object-cover" />
+                            <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[7px] font-bold px-1 rounded">
+                              #{idx + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              className="absolute top-1 right-1 p-0.5 bg-rose-600 text-white rounded cursor-pointer"
+                            >
+                              <Trash2 size={9} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Compiled PDF ready card */}
+                      {compiledPdf && (
+                        <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-slate-850 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2 truncate max-w-[220px]">
+                            <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-3xs">
+                              <FileText size={16} />
+                            </div>
+                            <div className="truncate">
+                              <p className="text-[9.5px] font-black text-slate-800 dark:text-slate-100 truncate">
+                                {compiledPdf.file.name}
+                              </p>
+                              <p className="text-[8px] font-bold text-emerald-700 dark:text-emerald-300">
+                                {Math.round(compiledPdf.size / 1024)} KB ({stepImages.length} {language === 'bn' ? 'পৃষ্ঠা সংকলন' : 'pages combined'})
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setShowPdfPreviewModal(true)}
+                              className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[8.5px] flex items-center gap-1 shadow-3xs cursor-pointer"
+                            >
+                              <Eye size={10} />
+                              <span>{language === 'bn' ? 'প্রিভিউ' : 'Preview'}</span>
+                            </button>
+                            <a
+                              href={compiledPdf.previewUrl}
+                              download={compiledPdf.file.name}
+                              className="p-1 rounded-lg bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 font-bold text-[8.5px]"
+                              title={language === 'bn' ? 'ডাউনলোড' : 'Download'}
+                            >
+                              <Download size={11} />
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!uploadedPdfFile && stepImages.length === 0 && (
+                    <div className="p-3 bg-white/70 dark:bg-slate-800/60 rounded-xl border border-dashed border-emerald-300 dark:border-slate-700 text-center flex flex-col items-center justify-center gap-1 text-slate-500">
+                      <FileText size={22} className="text-emerald-600/80" />
+                      <p className="text-[9.5px] font-bold text-slate-700 dark:text-slate-300">
+                        {language === 'bn' ? 'কোনো PDF ডকুমেন্ট যুক্ত করা হয়নি' : 'No PDF document selected'}
+                      </p>
+                      <p className="text-[8px] text-slate-400">
+                        {language === 'bn' ? 'সরাসরি PDF ফাইল আপলোড করুন অথবা ক্যামেরা দিয়ে তুলে PDF বানান' : 'Upload a PDF directly or capture pages via camera'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* IMAGE (CAMERA) UPLOAD VIEW */
+                <div className="flex flex-col gap-2.5">
+                  <div className="p-2 rounded-xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/60 text-[9px] text-blue-900 dark:text-blue-200 font-bold">
+                    <span>{language === 'bn' ? 'ক্যামেরা দিয়ে ছবি তুললে তা অটো ক্রপ ও কম্প্রেস করে ডেটা খরচ কমিয়ে সেভ করা হবে।' : 'Photos captured via camera will be auto-cropped and compressed to reduce data usage.'}</span>
+                  </div>
+
+                  {/* Upload Action Buttons */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="flex-1 py-2 px-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-[10px] flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Camera size={13} />
+                      <span>{language === 'bn' ? 'ক্যামেরা দিয়ে ছবি তুলুন' : 'Camera Capture'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => galleryInputRef.current?.click()}
+                      className="flex-1 py-2 px-2.5 rounded-xl bg-white dark:bg-slate-800 border border-amber-300 dark:border-slate-700 hover:bg-amber-50 text-slate-800 dark:text-slate-200 font-black text-[10px] flex items-center justify-center gap-1.5 shadow-3xs active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Upload size={13} className="text-amber-600" />
+                      <span>{language === 'bn' ? 'ফাইল / গ্যালারি' : 'Upload Files'}</span>
+                    </button>
+                  </div>
+
+                  {/* Compression in progress indicator */}
+                  {isProcessingImages && (
+                    <div className="flex items-center justify-center gap-2 p-2 bg-white/80 dark:bg-slate-800 rounded-xl border border-amber-200 text-amber-700 text-[10px] font-bold">
+                      <RefreshCw size={12} className="animate-spin text-amber-600" />
+                      <span>{language === 'bn' ? 'ছবি অটো ক্রপ ও রি-সাইজ করা হচ্ছে (সর্বনিম্ন ডেটা খরচ)...' : 'Auto-cropping & resizing for minimal data...'}</span>
+                    </div>
+                  )}
+
+                  {/* Selected / Compressed Image Thumbnails */}
+                  {stepImages.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto pr-0.5 custom-scrollbar">
+                      {stepImages.map((imgItem, idx) => {
+                        const originalKb = Math.round(imgItem.originalSize / 1024);
+                        const compressedKb = Math.round(imgItem.compressedSize / 1024);
+                        const savedPct = imgItem.originalSize > imgItem.compressedSize 
+                          ? Math.round((1 - imgItem.compressedSize / imgItem.originalSize) * 100) 
+                          : 0;
+
+                        return (
+                          <div 
+                            key={idx} 
+                            className="relative group bg-white dark:bg-slate-800 rounded-xl border border-amber-200 dark:border-slate-700 p-1.5 flex flex-col gap-1 shadow-3xs"
+                          >
+                            <div className="w-full aspect-[4/3] rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-900 relative">
+                              <img 
+                                src={imgItem.previewUrl} 
+                                alt={imgItem.file.name} 
+                                className="w-full h-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveImage(idx)}
+                                className="absolute top-1 right-1 p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-md shadow-xs transition-all cursor-pointer active:scale-95"
+                                title={language === 'bn' ? 'মুছে ফেলুন' : 'Remove'}
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                              <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[7.5px] font-bold px-1.5 py-0.2 rounded">
+                                #{idx + 1}
+                              </span>
+                            </div>
+                            <p className="text-[8.5px] font-bold text-slate-800 dark:text-slate-200 truncate" title={imgItem.file.name}>
+                              {imgItem.file.name}
+                            </p>
+                            <div className="flex items-center justify-between text-[7.5px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1 py-0.5 rounded">
+                              <span>{compressedKb} KB</span>
+                              {savedPct > 0 && <span>{language === 'bn' ? `${toBn(savedPct)}% সাশ্রয়ী` : `${savedPct}% saved`}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-white/70 dark:bg-slate-800/60 rounded-xl border border-dashed border-blue-300 dark:border-slate-700 text-center flex flex-col items-center justify-center gap-1 text-slate-500">
+                      <ImageIcon size={20} className="text-blue-500/80" />
+                      <p className="text-[9.5px] font-bold">
+                        {language === 'bn' ? 'কোনো ছবি যুক্ত করা হয়নি' : 'No photos selected'}
+                      </p>
+                      <p className="text-[8px] text-slate-400">
+                        {language === 'bn' ? 'ক্যামেরা আইকনে চাপ দিয়ে সরাসরি ছবি তুলুন' : 'Tap camera icon to capture directly'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Success Animation Banner */}
+            {stepUploadSuccess && (
+              <div className="p-2.5 bg-emerald-500 text-white rounded-xl flex items-center justify-center gap-1.5 text-xs font-black shadow-sm animate-in zoom-in duration-150">
+                <CheckCircle size={15} />
+                <span>
+                  {saveFormat === 'pdf' 
+                    ? (language === 'bn' ? 'কম্প্রেসড PDF সফলভাবে ডাটাবেইজে সংরক্ষিত হয়েছে!' : 'Compressed PDF saved to database!')
+                    : (language === 'bn' ? 'পদক্ষেপ ও ছবি সফলভাবে ডাটাবেইজে সংরক্ষিত হয়েছে!' : 'Step & photos successfully saved to database!')
+                  }
+                </span>
+              </div>
+            )}
+
+            {/* Footer Action Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+              <button
+                type="button"
+                onClick={() => setShowStepModal(false)}
+                className="px-3 py-1.5 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 font-bold transition-all cursor-pointer active:scale-95"
+              >
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveStepAndImages}
+                disabled={isUploadingStep || isProcessingImages}
+                className={`px-4 py-1.5 rounded-xl font-black text-white flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 ${
+                  isUploadingStep 
+                    ? 'bg-cyan-400 cursor-not-allowed' 
+                    : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500'
+                }`}
+              >
+                {isUploadingStep ? (
+                  <>
+                    <RefreshCw size={12} className="animate-spin" />
+                    <span>{language === 'bn' ? 'সংরক্ষণ করা হচ্ছে...' : 'Saving...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={12} />
+                    <span>
+                      {saveFormat === 'pdf'
+                        ? (language === 'bn' ? 'কম্প্রেসড PDF হিসেবে সংরক্ষণ' : 'Save as PDF')
+                        : saveFormat === 'both'
+                        ? (language === 'bn' ? 'PDF ও ছবি উভয় সংরক্ষণ' : 'Save PDF & Photos')
+                        : (language === 'bn' ? 'ছবি হিসেবে সংরক্ষণ করুন' : 'Save as Photos')}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 16. PDF Preview & Viewer Modal */}
+      {showPdfPreviewModal && (uploadedPdfFile || compiledPdf) && (() => {
+        const activePdf = uploadedPdfFile || compiledPdf;
+        if (!activePdf) return null;
+        return (
+          <div 
+            className="fixed inset-0 z-[220] flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-[3px] animate-in fade-in duration-150 select-none"
+            onClick={() => setShowPdfPreviewModal(false)}
+          >
+            <div 
+              className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl border border-indigo-200 dark:border-slate-750 w-full max-w-[560px] h-[85vh] p-4 flex flex-col gap-3 text-slate-800 dark:text-white"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shadow-xs">
+                    <FileText size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 leading-tight">
+                      {language === 'bn' ? 'কম্প্রেসড পিডিএফ প্রিভিউ' : 'Compressed PDF Preview'}
+                    </h4>
+                    <p className="text-[10px] font-bold text-slate-500 truncate max-w-[280px]">
+                      {activePdf.file.name} ({Math.round(activePdf.size / 1024)} KB)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <a 
+                    href={activePdf.previewUrl} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-bold text-[10px] hover:bg-indigo-100 transition-all flex items-center gap-1"
+                  >
+                    <Eye size={11} />
+                    <span>{language === 'bn' ? 'নতুন ট্যাবে খুলুন' : 'Open in Tab'}</span>
+                  </a>
+                  <a 
+                    href={activePdf.previewUrl} 
+                    download={activePdf.file.name}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition-all flex items-center gap-1 shadow-3xs"
+                  >
+                    <Download size={11} />
+                    <span>{language === 'bn' ? 'ডাউনলোড' : 'Download'}</span>
+                  </a>
+                  <button 
+                    type="button"
+                    onClick={() => setShowPdfPreviewModal(false)}
+                    className="w-7 h-7 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Embedded PDF iframe / viewer */}
+              <div className="flex-1 w-full rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 relative">
+                <iframe
+                  src={`${activePdf.previewUrl}#toolbar=0`}
+                  title="PDF Document Preview"
+                  className="w-full h-full border-none"
+                />
+              </div>
+
+              {/* Footer info note */}
+              <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 text-[9.5px] font-bold text-slate-500">
+                <span>
+                  {stepImages.length > 0 
+                    ? (language === 'bn' ? `পৃষ্ঠা সংখ্যা: ${toBn(stepImages.length)} টি` : `Total Pages: ${stepImages.length}`)
+                    : (language === 'bn' ? 'সরাসরি আপলোডকৃত PDF' : 'Direct Uploaded PDF')
+                  }
+                </span>
+                <span className="text-emerald-600 font-black">
+                  {language === 'bn' ? 'স্বয়ংক্রিয় তারিখ ও মামলা নং সম্বলিত সুশৃঙ্খল PDF' : 'Clean PDF with date & case number'}
+                </span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -493,7 +2205,8 @@ const BookView = ({
   t,
   buttonLabels,
   onUpdateCaseLocal,
-  language
+  language,
+  onWhatsAppShare
 }: { 
   date: string; 
   cases: Case[]; 
@@ -505,6 +2218,7 @@ const BookView = ({
   buttonLabels: any;
   onUpdateCaseLocal?: (caseId: string | number, updatedFields: Partial<Case>) => void;
   language: 'bn' | 'en' | 'hi' | 'ur';
+  onWhatsAppShare?: (c: Case, side?: 'petitioner' | 'respondent') => void;
 }) => {
   const groupedByCourt = cases.reduce((acc, c) => {
     if (!acc[c.courtName]) acc[c.courtName] = [];
@@ -582,13 +2296,8 @@ const BookView = ({
             backgroundSize: '100% 100%, 100% 2.4rem',
           }}
         >
-          {/* Shaded Book Spine Effect in the middle (only on desktop md+) */}
-          <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-12 bg-gradient-to-r from-black/8 via-black/15 to-transparent -ml-6 pointer-events-none z-10" />
-          <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-12 bg-gradient-to-l from-black/8 via-black/15 to-transparent -ml-6 pointer-events-none z-10" />
-          <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-[4px] bg-gradient-to-r from-amber-900/30 via-amber-950/60 to-amber-900/30 -ml-[2px] pointer-events-none z-15 shadow-inner" />
-
           {/* Lined Notebook Pages Layout */}
-          <div className="relative z-10 pl-12 pr-2">
+          <div className="relative z-10 pl-2 sm:pl-6 md:pl-10 pr-1 sm:pr-2">
             {cases.length > 0 ? (
               <div className="space-y-10">
                 {Object.entries(groupedByCourt).map(([court, courtCases]) => (
@@ -598,7 +2307,7 @@ const BookView = ({
                       <h4 className="text-lg font-black text-slate-800 tracking-tight">🏛️ {court}</h4>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                    <div className="flex flex-col space-y-6 w-full">
                       {Object.entries(getGroupedByStep(courtCases)).map(([step, stepCases]) => (
                         <div key={step} className="space-y-3">
                           <h5 className="text-xs font-black text-amber-800 bg-amber-100/70 border border-amber-200 px-3 py-1 rounded-lg inline-block tracking-wider uppercase">
@@ -619,6 +2328,8 @@ const BookView = ({
                                 buttonLabels={buttonLabels}
                                 onUpdateCaseLocal={onUpdateCaseLocal}
                                 onViewCard={onViewCard}
+                                currentDiaryDate={date}
+                                onWhatsAppShare={onWhatsAppShare}
                               />
                             ))}
                           </div>
@@ -660,7 +2371,8 @@ export const CalendarView = ({
   getBanglaDate,
   t,
   onUpdateCaseLocal,
-  onOpenAiForCase
+  onOpenAiForCase,
+  onWhatsAppShare
 }: CalendarViewProps) => {
   const [showBookView, setShowBookView] = useState(false);
   const [hoveredHolidayReason, setHoveredHolidayReason] = useState<string | null>(null);
@@ -1214,6 +2926,7 @@ export const CalendarView = ({
             buttonLabels={buttonLabels}
             onUpdateCaseLocal={onUpdateCaseLocal}
             language={language}
+            onWhatsAppShare={onWhatsAppShare}
           />
         )}
       </AnimatePresence>

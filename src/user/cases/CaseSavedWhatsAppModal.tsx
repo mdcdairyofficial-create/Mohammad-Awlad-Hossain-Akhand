@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle2, MessageSquare, Copy, Check, Sparkles, AlertCircle, ShieldCheck, ArrowRight, RefreshCw, Send } from 'lucide-react';
 import { Case } from '../../types';
-import { checkWhatsAppNumber, generateCaseWhatsAppMessage } from './WhatsAppPhoneHelper';
+import { checkWhatsAppNumber, generateCaseWhatsAppMessage, getMagicCaseTrackUrl } from './WhatsAppPhoneHelper';
 
 interface CaseSavedWhatsAppModalProps {
   caseData: Partial<Case>;
@@ -84,9 +84,12 @@ export default function CaseSavedWhatsAppModal({
 
   if (!isOpen || !caseData) return null;
 
+  const caseIdForMessage = caseData.id || (caseData as any)._id;
+
   const handleSendWhatsApp = (cleanNumber: string, name: string, isSingle: boolean = true) => {
     if (!cleanNumber) return;
     const msg = generateCaseWhatsAppMessage({
+      caseId: caseIdForMessage,
       caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
       courtName: caseData.courtName || caseData.court,
       nextDate: caseData.nextDate,
@@ -104,6 +107,7 @@ export default function CaseSavedWhatsAppModal({
 
   const handleCopyMessage = (id: string, name: string) => {
     const msg = generateCaseWhatsAppMessage({
+      caseId: caseIdForMessage,
       caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
       courtName: caseData.courtName || caseData.court,
       nextDate: caseData.nextDate,
@@ -163,6 +167,7 @@ export default function CaseSavedWhatsAppModal({
     const contact = queue[index];
     const wa = checkWhatsAppNumber(contact.phone, language);
     const msg = generateCaseWhatsAppMessage({
+      caseId: caseIdForMessage,
       caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
       courtName: caseData.courtName || caseData.court,
       nextDate: caseData.nextDate,
@@ -525,6 +530,41 @@ export default function CaseSavedWhatsAppModal({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Magic Tracking Link Display Card */}
+        <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <p className="text-xs font-black text-slate-800">
+                {language === 'bn' ? 'ম্যাজিক কেস ট্র্যাকিং ও অটো পুশ লিংক' : 'Magic Case Tracking & Push Link'}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {language === 'bn' ? 'মক্কেল এই লিংকে ক্লিক করলেই ১-ট্যাপে অটো নোটিফিকেশন চালু করতে পারবেন' : 'Client can click to enable 1-tap push alerts'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const url = getMagicCaseTrackUrl({
+                caseId: caseIdForMessage,
+                caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
+                referralCode
+              });
+              navigator.clipboard.writeText(url);
+              setCopiedId('magic_track_link');
+              setTimeout(() => setCopiedId(null), 2500);
+            }}
+            className="w-full sm:w-auto px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+          >
+            {copiedId === 'magic_track_link' ? <Check size={13} /> : <Copy size={13} />}
+            <span>{copiedId === 'magic_track_link' ? (language === 'bn' ? 'কপি হয়েছে!' : 'Copied!') : (language === 'bn' ? 'লিংক কপি করুন' : 'Copy Link')}</span>
+          </button>
+        </div>
 
         {/* Referral info tip */}
         <div className="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl flex items-center gap-2.5 mb-6 text-xs text-blue-900">
