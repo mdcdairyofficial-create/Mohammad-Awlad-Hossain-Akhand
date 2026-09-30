@@ -953,10 +953,10 @@ const MiniCasebook = ({
                     setOrder('আদেশ');
                     setShowOrderModal(true);
                   }}
-                  className={`flex-1 rounded px-1.5 flex items-center justify-center transition-all leading-none cursor-pointer ${
+                  className={`flex-1 rounded px-1.5 flex items-center justify-center transition-all leading-none cursor-pointer shadow-3xs ${
                     order === 'আদেশ' 
-                      ? 'bg-emerald-600 text-white shadow-3xs' 
-                      : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-emerald-50'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black' 
+                      : 'bg-gradient-to-r from-amber-100 to-orange-100 text-amber-900 border border-amber-300 hover:from-amber-200 hover:to-orange-200 font-bold'
                   }`}
                   title={language === 'bn' ? 'মামলার আদেশ বিবরণ দেখুন (ক্লিক করুন)' : 'View Order Details (Click)'}
                 >
@@ -972,10 +972,10 @@ const MiniCasebook = ({
                     setOrder('পদক্ষেপ');
                     setShowStepModal(true);
                   }}
-                  className={`flex-1 rounded px-1.5 flex items-center justify-center transition-all leading-none cursor-pointer ${
+                  className={`flex-1 rounded px-1.5 flex items-center justify-center transition-all leading-none cursor-pointer shadow-3xs ${
                     order === 'পদক্ষেপ' 
-                      ? 'bg-cyan-600 text-white shadow-3xs' 
-                      : 'bg-white dark:bg-slate-850 text-slate-700 dark:text-slate-300 border border-slate-100 dark:border-slate-800 hover:bg-cyan-50'
+                      ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black' 
+                      : 'bg-gradient-to-r from-cyan-100 to-blue-100 text-cyan-900 border border-cyan-300 hover:from-cyan-200 hover:to-blue-200 font-bold'
                   }`}
                   title={language === 'bn' ? 'পদক্ষেপ ও ছবি আপলোড (ক্লিক করুন)' : 'Step & Photo Upload (Click)'}
                 >
@@ -991,10 +991,10 @@ const MiniCasebook = ({
             <button
               type="button"
               onClick={() => setIsEditMode(!isEditMode)}
-              className={`shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md flex flex-col items-center justify-center cursor-pointer transition-all py-0.5 shadow-3xs ${
+              className={`shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md flex flex-col items-center justify-center cursor-pointer transition-all py-0.5 shadow-xs ${
                 isEditMode 
-                  ? 'bg-amber-500 text-slate-900 scale-[1.02]' 
-                  : 'bg-gradient-to-b from-blue-600 to-indigo-700 text-white hover:from-blue-500 hover:to-indigo-600 active:scale-95'
+                  ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white scale-105 font-black' 
+                  : 'bg-gradient-to-br from-violet-600 to-indigo-700 text-white hover:from-violet-500 hover:to-indigo-600 active:scale-95'
               }`}
             >
               <Edit2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5" />
@@ -1022,7 +1022,7 @@ const MiniCasebook = ({
                 }
               }}
               title={language === 'bn' ? 'মক্কেলকে হোয়াটসঅ্যাপে তারিখ ও ম্যাজিক ট্র্যাকিং লিংক পাঠান' : 'Send Date & Magic Link to Client via WhatsApp'}
-              className="shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md bg-[#25D366] hover:bg-[#1fb355] text-white flex flex-col items-center justify-center cursor-pointer transition-all py-0.5 shadow-3xs active:scale-95"
+              className="shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md bg-gradient-to-br from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white flex flex-col items-center justify-center cursor-pointer transition-all py-0.5 shadow-xs active:scale-95"
             >
               <MessageSquare className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5" />
               <span className="text-[4px] sm:text-[5px] md:text-[6px] font-black mt-0.5 leading-none whitespace-nowrap">WA</span>
@@ -1071,19 +1071,22 @@ const MiniCasebook = ({
               )}
             </div>
 
-            {/* 11. SAVE BUTTON */}
+            {/* 11. UPDATE / SAVE BUTTON */}
             <button
               type="button"
               onClick={handleSave}
               disabled={!isEditMode}
-              className={`shrink-0 w-3.5 sm:w-5 md:w-6 self-stretch rounded sm:rounded-md flex flex-col items-center justify-center transition-all py-0.5 shadow-3xs ${
+              title={language === 'bn' ? 'তারিখ ও আদেশ আপডেট করুন' : 'Update Date & Order'}
+              className={`shrink-0 px-2 sm:px-3 self-stretch rounded sm:rounded-md flex items-center justify-center gap-1 transition-all py-0.5 shadow-xs cursor-pointer ${
                 isEditMode 
-                  ? 'bg-gradient-to-b from-teal-500 to-emerald-600 text-white scale-[1.02]' 
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 shadow-none'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black scale-105 animate-pulse' 
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
               }`}
             >
-              <Save className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5" />
-              <span className="text-[4.5px] sm:text-[5.5px] md:text-[6.5px] font-black mt-0.5 leading-none whitespace-nowrap">SAVE</span>
+              <Save className="w-3 h-3 text-white" />
+              <span className="text-[9px] sm:text-[10px] font-black leading-none whitespace-nowrap">
+                {language === 'bn' ? 'আপডেট' : 'UPDATE'}
+              </span>
             </button>
 
             {/* Column C: উত্তর পক্ষ */}

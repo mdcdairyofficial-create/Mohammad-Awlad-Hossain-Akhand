@@ -2650,7 +2650,26 @@ export default function Dashboard({
           lastEditedBySide: currentSide
         } as Case;
 
-        await createCase(newCase as any);
+        // Prevent duplicate case entry
+        const isDuplicate = cases.some(c => 
+          c.caseNumber && newCase.caseNumber &&
+          c.caseNumber.trim().toLowerCase() === newCase.caseNumber.trim().toLowerCase() &&
+          (c.courtName === newCase.courtName || c.court === newCase.court)
+        );
+
+        if (isDuplicate) {
+          alert(language === 'bn' 
+            ? 'সতর্কতা: এই মামলা নম্বর ও আদালতের মামলাটি ইতিমধ্যে আপনার তালিকায় রয়েছে। একই তথ্য বারবার এন্ট্রি করা যাবে না।' 
+            : 'Warning: This case already exists in your records.');
+          setIsCaseFormOpen(false);
+          setEditingCase(null);
+          return;
+        }
+
+        const createdRef = await createCase(newCase as any);
+        const newId = createdRef?.id || Date.now().toString();
+        const savedNewCase = { ...newCase, id: newId };
+        setCases(prev => [savedNewCase, ...prev]);
         setSuccessMessage(t('success_add'));
 
         const isPetitioner = isUserPetitioner(newCase as Case);
