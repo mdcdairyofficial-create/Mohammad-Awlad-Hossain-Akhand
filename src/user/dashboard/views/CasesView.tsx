@@ -105,6 +105,34 @@ export const CasesView = ({
     return matchesSearch && matchesType && matchesStatus && matchesDistrict && matchesAssociate;
   });
 
+  const sortCasesByNumber = (casesList: Case[]) => {
+    return [...casesList].sort((a, b) => {
+      const numA = (a.caseNumber || '').replace(/[^0-9]/g, '');
+      const numB = (b.caseNumber || '').replace(/[^0-9]/g, '');
+      const intA = parseInt(numA, 10);
+      const intB = parseInt(numB, 10);
+      if (!isNaN(intA) && !isNaN(intB) && intA !== intB) {
+        return intA - intB;
+      }
+      return (a.caseNumber || '').localeCompare(b.caseNumber || '');
+    });
+  };
+
+  const groupedByCourt = React.useMemo(() => {
+    const groups: Record<string, Case[]> = {};
+    filteredCases.forEach(c => {
+      const court = formatCourtNameWithNo(c.courtName, c.courtNumber) || (language === 'bn' ? 'অন্যান্য আদালত' : 'Other Court');
+      if (!groups[court]) groups[court] = [];
+      groups[court].push(c);
+    });
+
+    Object.keys(groups).forEach(court => {
+      groups[court] = sortCasesByNumber(groups[court]);
+    });
+
+    return groups;
+  }, [filteredCases, language]);
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <AdBanner isPremium={isPremiumForAds} />
@@ -245,239 +273,253 @@ export const CasesView = ({
         </div>
       </div>
 
-      {/* Cases Grid/List */}
-      {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          <AnimatePresence mode="popLayout">
-            {filteredCases.map((c) => (
-              <motion.div
-                key={c.id}
-                layout
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                onClick={() => onViewCard(c)}
-                className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl hover:border-slate-300 cursor-pointer transition-all duration-500 overflow-hidden group flex flex-col"
-              >
-                {/* Card Header */}
-                <div className={`p-6 ${c.caseType === 'Civil' ? 'bg-blue-600' : 'bg-rose-600'} text-white relative overflow-hidden`}>
-                  <div className="relative z-10 flex justify-between items-start">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/20 px-3 py-1 rounded-full border border-white/30 backdrop-blur-md">
-                        {c.caseType}
-                      </span>
-                      <h3 className="text-2xl font-black tracking-tight mt-2">{c.caseNumber}</h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onViewCard(c); }}
-                        className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
-                        title={t('case_card_pro')}
-                      >
-                        <CreditCard size={18} />
-                      </button>
-                      {!isClient && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onEditCase(c); }}
-                          className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
-                          title={t('edit_case')}
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {/* Decorative Background */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
-                </div>
+      {/* Cases Grid/List Grouped by Court with Serial Sorting */}
+      <div className="space-y-8">
+        {Object.entries(groupedByCourt).map(([courtName, courtCases]) => (
+          <div key={courtName} className="bg-white/70 border border-slate-200/80 rounded-[2.5rem] p-6 space-y-6 shadow-sm">
+            <div className="flex items-center gap-3 bg-indigo-50/90 border border-indigo-100 px-6 py-4 rounded-2xl shadow-3xs">
+              <span className="text-xl">🏛️</span>
+              <h3 className="text-base sm:text-lg font-black text-indigo-950">{courtName}</h3>
+              <span className="text-xs font-black bg-indigo-600 text-white px-3.5 py-1 rounded-full ml-auto shadow-2xs">
+                {courtCases.length} {language === 'bn' ? 'টি মামলা' : 'Cases'}
+              </span>
+            </div>
 
-                {/* Card Body */}
-                <div className="p-6 space-y-6 flex-1">
-                  <div className="space-y-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
-                        <MapPin size={20} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('court_label')}</p>
-                        <p className="text-sm font-bold text-slate-700 leading-tight">{formatCourtNameWithNo(c.courtName, c.courtNumber)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
-                        <Calendar size={20} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('next_date')}</p>
-                        <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
-                        <User size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('parties_info')}</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{c.petitioner}</span>
-                          <span className="text-[10px] font-black text-slate-300 italic">vs</span>
-                          <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">
-                            {c.respondentDetails && c.respondentDetails.length > 0 ? (
-                              `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
-                            ) : (
-                              c.respondent ? (
-                                c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
-                                  `${c.respondent.split(',')[0].trim()} গং` : c.respondent
-                              ) : ''
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Assigned Associate Badge in Grid */}
-                  {c.assignedAssociateName && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-amber-900 text-xs font-bold shadow-2xs">
-                      <Briefcase size={14} className="text-amber-600 shrink-0" />
-                      <span className="truncate">
-                        {language === 'bn' ? 'দায়িত্বে: ' : 'Assigned: '}
-                        <span className="font-black text-amber-950">{c.assignedAssociateName}</span>
-                        {c.assignedAssociateRole && (
-                          <span className="text-[10px] text-amber-700 font-medium ml-1">({c.assignedAssociateRole})</span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Quick Actions */}
-                  <div className="pt-6 border-t border-slate-50 flex items-center justify-between gap-3">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); onViewHistory(c); }}
-                      className="flex-1 py-3 bg-slate-50 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <AnimatePresence mode="popLayout">
+                  {courtCases.map((c) => (
+                    <motion.div
+                      key={c.id}
+                      layout
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      onClick={() => onViewCard(c)}
+                      className="bg-white rounded-[2.5rem] border border-slate-100 shadow-lg hover:shadow-2xl hover:border-slate-300 cursor-pointer transition-all duration-500 overflow-hidden group flex flex-col"
                     >
-                      <History size={14} /> {t('case_history_title')}
-                    </button>
-                    {onWhatsAppNotify && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onWhatsAppNotify(c); }}
-                        className="p-3 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-2xl transition-all"
-                        title={language === 'bn' ? 'হোয়াটসঅ্যাপে রেফার লিংকসহ পাঠান' : 'Share via WhatsApp with Referral Link'}
-                      >
-                        <MessageSquare size={18} className="fill-blue-100 text-blue-600" />
-                      </button>
-                    )}
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this case?')) {
-                          onDeleteCase(c.id);
-                        }
-                      }}
-                      className="p-3 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-2xl transition-all"
-                      title={t('delete_case')}
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      ) : (
-        <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('case_number')}</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('court_label')}</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('next_date')}</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">স্ট্যাটাস</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">অ্যাকশন</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filteredCases.map((c) => (
-                <tr 
-                  key={c.id} 
-                  onClick={() => onViewCard(c)}
-                  className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
-                >
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
-                        {c.caseNumber.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</p>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase">{c.caseType}</p>
-                          {c.assignedAssociateName && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200">
-                              <Briefcase size={10} className="text-amber-600" />
-                              {c.assignedAssociateName}
+                      {/* Card Header */}
+                      <div className={`p-6 ${c.caseType === 'Civil' ? 'bg-blue-600' : 'bg-rose-600'} text-white relative overflow-hidden`}>
+                        <div className="relative z-10 flex justify-between items-start">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] bg-white/20 px-3 py-1 rounded-full border border-white/30 backdrop-blur-md">
+                              {c.caseType}
                             </span>
+                            <h3 className="text-2xl font-black tracking-tight mt-2">{c.caseNumber}</h3>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); onViewCard(c); }}
+                              className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
+                              title={t('case_card_pro')}
+                            >
+                              <CreditCard size={18} />
+                            </button>
+                            {!isClient && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); onEditCase(c); }}
+                                className="p-2.5 bg-white/20 hover:bg-white/30 rounded-2xl transition-all backdrop-blur-md border border-white/30"
+                                title={t('edit_case')}
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {/* Decorative Background */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-6 space-y-6 flex-1">
+                        <div className="space-y-4">
+                          <div className="flex items-start gap-4">
+                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
+                              <MapPin size={20} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('court_label')}</p>
+                              <p className="text-sm font-bold text-slate-700 leading-tight">{formatCourtNameWithNo(c.courtName, c.courtNumber)}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-4">
+                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
+                              <Calendar size={20} />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('next_date')}</p>
+                              <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-4">
+                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 shrink-0">
+                              <User size={20} />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{t('parties_info')}</p>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">{c.petitioner}</span>
+                                <span className="text-[10px] font-black text-slate-300 italic">vs</span>
+                                <span className="text-xs font-bold text-slate-700 truncate max-w-[100px]">
+                                  {c.respondentDetails && c.respondentDetails.length > 0 ? (
+                                    `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
+                                  ) : (
+                                    c.respondent ? (
+                                      c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
+                                        `${c.respondent.split(',')[0].trim()} গং` : c.respondent
+                                    ) : ''
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Assigned Associate Badge in Grid */}
+                        {c.assignedAssociateName && (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50/90 border border-amber-200/80 rounded-2xl text-amber-900 text-xs font-bold shadow-2xs">
+                            <Briefcase size={14} className="text-amber-600 shrink-0" />
+                            <span className="truncate">
+                              {language === 'bn' ? 'দায়িত্বে: ' : 'Assigned: '}
+                              <span className="font-black text-amber-950">{c.assignedAssociateName}</span>
+                              {c.assignedAssociateRole && (
+                                <span className="text-[10px] text-amber-700 font-medium ml-1">({c.assignedAssociateRole})</span>
+                              )}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Quick Actions */}
+                        <div className="pt-6 border-t border-slate-50 flex items-center justify-between gap-3">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onViewHistory(c); }}
+                            className="flex-1 py-3 bg-slate-50 text-slate-600 rounded-2xl text-xs font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
+                          >
+                            <History size={14} /> {t('case_history_title')}
+                          </button>
+                          {onWhatsAppNotify && (
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); onWhatsAppNotify(c); }}
+                              className="p-3 text-blue-600 hover:bg-blue-50 hover:text-blue-700 rounded-2xl transition-all"
+                              title={language === 'bn' ? 'হোয়াটসঅ্যাপে রেফার লিংকসহ পাঠান' : 'Share via WhatsApp with Referral Link'}
+                            >
+                              <MessageSquare size={18} className="fill-blue-100 text-blue-600" />
+                            </button>
                           )}
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this case?')) {
+                                onDeleteCase(c.id);
+                              }
+                            }}
+                            className="p-3 text-rose-500 hover:bg-rose-50 hover:text-rose-700 rounded-2xl transition-all"
+                            title={t('delete_case')}
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
-                    <p className="text-sm font-bold text-slate-600">{formatCourtNameWithNo(c.courtName, c.courtNumber)}</p>
-                  </td>
-                  <td className="px-8 py-5">
-                    <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>
-                  </td>
-                  <td className="px-8 py-5">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      c.status === 'running' ? 'bg-emerald-50 text-emerald-600' : 
-                      c.status === 'disposed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-600'
-                    }`}>
-                      {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-                      {/* @ts-ignore */}
-                      {t(c.status) || c.status}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {onWhatsAppNotify && (
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); onWhatsAppNotify(c); }} 
-                          className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all" 
-                          title={language === 'bn' ? 'হোয়াটসঅ্যাপে রেফার লিংকসহ পাঠান' : 'Share via WhatsApp with Referral Link'}
-                        >
-                          <MessageSquare size={18} className="fill-blue-100 text-blue-600" />
-                        </button>
-                      )}
-                      <button onClick={(e) => { e.stopPropagation(); onViewCard(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('case_card_pro')}>
-                        <CreditCard size={18} />
-                      </button>
-                      {!isClient && (
-                        <button onClick={(e) => { e.stopPropagation(); onEditCase(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
-                          <Edit2 size={18} />
-                        </button>
-                      )}
-                      <button 
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this case?')) {
-                            onDeleteCase(c.id);
-                          }
-                        }} 
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" 
-                        title={t('delete_case')}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <div className="bg-white rounded-[1.5rem] border border-slate-100 shadow-xs overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 border-b border-slate-100">
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('case_number')}</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('court_label')}</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('next_date')}</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">স্ট্যাটাস</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">অ্যাকশন</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {courtCases.map((c) => (
+                      <tr 
+                        key={c.id} 
+                        onClick={() => onViewCard(c)}
+                        className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
                       >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
+                              {c.caseNumber.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">{c.caseType}</p>
+                                {c.assignedAssociateName && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200">
+                                    <Briefcase size={10} className="text-amber-600" />
+                                    {c.assignedAssociateName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-bold text-slate-600">{formatCourtNameWithNo(c.courtName, c.courtNumber)}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-bold text-indigo-600">{c.nextDate}</p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            c.status === 'running' ? 'bg-emerald-50 text-emerald-600' : 
+                            c.status === 'disposed' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-600'
+                          }`}>
+                            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+                            {/* @ts-ignore */}
+                            {t(c.status) || c.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {onWhatsAppNotify && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); onWhatsAppNotify(c); }} 
+                                className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all" 
+                                title={language === 'bn' ? 'হোয়াটসঅ্যাপে রেফার লিংকসহ পাঠান' : 'Share via WhatsApp with Referral Link'}
+                              >
+                                <MessageSquare size={18} className="fill-blue-100 text-blue-600" />
+                              </button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); onViewCard(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('case_card_pro')}>
+                              <CreditCard size={18} />
+                            </button>
+                            {!isClient && (
+                              <button onClick={(e) => { e.stopPropagation(); onEditCase(c); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title={t('edit_case')}>
+                                <Edit2 size={18} />
+                              </button>
+                            )}
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (window.confirm(language === 'bn' ? 'আপনি কি নিশ্চিতভাবে এই মামলাটি মুছে ফেলতে চান?' : 'Are you sure you want to delete this case?')) {
+                                  onDeleteCase(c.id);
+                                }
+                              }} 
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all" 
+                              title={t('delete_case')}
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
 
       {filteredCases.length === 0 && (
         <div className="py-20 text-center space-y-4">
