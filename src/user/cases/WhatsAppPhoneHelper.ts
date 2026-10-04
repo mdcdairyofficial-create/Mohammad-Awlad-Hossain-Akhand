@@ -80,12 +80,15 @@ export function checkWhatsAppNumber(phone: string, language: 'en' | 'bn' | 'hi' 
 }
 
 /**
- * Gets the direct Magic Tracking URL for a case
+ * Gets the direct Magic Tracking and Auto-Login URL for a case
  */
 export function getMagicCaseTrackUrl(params: {
   caseId?: string | number;
   caseNumber?: string;
   referralCode?: string;
+  clientMobile?: string;
+  clientName?: string;
+  directDashboard?: boolean;
 }): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mdccasebook.vercel.app';
   const query = new URLSearchParams();
@@ -95,10 +98,44 @@ export function getMagicCaseTrackUrl(params: {
     query.set('track', params.caseNumber);
   }
   query.set('role', 'client');
+  if (params.clientMobile) {
+    query.set('phone', params.clientMobile.trim());
+  }
+  if (params.clientName) {
+    query.set('name', params.clientName.trim());
+  }
+  query.set('magicAuth', '1');
   if (params.referralCode) {
     query.set('ref', params.referralCode);
   }
+  if (params.directDashboard) {
+    query.set('view', 'dashboard');
+  }
   return `${origin}/?${query.toString()}`;
+}
+
+/**
+ * Generates an SMS message with auto-login link for clients without WhatsApp
+ */
+export function generateClientSmsMessage(params: {
+  caseNumber?: string;
+  courtName?: string;
+  nextDate?: string;
+  order?: string;
+  partyName?: string;
+  clientMobile?: string;
+  caseId?: string | number;
+  referralCode?: string;
+  lawyerName?: string;
+}): string {
+  const trackUrl = getMagicCaseTrackUrl({
+    caseId: params.caseId,
+    caseNumber: params.caseNumber,
+    clientMobile: params.clientMobile,
+    clientName: params.partyName,
+    referralCode: params.referralCode
+  });
+  return `MDC Casebook: শ্রদ্ধাভাজন ${params.partyName || 'মক্কেল'}, মামলা নং ${params.caseNumber || 'N/A'}-এর পরবর্তী শুনানি: ${params.nextDate || 'শীঘ্রই'}। কোনো পাসওয়ার্ড ছাড়াই সরাসরি এপে যুক্ত হতে ক্লিক করুন: ${trackUrl}`;
 }
 
 /**
@@ -113,6 +150,7 @@ export function generateCaseWhatsAppMessage(params: {
   order?: string;
   partyType?: 'petitioner' | 'respondent' | 'all';
   partyName?: string;
+  clientMobile?: string;
   lawyerName?: string;
   referralCode?: string;
   language?: 'en' | 'bn';
@@ -125,6 +163,7 @@ export function generateCaseWhatsAppMessage(params: {
     order,
     partyType = 'petitioner',
     partyName = '',
+    clientMobile = '',
     lawyerName = 'আপনার বিজ্ঞ আইনজীবী',
     referralCode = '',
     language = 'bn'
@@ -133,7 +172,9 @@ export function generateCaseWhatsAppMessage(params: {
   const trackUrl = getMagicCaseTrackUrl({
     caseId,
     caseNumber,
-    referralCode
+    referralCode,
+    clientMobile,
+    clientName: partyName
   });
 
   if (language === 'bn') {
@@ -147,10 +188,10 @@ export function generateCaseWhatsAppMessage(params: {
 ${nextDate ? `• পরবর্তী ধার্য তারিখ: ${nextDate}` : ''}
 ${order ? `• আদালতের পদক্ষেপ / আদেশ: ${order}` : ''}
 
-🔔 পরবর্তী তারিখের অটো পুশ নোটিফিকেশন ও সরাসরি মামলার অগ্রগতি দেখতে নিচের লিংকে প্রবেশ করুন:
+🔔 ১-ক্লিকে কোনো পাসওয়ার্ড ছাড়া সরাসরি লগইন ও অটো পুশ নোটিফিকেশন পেতে নিচের লিংকে ক্লিক করুন:
 👉 ${trackUrl}
 
-(কোনো অ্যাপ ডাউনলোড ছাড়াই লিংকে ক্লিক করে আপনার মোবাইলে অটো এলার্ট চালু করতে পারবেন এবং ১-ক্লিকে হোমস্ক্রিনে সেভ করতে পারবেন)
+(কোনো রেজিস্ট্রেশনের ঝামেলা ছাড়াই শুধুমাত্র লিংকে ক্লিক করেই আপনার ক্লায়েন্ট পোর্টালে যুক্ত হতে পারবেন এবং মামলার লাইভ আপডেট দেখতে পাবেন)
 
 ধন্যবাদান্তে,
 ${lawyerName}
@@ -167,7 +208,7 @@ Your case details and next hearing date have been updated in MDC Casebook.
 ${nextDate ? `• Next Date: ${nextDate}` : ''}
 ${order ? `• Order/Step: ${order}` : ''}
 
-🔔 To view live case status and receive instant automatic push notifications on your phone, click here:
+🔔 Click below for 1-tap direct login and automatic push notifications (No password needed):
 👉 ${trackUrl}
 
 Regards,

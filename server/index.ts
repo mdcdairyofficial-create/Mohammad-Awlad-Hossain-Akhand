@@ -491,7 +491,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 // No SQLite needed anymore
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -2930,17 +2930,41 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         console.warn("[Cases Sync Query Warning]", err);
       }
 
-      if (user.user_type === 'client' && user.district) {
-        const publicCasesSnapshot = await db.collection("cases")
-          .where("visibility", "==", "public")
-          .where("district", "==", user.district)
-          .get();
+      if (user.user_type === 'client') {
+        if (user.mobile) {
+          const cleanMobile = String(user.mobile).replace(/[^0-9]/g, '');
+          const bdMobile = cleanMobile.startsWith('880') ? '0' + cleanMobile.substring(3) : (cleanMobile.startsWith('88') && cleanMobile.length === 13 ? '0' + cleanMobile.substring(2) : cleanMobile);
+          try {
+            const allCasesSnap = await db.collection("cases").limit(100).get();
+            allCasesSnap.docs.forEach(docSnap => {
+              const c = { id: docSnap.id, ...docSnap.data() } as any;
+              if (!cases.some(existing => existing.id === c.id)) {
+                const petMob = String(c.petitionerMobile || '').replace(/[^0-9]/g, '');
+                const resMob = String(c.respondentMobile || '').replace(/[^0-9]/g, '');
+                const inPetDetails = Array.isArray(c.petitionerDetails) && c.petitionerDetails.some((p: any) => p && p.phone && String(p.phone).replace(/[^0-9]/g, '').includes(bdMobile));
+                const inResDetails = Array.isArray(c.respondentDetails) && c.respondentDetails.some((r: any) => r && r.phone && String(r.phone).replace(/[^0-9]/g, '').includes(bdMobile));
+                if ((petMob && petMob.includes(bdMobile)) || (resMob && resMob.includes(bdMobile)) || inPetDetails || inResDetails) {
+                  cases.push(c);
+                }
+              }
+            });
+          } catch (mobQueryErr) {
+            console.warn("[Client Cases Query Error]", mobQueryErr);
+          }
+        }
 
-        const publicCases = publicCasesSnapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(c => !cases.find(existing => existing.id === c.id));
+        if (user.district) {
+          const publicCasesSnapshot = await db.collection("cases")
+            .where("visibility", "==", "public")
+            .where("district", "==", user.district)
+            .get();
 
-        cases = [...cases, ...publicCases];
+          const publicCases = publicCasesSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(c => !cases.find(existing => existing.id === c.id));
+
+          cases = [...cases, ...publicCases];
+        }
       }
 
       res.json(cases);

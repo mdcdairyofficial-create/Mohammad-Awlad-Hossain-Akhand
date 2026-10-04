@@ -48,6 +48,9 @@ export interface Case {
   visibility?: 'public' | 'private';
   user_id?: string | number;
   selectedParty?: 'petitioner' | 'respondent' | 'accused';
+  selectedPartyAccess?: 'our_side' | 'all_sides';
+  isUpdatedToday?: boolean;
+  lastEditedDate?: string;
   caseYear?: string;
   policeStation?: string;
   district?: string;

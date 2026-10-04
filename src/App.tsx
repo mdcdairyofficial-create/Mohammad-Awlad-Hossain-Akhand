@@ -106,6 +106,59 @@ export default function App() {
       // Clean up the URL
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+
+    // Auto-login from WhatsApp Magic Link
+    const magicAuth = urlParams.get("magicAuth") === "1" || (urlParams.get("role") === "client" && (urlParams.get("phone") || urlParams.get("track")));
+    const phone = urlParams.get("phone");
+    const name = urlParams.get("name");
+    const trackParam = urlParams.get("track") || urlParams.get("caseId") || urlParams.get("case");
+
+    if (magicAuth && phone) {
+      let cleanPhone = phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.startsWith('880')) {
+        cleanPhone = '0' + cleanPhone.substring(3);
+      } else if (cleanPhone.startsWith('88') && cleanPhone.length === 13) {
+        cleanPhone = '0' + cleanPhone.substring(2);
+      }
+
+      if (cleanPhone.length >= 6) {
+        const clientName = name ? decodeURIComponent(name) : 'মক্কেল (ক্লায়েন্ট)';
+        const viewMode = urlParams.get("view");
+        
+        // Auto-provision client user profile with instant access
+        const clientUser: UserProfile = {
+          id: Date.now(),
+          fullName: clientName,
+          mobile: cleanPhone,
+          userType: 'client',
+          district: 'ঢাকা',
+          country: 'বাংলাদেশ',
+          points: 50,
+          trustScore: 100
+        };
+
+        // Bypass all social gates for direct magic link clients
+        localStorage.setItem("appUser", JSON.stringify(clientUser));
+        localStorage.setItem("youtubeVerifiedCompleted", "true");
+        localStorage.setItem("facebookVerifiedCompleted", "true");
+        localStorage.setItem("telegramVerifiedCompleted", "true");
+        setYoutubeCompleted(true);
+        setFacebookCompleted(true);
+        setTelegramCompleted(true);
+        setShowFacebookGate(false);
+        setShowTelegramGate(false);
+        setUser(clientUser);
+
+        if (trackParam) {
+          localStorage.setItem("pending_claim_case", String(trackParam));
+          if (viewMode === 'dashboard') {
+            setTrackCaseId(null);
+          } else {
+            setTrackCaseId(trackParam);
+          }
+        }
+      }
+    }
   }, []);
 
   useEffect(() => {

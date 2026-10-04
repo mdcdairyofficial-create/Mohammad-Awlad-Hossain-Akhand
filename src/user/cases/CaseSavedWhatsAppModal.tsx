@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, CheckCircle2, MessageSquare, Copy, Check, Sparkles, AlertCircle, ShieldCheck, ArrowRight, RefreshCw, Send } from 'lucide-react';
 import { Case } from '../../types';
-import { checkWhatsAppNumber, generateCaseWhatsAppMessage, getMagicCaseTrackUrl } from './WhatsAppPhoneHelper';
+import { checkWhatsAppNumber, generateCaseWhatsAppMessage, getMagicCaseTrackUrl, generateClientSmsMessage } from './WhatsAppPhoneHelper';
 
 interface CaseSavedWhatsAppModalProps {
   caseData: Partial<Case>;
@@ -96,6 +96,7 @@ export default function CaseSavedWhatsAppModal({
       order: caseData.order,
       partyType: activeSide,
       partyName: name,
+      clientMobile: cleanNumber,
       lawyerName,
       referralCode,
       language
@@ -105,7 +106,7 @@ export default function CaseSavedWhatsAppModal({
     window.open(url, '_blank');
   };
 
-  const handleCopyMessage = (id: string, name: string) => {
+  const handleCopyMessage = (id: string, name: string, phone?: string) => {
     const msg = generateCaseWhatsAppMessage({
       caseId: caseIdForMessage,
       caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
@@ -114,6 +115,7 @@ export default function CaseSavedWhatsAppModal({
       order: caseData.order,
       partyType: activeSide,
       partyName: name,
+      clientMobile: phone || '',
       lawyerName,
       referralCode,
       language
@@ -121,6 +123,38 @@ export default function CaseSavedWhatsAppModal({
 
     navigator.clipboard.writeText(msg).then(() => {
       setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2500);
+    });
+  };
+
+  const handleCopyMagicLink = (id: string, name: string, phone: string) => {
+    const url = getMagicCaseTrackUrl({
+      caseId: caseIdForMessage,
+      caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
+      clientMobile: phone,
+      clientName: name,
+      referralCode
+    });
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedId(`link_${id}`);
+      setTimeout(() => setCopiedId(null), 2500);
+    });
+  };
+
+  const handleCopySms = (id: string, name: string, phone: string) => {
+    const text = generateClientSmsMessage({
+      caseId: caseIdForMessage,
+      caseNumber: caseData.caseNumber || caseData.rawCaseNumber,
+      courtName: caseData.courtName || caseData.court,
+      nextDate: caseData.nextDate,
+      order: caseData.order,
+      partyName: name,
+      clientMobile: phone,
+      referralCode,
+      lawyerName
+    });
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(`sms_${id}`);
       setTimeout(() => setCopiedId(null), 2500);
     });
   };
@@ -174,6 +208,7 @@ export default function CaseSavedWhatsAppModal({
       order: caseData.order,
       partyType: activeSide,
       partyName: contact.name,
+      clientMobile: contact.phone,
       lawyerName,
       referralCode,
       language
@@ -312,6 +347,28 @@ export default function CaseSavedWhatsAppModal({
           )}
         </div>
 
+        {/* Magic Auto-Login Info Card */}
+        <div className="p-3.5 bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border border-emerald-200/90 rounded-2xl flex items-start gap-3 mb-4 shadow-xs">
+          <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+            <Sparkles size={16} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h5 className="text-xs font-black text-slate-900">
+                {language === 'bn' ? 'স্বয়ংক্রিয় ক্লায়েন্ট সাইন-ইন ও ম্যাজিক লিংক' : 'Automatic Client Sign-in & Magic Link'}
+              </h5>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-200">
+                {language === 'bn' ? 'অটো-লগইন সক্রিয়' : 'Auto-Login Active'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed font-medium">
+              {language === 'bn'
+                ? 'মক্কেলের নাম ও মোবাইল দিয়ে অটোমেটিক অ্যাকাউন্ট লিংক তৈরি হয়েছে। মক্কেল লিংকে ক্লিক করলেই কোনো পাসওয়ার্ড বা রেজিস্ট্রেশন ঝামেলা ছাড়াই সরাসরি ক্লায়েন্ট পোর্টালে যুক্ত হয়ে মামলার লাইভ আপডেট দেখতে পাবেন।'
+                : 'Direct login link generated with client name & mobile. Clients can click the link to directly access their case dashboard without passwords or registration.'}
+            </p>
+          </div>
+        </div>
+
         {/* Sending progress queue UI or Standard Listing UI */}
         {isQueueActive ? (
           <div className="p-5 bg-indigo-50/40 border border-indigo-100 rounded-3xl mb-6 space-y-4">
@@ -447,13 +504,26 @@ export default function CaseSavedWhatsAppModal({
                     )}
                   </div>
 
+                  {/* Magic Login Link Ready Banner */}
+                  {contact.phone && (
+                    <div className="px-2.5 py-1.5 bg-emerald-50/80 border border-emerald-100 rounded-xl flex items-center justify-between text-[10.5px] text-emerald-800">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Sparkles size={12} className="text-emerald-600 shrink-0" />
+                        <span>{language === 'bn' ? 'ম্যাজিক ১-ক্লিক সাইন-ইন লিংক প্রস্তুত' : '1-Click Auto-Login Link Ready'}</span>
+                      </div>
+                      <span className="text-[9px] bg-emerald-200/60 px-1.5 py-0.5 rounded font-mono text-emerald-950 font-bold">
+                        {language === 'bn' ? 'পাসওয়ার্ড ছাড়াই লগইন' : 'No Password'}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Individual Sending Actions */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
                     <button
                       type="button"
                       disabled={!wa.isValid}
                       onClick={() => handleSendWhatsApp(wa.cleanNumber, contact.name)}
-                      className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 transition-all ${
+                      className={`flex-1 min-w-[125px] py-1.5 px-3 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 transition-all cursor-pointer ${
                         wa.isValid
                           ? 'bg-[#25D366] hover:bg-[#1fb355] text-white active:scale-98 shadow-sm'
                           : 'bg-slate-50 text-slate-400 cursor-not-allowed'
@@ -462,10 +532,36 @@ export default function CaseSavedWhatsAppModal({
                       <MessageSquare size={12} fill="currentColor" />
                       <span>{language === 'bn' ? 'হোয়াটসঅ্যাপে পাঠান' : 'Send WhatsApp'}</span>
                     </button>
+
                     <button
                       type="button"
-                      onClick={() => handleCopyMessage(copyKey, contact.name)}
-                      className="py-1.5 px-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all"
+                      disabled={!contact.phone}
+                      onClick={() => handleCopyMagicLink(idx.toString(), contact.name, contact.phone)}
+                      className={`py-1.5 px-2.5 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer ${
+                        copiedId === `link_${idx}`
+                          ? 'bg-emerald-600 text-white border border-emerald-600'
+                          : 'bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700'
+                      }`}
+                      title={language === 'bn' ? 'সরাসরি ক্লায়েন্ট লগইন লিংক কপি করুন' : 'Copy direct login URL'}
+                    >
+                      {copiedId === `link_${idx}` ? (
+                        <>
+                          <Check size={12} />
+                          <span>{language === 'bn' ? 'লিংক কপি হয়েছে' : 'Copied'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={12} />
+                          <span>{language === 'bn' ? 'লগইন লিংক' : 'Login Link'}</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyMessage(copyKey, contact.name, contact.phone)}
+                      className="py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                      title={language === 'bn' ? 'সম্পূর্ণ মেসেজ টেক্সট কপি করুন' : 'Copy message text'}
                     >
                       {copiedId === copyKey ? (
                         <>
@@ -475,8 +571,25 @@ export default function CaseSavedWhatsAppModal({
                       ) : (
                         <>
                           <Copy size={12} />
-                          <span>{language === 'bn' ? 'মেসেজ কপি' : 'Copy'}</span>
+                          <span>{language === 'bn' ? 'মেসেজ' : 'Message'}</span>
                         </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!contact.phone}
+                      onClick={() => handleCopySms(idx.toString(), contact.name, contact.phone)}
+                      className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 rounded-xl font-bold text-[10.5px] flex items-center gap-1 transition-all cursor-pointer"
+                      title={language === 'bn' ? 'মোবাইল এসএমএস টেক্সট কপি করুন' : 'Copy SMS Format'}
+                    >
+                      {copiedId === `sms_${idx}` ? (
+                        <>
+                          <Check size={11} className="text-emerald-600" />
+                          <span>{language === 'bn' ? 'এসএমএস কপি' : 'SMS Copied'}</span>
+                        </>
+                      ) : (
+                        <span>{language === 'bn' ? 'এসএমএস' : 'SMS'}</span>
                       )}
                     </button>
                   </div>

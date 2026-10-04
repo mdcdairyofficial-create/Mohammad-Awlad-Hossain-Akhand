@@ -154,10 +154,14 @@ export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
   });
 
   if (caseData.user_id) {
-    const userRef = doc(db, 'users', caseData.user_id.toString());
-    await setDoc(userRef, {
-      points: increment(10)
-    }, { merge: true });
+    try {
+      const userRef = doc(db, 'users', caseData.user_id.toString());
+      await setDoc(userRef, {
+        points: increment(10)
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Could not update user points:', e);
+    }
     
     clearCache(`cases_cache_${caseData.user_id}`);
   }

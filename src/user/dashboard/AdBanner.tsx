@@ -65,7 +65,7 @@ export const AdBanner = ({ className = "", theme = "light", containerClassName =
   // Google AdSense Fallback
   if (!activeAds || activeAds.length === 0) {
      return (
-        <div className={`w-full ${containerClassName || (theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200')} border rounded-2xl flex flex-col items-center justify-center p-4 text-slate-400 text-sm font-medium ${className}`}>
+        <div className={`w-full ${containerClassName || (theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200')} border rounded-2xl flex flex-col items-center justify-center p-4 text-slate-400 text-sm font-medium sticky top-0 z-40 shadow-md backdrop-blur-md bg-white/95 dark:bg-slate-900/95 ${className}`}>
            <span className="text-[10px] uppercase tracking-widest mb-2 opacity-60 font-black text-slate-400">
              Advertisement
            </span>
@@ -81,7 +81,7 @@ export const AdBanner = ({ className = "", theme = "light", containerClassName =
   }
 
   return (
-    <div className={`w-full ${containerClassName || (theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200')} border rounded-2xl flex flex-col items-center justify-center p-4 text-slate-400 text-sm font-medium overflow-hidden ${className}`}>
+    <div className={`w-full ${containerClassName || (theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200')} border rounded-2xl flex flex-col items-center justify-center p-4 text-slate-400 text-sm font-medium overflow-hidden sticky top-0 z-40 shadow-md backdrop-blur-md bg-white/95 dark:bg-slate-900/95 ${className}`}>
       <span className="text-[10px] uppercase tracking-widest mb-2 opacity-60 font-black text-indigo-600">
         {hasElectionAd ? 'নির্বাচনী বিশেষ প্রচার' : 'Sponsored Content'}
       </span>

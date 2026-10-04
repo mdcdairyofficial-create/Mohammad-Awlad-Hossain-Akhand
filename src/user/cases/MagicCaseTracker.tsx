@@ -349,6 +349,28 @@ ${window.location.href}`;
           </div>
         ) : caseData ? (
           <>
+            {/* Direct Magic Auth Status Banner */}
+            {isLoggedIn && (
+              <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-2.5 text-xs shadow-md">
+                <div className="flex items-center gap-2 text-emerald-300">
+                  <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="font-black text-white block">স্বাগতম! আপনি সরাসরি মক্কেল পোর্টালে যুক্ত আছেন</span>
+                    <span className="text-[10px] text-emerald-300/80">কোনো পাসওয়ার্ড ছাড়াই আপনার সকল মামলার লাইভ আপডেট দেখতে পাবেন</span>
+                  </div>
+                </div>
+                {onGoToDashboard && (
+                  <button
+                    onClick={onGoToDashboard}
+                    className="text-[11px] font-black bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1 shrink-0 cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <span>ড্যাশবোর্ড</span>
+                    <ChevronRight size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* 1. Case Number & Status Hero Card */}
             <div className="relative overflow-hidden bg-gradient-to-br from-slate-850 to-slate-900 border border-slate-750 rounded-3xl p-5 shadow-xl">
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>

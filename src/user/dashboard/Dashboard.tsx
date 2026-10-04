@@ -956,6 +956,21 @@ export default function Dashboard({
   const [showFullscreenAd, setShowFullscreenAd] = useState(false);
   const [userPoints, setUserPoints] = useState(points || 0);
 
+  const mainContentRef = useRef<HTMLElement>(null);
+  const floatingScrollRef = useRef<HTMLDivElement>(null);
+
+  const handleMainScroll = () => {
+    if (mainContentRef.current && floatingScrollRef.current) {
+      floatingScrollRef.current.scrollLeft = mainContentRef.current.scrollLeft;
+    }
+  };
+
+  const handleFloatingScroll = () => {
+    if (mainContentRef.current && floatingScrollRef.current) {
+      mainContentRef.current.scrollLeft = floatingScrollRef.current.scrollLeft;
+    }
+  };
+
   // Suspension states
   const [appealReason, setAppealReason] = useState('');
   const [appealSubmitted, setAppealSubmitted] = useState(false);
@@ -1349,6 +1364,9 @@ export default function Dashboard({
       if (checkMobileMatch(c.petitionerAsstClerkMobile)) return true;
       if (checkMobileMatch(c.respondentAsstClerkMobile)) return true;
       if (checkMobileMatch(c.assignedAssociateMobile)) return true;
+      if (c.petitionerDetails && Array.isArray(c.petitionerDetails)) {
+        if (c.petitionerDetails.some(p => p && p.phone && normalizeMobile(p.phone) === normalizedUserMobile)) return true;
+      }
       if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
         if (c.respondentDetails.some(r => r && r.phone && normalizeMobile(r.phone) === normalizedUserMobile)) return true;
       }
@@ -2625,7 +2643,7 @@ export default function Dashboard({
     let finalCaseData = { ...caseData, user_id: firebaseUid || String(userId) };
 
     try {
-      if (editingCase) {
+      if (editingCase && editingCase.id) {
         if (currentSide && editingCase.reportedErrorBySide && editingCase.reportedErrorBySide !== currentSide) {
           finalCaseData.reportedErrorBySide = undefined;
         }
@@ -2643,6 +2661,7 @@ export default function Dashboard({
         }
         
         await updateCase(editingCase.id.toString(), finalCaseData);
+        setCases(prev => prev.map(c => String(c.id) === String(editingCase.id) ? { ...c, ...finalCaseData } : c));
         setSuccessMessage(t('success_update'));
       } else {
         const newCase = {
@@ -3596,7 +3615,7 @@ export default function Dashboard({
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-8 lg:pb-8 bg-[#87e9ab]">
+        <main className="flex-1 overflow-y-auto p-2.5 sm:p-3.5 pb-20 lg:p-4 lg:pb-6 bg-[#87e9ab]">
           {successMessage && (
             <motion.div 
               initial={{ opacity: 0, y: -20 }}
@@ -3775,6 +3794,10 @@ export default function Dashboard({
                   }}
                   onWhatsAppShare={(c, side) => {
                     setSavedCaseForWhatsApp({ caseData: c, targetSide: side || 'petitioner' });
+                  }}
+                  onAddCaseForDate={(date) => {
+                    setEditingCase({ nextDate: date } as any);
+                    setIsCaseFormOpen(true);
                   }}
                   onOpenAiForCase={(c) => {
                     setSelectedCaseForCard(c);
@@ -6246,13 +6269,13 @@ export default function Dashboard({
               setEditingCase(null);
             }} 
             initialData={editingCase}
-            initialMode={isJoinFormOpen ? 'join' : (editingCase ? 'detailed' : 'quick')}
+            initialMode={isJoinFormOpen ? 'join' : (editingCase && (editingCase as any).id ? 'detailed' : 'diary')}
             language={language}
             userDistrict={userDistrict}
             userCountry={userCountry}
             existingCases={cases}
-            canEditPetitioner={!editingCase || isUserPetitioner(editingCase) || (!isUserPetitioner(editingCase) && !isUserRespondent(editingCase))}
-            canEditRespondent={!editingCase || isUserRespondent(editingCase) || (!isUserPetitioner(editingCase) && !isUserRespondent(editingCase))}
+            canEditPetitioner={!editingCase || !(editingCase as any).id || isUserPetitioner(editingCase) || (!isUserPetitioner(editingCase) && !isUserRespondent(editingCase))}
+            canEditRespondent={!editingCase || !(editingCase as any).id || isUserRespondent(editingCase) || (!isUserPetitioner(editingCase) && !isUserRespondent(editingCase))}
             userType={currentViewMode}
             userName={userName}
             userMobile={userMobile}
@@ -6277,7 +6300,7 @@ export default function Dashboard({
       {/* Payment Modal */}
       <AnimatePresence>
         {isPaymentOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white rounded-3xl p-6 w-full max-w-md">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-bold">{selectedPkg?.name} - {selectedPkg?.price}</h3>
@@ -6712,6 +6735,45 @@ export default function Dashboard({
           />
         )}
       </AnimatePresence>
+
+      {/* Floating Horizontal Scrollbar Bar (Only visible on Cases / মামলার নথি tab, lighter and thinner) */}
+      {activeTab === 'cases' && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[200] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-slate-800 dark:text-white px-2.5 py-1 rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 flex items-center gap-1.5 w-[85%] max-w-xs animate-in fade-in duration-200">
+          <button
+            type="button"
+            onClick={() => {
+              window.scrollBy({ left: -250, behavior: 'smooth' });
+            }}
+            className="w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold shrink-0 cursor-pointer"
+            title="Scroll Left"
+          >
+            ◀
+          </button>
+          <div 
+            className="flex-1 overflow-x-auto custom-scrollbar h-1.5 cursor-ew-resize flex items-center"
+            onScroll={(e) => {
+              const val = (e.target as HTMLDivElement).scrollLeft;
+              window.scrollTo({ left: val * 2, behavior: 'auto' });
+            }}
+            title={language === 'bn' ? 'ডানে-বামে স্ক্রিন সরাতে স্ক্রোল করুন' : 'Scroll left/right'}
+          >
+            <div className="w-[1200px] h-0.5 bg-slate-300 dark:bg-slate-700 rounded-full" />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              window.scrollBy({ left: 250, behavior: 'smooth' });
+            }}
+            className="w-5 h-5 rounded-md bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center text-[10px] font-bold shrink-0 cursor-pointer"
+            title="Scroll Right"
+          >
+            ▶
+          </button>
+          <span className="text-[9px] font-bold uppercase text-slate-400 shrink-0 hidden sm:inline">
+            {language === 'bn' ? '↔️ প্যান' : '↔️ Pan'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
