@@ -142,6 +142,12 @@ export default function CaseForm({
   const [defendants, setDefendants] = useState<PartyRow[]>([{ name: '', phone: '', serial: 1 }]);
   const [lawyers, setLawyers] = useState<PartyRow[]>([{ name: '', phone: '' }]);
   const [clerks, setClerks] = useState<PartyRow[]>([{ name: '', phone: '' }]);
+  const [showSecondaryMobile, setShowSecondaryMobile] = useState<boolean>(
+    Boolean(initialData?.petitionerSecondaryMobile || initialData?.respondentSecondaryMobile)
+  );
+  const [secondaryMobile, setSecondaryMobile] = useState<string>(
+    initialData?.petitionerSecondaryMobile || initialData?.respondentSecondaryMobile || ''
+  );
 
   // Join Case Specific Logic
   const [joinFilingYear, setJoinFilingYear] = useState(new Date().getFullYear().toString());
@@ -447,6 +453,7 @@ export default function CaseForm({
       status: formData.status || 'Running',
       petitioner: plaintiffs.map(p => p.name).filter(Boolean).join(', ') || formData.petitioner,
       petitionerMobile: plaintiffs[0]?.phone || formData.petitionerMobile || '',
+      petitionerSecondaryMobile: formData.selectedParty === 'petitioner' ? secondaryMobile : (initialData?.petitionerSecondaryMobile || ''),
       petitionerDetails: plaintiffs
         .filter(p => p.name.trim() !== '')
         .map((p, idx) => ({
@@ -459,6 +466,7 @@ export default function CaseForm({
         })),
       respondent: defendants.map(d => d.name).filter(Boolean).join(', ') || formData.respondent,
       respondentMobile: defendants[0]?.phone || formData.respondentMobile || '',
+      respondentSecondaryMobile: formData.selectedParty === 'respondent' ? secondaryMobile : (initialData?.respondentSecondaryMobile || ''),
       respondentDetails: defendants
         .filter(d => d.name.trim() !== '')
         .map(d => ({ 
@@ -638,6 +646,31 @@ export default function CaseForm({
               <Trash2 size={14} />
             </button>
           )}
+
+          {/* Plus button below each box to duplicate format and text below */}
+          <div className="flex justify-end pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setter(prev => {
+                  const newRows = [...prev];
+                  const currentRow = prev[index] || { name: '', phone: '' };
+                  const newRow: PartyRow = { 
+                    name: currentRow.name, 
+                    phone: currentRow.phone,
+                    serial: isDefendant ? (currentRow.serial ? currentRow.serial + 1 : prev.length + 1) : undefined
+                  };
+                  newRows.splice(index + 1, 0, newRow);
+                  return newRows;
+                });
+              }}
+              title={language === 'bn' ? 'এই ফরম্যাট ও লেখা সহ ডুপ্লিকেট করুন' : 'Duplicate format and text below'}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg flex items-center justify-center transition-all cursor-pointer text-xs font-extrabold gap-2 animate-bounce ring-4 ring-emerald-300"
+            >
+              <Plus size={16} />
+              <span>{language === 'bn' ? '➕ এই ফরম্যাট ও লেখা সহ কপি করুন' : '➕ Duplicate Box & Text'}</span>
+            </button>
+          </div>
         </div>
       ))}
     </div>
@@ -1001,51 +1034,121 @@ export default function CaseForm({
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <span className="text-xs font-black text-emerald-800 block mb-1">
-                              {language === 'bn' ? 'বাদীর নাম (Plaintiff) *' : 'Petitioner Name *'}
-                            </span>
-                            <input
-                              type="text"
-                              value={plaintiffs[0]?.name || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPlaintiffs(prev => [{ ...prev[0], name: val }]);
-                                setFormData(prev => ({ ...prev, petitioner: val }));
-                              }}
-                              required={formData.selectedParty === 'petitioner'}
-                              placeholder={language === 'bn' ? 'বাদীর নাম লিখুন' : 'Enter petitioner name'}
-                              className="w-full px-3.5 py-3 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-sm sm:text-base"
-                            />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {/* Plaintiffs Section */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-emerald-800 block">
+                                {language === 'bn' ? 'বাদীগণ (Plaintiffs) *' : 'Petitioners *'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setPlaintiffs(prev => [...prev, { name: '', phone: '' }])}
+                                className="text-[11px] font-black text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Plus size={12} /> {language === 'bn' ? 'বাদী যোগ' : 'Add'}
+                              </button>
+                            </div>
+                            <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                              {plaintiffs.map((p, index) => (
+                                <div key={index} className="flex items-center gap-1.5 relative bg-emerald-50/40 p-2 rounded-xl border border-emerald-100">
+                                  <input
+                                    type="text"
+                                    value={p.name}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setPlaintiffs(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], name: val };
+                                        return next;
+                                      });
+                                      if (index === 0) setFormData(prev => ({ ...prev, petitioner: val }));
+                                    }}
+                                    required={index === 0 && formData.selectedParty === 'petitioner'}
+                                    placeholder={language === 'bn' ? `বাদীর নাম ${index + 1}` : `Petitioner ${index + 1}`}
+                                    className="w-full px-3 py-2 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-xs sm:text-sm"
+                                  />
+                                  {plaintiffs.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPlaintiffs(prev => prev.filter((_, i) => i !== index))}
+                                      className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-colors shrink-0 cursor-pointer"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
 
-                          <div>
-                            <span className="text-xs font-black text-rose-800 block mb-1">
-                              {language === 'bn' ? 'আসামী/বিবাদীর নাম (Defendant) *' : 'Respondent Name *'}
-                            </span>
-                            <input
-                              type="text"
-                              value={defendants[0]?.name || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setDefendants(prev => [{ ...prev[0], name: val }]);
-                                setFormData(prev => ({ ...prev, respondent: val }));
-                              }}
-                              required={formData.selectedParty === 'respondent'}
-                              placeholder={language === 'bn' ? 'আসামী বা বিবাদীর নাম লিখুন' : 'Enter respondent name'}
-                              className="w-full px-3.5 py-3 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-sm sm:text-base"
-                            />
+                          {/* Defendants Section */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-rose-800 block">
+                                {language === 'bn' ? 'আসামী/বিবাদীগণ (Defendants) *' : 'Respondents *'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setDefendants(prev => [...prev, { name: '', phone: '', serial: prev.length + 1 }])}
+                                className="text-[11px] font-black text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg border border-rose-200 flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Plus size={12} /> {language === 'bn' ? 'আসামী যোগ' : 'Add'}
+                              </button>
+                            </div>
+                            <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                              {defendants.map((d, index) => (
+                                <div key={index} className="flex items-center gap-1.5 relative bg-rose-50/40 p-2 rounded-xl border border-rose-100">
+                                  <span className="text-[10px] font-bold text-slate-500 shrink-0 w-5 text-center">{d.serial || index + 1}.</span>
+                                  <input
+                                    type="text"
+                                    value={d.name}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setDefendants(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], name: val };
+                                        return next;
+                                      });
+                                      if (index === 0) setFormData(prev => ({ ...prev, respondent: val }));
+                                    }}
+                                    required={index === 0 && formData.selectedParty === 'respondent'}
+                                    placeholder={language === 'bn' ? `আসামী/বিবাদীর নাম ${index + 1}` : `Defendant ${index + 1}`}
+                                    className="w-full px-3 py-2 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-rose-500 font-bold text-xs sm:text-sm"
+                                  />
+                                  {defendants.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setDefendants(prev => prev.filter((_, i) => i !== index))}
+                                      className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg transition-colors shrink-0 cursor-pointer"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
                         {/* Client Mobile WhatsApp Input */}
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-500 block mb-1">
-                            {formData.selectedParty === 'petitioner' 
-                              ? (language === 'bn' ? 'মক্কেলের মোবাইল (বাদী পক্ষ)' : 'Client Mobile (Petitioner)') 
-                              : (language === 'bn' ? 'মক্কেলের মোবাইল (বিবাদী পক্ষ)' : 'Client Mobile (Respondent)')}
-                          </span>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-700 block">
+                              {formData.selectedParty === 'petitioner' 
+                                ? (language === 'bn' ? 'মক্কেলের মোবাইল (বাদী পক্ষ)' : 'Client Mobile (Petitioner)') 
+                                : (language === 'bn' ? 'মক্কেলের মোবাইল (বিবাদী পক্ষ)' : 'Client Mobile (Respondent)')}
+                            </span>
+                            {!showSecondaryMobile && (
+                              <button
+                                type="button"
+                                onClick={() => setShowSecondaryMobile(true)}
+                                className="text-xs font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-lg border border-indigo-200/60 flex items-center gap-1 transition-all cursor-pointer"
+                              >
+                                <Plus size={12} /> {language === 'bn' ? 'আরেকটি মোবাইল যোগ করুন' : 'Add another mobile'}
+                              </button>
+                            )}
+                          </div>
                           <WhatsAppPhoneInput
                             value={
                               formData.selectedParty === 'petitioner' 
@@ -1061,10 +1164,43 @@ export default function CaseForm({
                                 setFormData(prev => ({ ...prev, respondentMobile: val }));
                               }
                             }}
-                            placeholder={language === 'bn' ? 'মক্কেলের মোবাইল নং (হোয়াটসঅ্যাপে নোটিশ পাঠানো যাবে)' : 'Client Mobile (for WhatsApp alerts)'}
+                            placeholder={language === 'bn' ? 'প্রধান মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Primary Mobile (WhatsApp)'}
                             language={language}
                             className="h-[40px]"
                           />
+
+                          {showSecondaryMobile && (
+                            <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-200">
+                              <div className="flex-1">
+                                <WhatsAppPhoneInput
+                                  value={secondaryMobile}
+                                  onChange={(val) => {
+                                    setSecondaryMobile(val);
+                                    if (formData.selectedParty === 'petitioner') {
+                                      setFormData(prev => ({ ...prev, petitionerSecondaryMobile: val }));
+                                    } else {
+                                      setFormData(prev => ({ ...prev, respondentSecondaryMobile: val }));
+                                    }
+                                  }}
+                                  placeholder={language === 'bn' ? 'বিকল্প মোবাইল নং (ঐচ্ছিক)' : 'Alternate Mobile (Optional)'}
+                                  language={language}
+                                  className="h-[40px]"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowSecondaryMobile(false);
+                                  setSecondaryMobile('');
+                                  setFormData(prev => ({ ...prev, petitionerSecondaryMobile: '', respondentSecondaryMobile: '' }));
+                                }}
+                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="Remove secondary mobile"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
 

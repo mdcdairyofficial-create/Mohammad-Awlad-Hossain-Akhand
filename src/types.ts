@@ -26,7 +26,9 @@ export interface Case {
   isUpdated: boolean;
   order?: string;
   petitionerMobile?: string;
+  petitionerSecondaryMobile?: string;
   respondentMobile?: string;
+  respondentSecondaryMobile?: string;
   petitionerLawyer?: string;
   respondentLawyer?: string;
   petitionerLawyerMobile?: string[] | string;

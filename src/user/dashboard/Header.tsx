@@ -4,7 +4,6 @@ import {
   Bell, 
   BellOff, 
   Search, 
-  ChevronDown, 
   User, 
   Settings, 
   LogOut,
@@ -106,7 +105,6 @@ export const Header = ({
               <p className={`text-xs font-black truncate max-w-[100px] ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{userName}</p>
               <p className="text-[9px] font-bold text-indigo-500 uppercase tracking-widest">{userType}</p>
             </div>
-            <ChevronDown size={14} className={`text-slate-400 group-hover:rotate-180 transition-transform duration-300 ${dropdownOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Dropdown Menu */}

@@ -43,7 +43,12 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const roleFromUrl = urlParams.get('role');
   const targetRole = (roleFromUrl as UserRole) || (localStorage.getItem('registration_target_role') as UserRole) || (localStorage.getItem('pending_claim_case') ? 'client' : null);
 
-  const [isLogin, setIsLogin] = useState(!initialRefCode && !window.location.pathname.includes('/register') && !roleFromUrl);
+  const isRegisterPath = typeof window !== 'undefined' && (
+    window.location.pathname.includes('/register') || 
+    window.location.pathname.includes('/join') || 
+    window.location.pathname.includes('/signup')
+  );
+  const [isLogin, setIsLogin] = useState(!initialRefCode && !isRegisterPath && !roleFromUrl);
   const [resetMode, setResetMode] = useState(false);
   const [userType, setUserType] = useState<UserRole>(targetRole || 'lawyer');
   const [isFromTracking] = useState(targetRole === 'client' || !!localStorage.getItem('pending_claim_case'));

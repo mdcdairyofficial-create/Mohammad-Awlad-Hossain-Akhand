@@ -41,6 +41,7 @@ import {
   Legend, 
   Bar 
 } from 'recharts';
+import { getReferralUrl } from '../../../utils/urlHelper';
 
 interface HomeViewProps {
   userName: string;
@@ -144,10 +145,7 @@ export const HomeView = ({
   const [copiedLink, setCopiedLink] = React.useState(false);
 
   const effectiveReferralCode = referralCode || '';
-  const currentOrigin = typeof window !== 'undefined' && !window.location.origin.includes('localhost') && !window.location.origin.includes('ais-')
-    ? window.location.origin
-    : 'https://mdccasebook.vercel.app';
-  const fullReferralLink = `${currentOrigin}/register?ref=${effectiveReferralCode}`;
+  const fullReferralLink = getReferralUrl(effectiveReferralCode);
 
   const handleCopy = () => {
     if (onCopyLink) {
@@ -362,47 +360,51 @@ export const HomeView = ({
               <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] sm:min-w-[320px] shadow-inner"
+                className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] sm:min-w-[320px] shadow-inner justify-between"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-emerald-400 rounded-lg text-emerald-950">
-                      <Bell size={16} />
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-emerald-400 rounded-lg text-emerald-950">
+                        <Bell size={16} />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">
+                        {language === 'bn' ? 'অটো পুশ নোটিফিকেশন' : 'Push Notifications'}
+                      </span>
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">
-                      {language === 'bn' ? 'অটো পুশ নোটিফিকেশন' : 'Push Notifications'}
-                    </span>
+                    <div className={`text-[10px] font-black px-2.5 py-0.5 rounded-full text-white ${
+                      clientPushGranted ? 'bg-emerald-500' : 'bg-amber-500'
+                    }`}>
+                      {clientPushGranted ? (language === 'bn' ? 'সক্রিয়' : 'ACTIVE') : (language === 'bn' ? 'অপেক্ষমান' : 'PENDING')}
+                    </div>
                   </div>
-                  <div className={`text-[10px] font-black px-2.5 py-0.5 rounded-full text-white ${
-                    clientPushGranted ? 'bg-emerald-500' : 'bg-amber-500'
-                  }`}>
-                    {clientPushGranted ? (language === 'bn' ? 'সক্রিয়' : 'ACTIVE') : (language === 'bn' ? 'অপেক্ষমান' : 'PENDING')}
-                  </div>
+
+                  <p className="text-xs text-indigo-100 leading-relaxed mb-4">
+                    {language === 'bn'
+                      ? 'আদালত থেকে আপনার মামলার পরবর্তী ধার্য তারিখ বা নতুন আদেশ আসার সাথে সাথে আপনার মোবাইলে সরাসরি এলার্ট পৌঁছে যাবে।'
+                      : 'Get real-time push alerts on your phone whenever case hearing dates or orders change.'}
+                  </p>
                 </div>
 
-                <p className="text-xs text-indigo-100 leading-relaxed mb-4">
-                  {language === 'bn'
-                    ? 'আদালত থেকে আপনার মামলার পরবর্তী ধার্য তারিখ বা নতুন আদেশ আসার সাথে সাথে আপনার মোবাইলে সরাসরি এলার্ট পৌঁছে যাবে।'
-                    : 'Get real-time push alerts on your phone whenever case hearing dates or orders change.'}
-                </p>
-
-                {clientPushGranted ? (
-                  <button
-                    onClick={handleTestClientNotification}
-                    className="w-full py-2.5 rounded-2xl text-xs font-black bg-white text-indigo-700 hover:bg-indigo-50 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                  >
-                    <BellRing size={14} />
-                    <span>{language === 'bn' ? 'টেস্ট এলার্ট পাঠান' : 'Send Test Alert'}</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleEnableClientNotification}
-                    className="w-full py-2.5 rounded-2xl text-xs font-black bg-emerald-400 text-slate-950 hover:bg-emerald-300 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer font-sans active:scale-95"
-                  >
-                    <Bell size={14} />
-                    <span>{language === 'bn' ? '১-ট্যাপে নোটিফিকেশন চালু করুন' : 'Enable 1-Tap Alerts'}</span>
-                  </button>
-                )}
+                <div className="space-y-2">
+                  {clientPushGranted ? (
+                    <button
+                      onClick={handleTestClientNotification}
+                      className="w-full py-2.5 rounded-2xl text-xs font-black bg-white/10 text-white hover:bg-white/20 border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <BellRing size={14} />
+                      <span>{language === 'bn' ? 'টেস্ট এলার্ট পাঠান' : 'Send Test Alert'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleEnableClientNotification}
+                      className="w-full py-2.5 rounded-2xl text-xs font-black bg-emerald-400 text-slate-950 hover:bg-emerald-300 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer font-sans active:scale-95"
+                    >
+                      <Bell size={14} />
+                      <span>{language === 'bn' ? '১-ট্যাপে নোটিফিকেশন চালু করুন' : 'Enable 1-Tap Alerts'}</span>
+                    </button>
+                  )}
+                </div>
               </motion.div>
             )}
           </div>
@@ -431,7 +433,7 @@ export const HomeView = ({
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {([
-          { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab('recharge') },
+          { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab(userType === 'client' ? 'my_points' : 'recharge') },
           { label: language === 'bn' ? 'আমার নিজের মামলা' : 'My Own Cases', value: `${ownCasesCount} টি`, icon: FileText, color: 'bg-gradient-to-tr from-indigo-550 to-indigo-700', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
           { label: language === 'bn' ? 'আমার মোট মামলা সংখ্যা' : 'My Total Cases', value: `${cases.length} টি`, subtitle: language === 'bn' ? `(নিজের: ${ownCasesCount} | দায়িত্বপ্রাপ্ত: ${assignedCasesCount})` : `(Own: ${ownCasesCount} | Assigned: ${assignedCasesCount})`, icon: Briefcase, color: 'bg-gradient-to-tr from-blue-600 to-indigo-650', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
           ...(userType !== 'client' ? [

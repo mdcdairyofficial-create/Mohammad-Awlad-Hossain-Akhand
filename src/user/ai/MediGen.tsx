@@ -29,7 +29,7 @@ export default function MediGen({ points = 0, onPointsUpdate }: MediGenProps) {
         setYellowBalls(data.yellow_balls_count || 0);
       }
     }, (error) => {
-      console.error("Real-time snapshot error in MediGen:", error);
+      console.warn("Real-time snapshot notice in MediGen:", error?.message || error);
     });
     return () => unsubscribe();
   }, []);

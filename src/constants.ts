@@ -236,3 +236,89 @@ export function formatCourtNameWithNo(courtName?: string, courtNumber?: string):
   return `${formattedNo}${courtName}`;
 }
 
+export const toBnNumber = (n: number | string): string => {
+  const bnNums = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(n).replace(/[0-9]/g, d => bnNums[+d] || d);
+};
+
+export const formatMultiplePersons = (
+  rawName?: string, 
+  details?: Array<{ name: string }>, 
+  language: string = 'bn'
+): { formatted: string; fullNames: string; count: number } => {
+  if (details && Array.isArray(details) && details.length > 0) {
+    const validNames = details.map(d => d?.name?.trim()).filter(Boolean);
+    if (validNames.length > 1) {
+      const cleanFirst = validNames[0]
+        .replace(/\s+গং(\s*\([০-৯0-9]+\))?$/g, '')
+        .replace(/\s+&\s+others(\s*\([0-9]+\))?$/gi, '')
+        .trim();
+      const count = validNames.length;
+      const countStr = language === 'bn' ? toBnNumber(count) : count;
+      const suffix = language === 'bn' ? `গং (${countStr})` : `& others (${countStr})`;
+      return {
+        formatted: `${cleanFirst} ${suffix}`,
+        fullNames: validNames.map((n, i) => `${i + 1}. ${n}`).join('\n'),
+        count
+      };
+    } else if (validNames.length === 1) {
+      return {
+        formatted: validNames[0],
+        fullNames: validNames[0],
+        count: 1
+      };
+    }
+  }
+
+  if (!rawName || !rawName.trim()) {
+    return { formatted: '', fullNames: '', count: 0 };
+  }
+
+  const s = rawName.trim();
+
+  const alreadyGangWithCount = s.match(/^(.*?)\s+গং\s*\(([০-৯0-9]+)\)$/);
+  if (alreadyGangWithCount) {
+    const cleanFirst = alreadyGangWithCount[1].trim();
+    const countVal = alreadyGangWithCount[2];
+    const countStr = language === 'bn' ? toBnNumber(countVal) : countVal;
+    return {
+      formatted: `${cleanFirst} ${language === 'bn' ? 'গং' : '& others'} (${countStr})`,
+      fullNames: s,
+      count: parseInt(countVal, 10) || 2
+    };
+  }
+
+  const splitNames = s
+    .split(/[,;\n]+|\s+ও\s+/)
+    .map(n => n.trim())
+    .filter(Boolean);
+
+  if (splitNames.length > 1) {
+    const cleanFirst = splitNames[0]
+      .replace(/\s+গং(\s*\([০-৯0-9]+\))?$/g, '')
+      .replace(/\s+&\s+others(\s*\([0-9]+\))?$/gi, '')
+      .trim();
+    const count = splitNames.length;
+    const countStr = language === 'bn' ? toBnNumber(count) : count;
+    const suffix = language === 'bn' ? `গং (${countStr})` : `& others (${countStr})`;
+    return {
+      formatted: `${cleanFirst} ${suffix}`,
+      fullNames: splitNames.map((n, i) => `${i + 1}. ${n}`).join('\n'),
+      count
+    };
+  }
+
+  if (/\s+গং$/.test(s)) {
+    const cleanFirst = s.replace(/\s+গং$/, '').trim();
+    const count = details && details.length > 1 ? details.length : 2;
+    const countStr = language === 'bn' ? toBnNumber(count) : count;
+    return {
+      formatted: `${cleanFirst} ${language === 'bn' ? 'গং' : '& others'} (${countStr})`,
+      fullNames: s,
+      count
+    };
+  }
+
+  return { formatted: s, fullNames: s, count: 1 };
+};
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import '../styles/casebook.css';
-import { formatMultiplePersons } from '../user/dashboard/views/CalendarView';
+import { formatMultiplePersons } from '../constants';
 import { 
   ArrowLeft, 
   ArrowRight, 

@@ -703,7 +703,15 @@ app.post('/api/dump', (req, res) => {
       try {
         const result = await genAI.models.generateContent({
           model: "gemini-3.5-flash",
-          contents: prompt
+          contents: prompt,
+          config: {
+            systemInstruction: `You are the official AI assistant for MDC Casebook (এমডিসি কেসবুক), a digital court case management platform in Bangladesh.
+When users ask about storage, data retention, subscription rules, or database policies, you must ALWAYS provide accurate answers based on these 3 core platform rules:
+1. Case Text Records (Lifetime Free): Case numbers, court names, hearing dates, and orders are stored in the cloud for a lifetime even after subscriptions lapse. They are never deleted.
+2. Scanned Documents & Image Storage: Scanned documents and image files remain preserved in the cloud for at least 1 year post-subscription, allowing users to download and back up their files anytime.
+3. Digital Legacy & Chamber Protection: Chamber files can be recovered or transitioned to junior associates or legal heirs with proper bar association certification.
+Always respond politely and professionally in Bengali when asked in Bengali.`
+          }
         });
 
         responseText = result.text || "";
@@ -817,7 +825,15 @@ app.post('/api/dump', (req, res) => {
 
       const result = await genAI.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: prompt
+        contents: prompt,
+        config: {
+          systemInstruction: `You are the official AI assistant for MDC Casebook (এমডিসি কেসবুক), a digital court case management platform in Bangladesh.
+When users ask about storage, data retention, subscription rules, or database policies, you must ALWAYS provide accurate answers based on these 3 core platform rules:
+1. Case Text Records (Lifetime Free): Case numbers, court names, hearing dates, and orders are stored in the cloud for a lifetime even after subscriptions lapse. They are never deleted.
+2. Scanned Documents & Image Storage: Scanned documents and image files remain preserved in the cloud for at least 1 year post-subscription, allowing users to download and back up their files anytime.
+3. Digital Legacy & Chamber Protection: Chamber files can be recovered or transitioned to junior associates or legal heirs with proper bar association certification.
+Always respond politely and professionally in Bengali when asked in Bengali.`
+        }
       });
 
       res.json({ success: true, text: result.text || '' });
@@ -931,7 +947,14 @@ app.post('/api/subscription/request', async (req, res) => {
       const userId = req.params.id;
       const isAdmin = ['admin', 'super_admin', 'country_manager'].includes(req.profile?.user_type || '');
 
-      if (req.profile?.id !== userId && !isAdmin) {
+      const matchesUser = req.profile?.id === userId || 
+                          req.profile?.firebase_uid === userId || 
+                          String(req.profile?.id) === String(userId) ||
+                          String(req.profile?.firebase_uid) === String(userId) ||
+                          req.user?.uid === userId ||
+                          String(req.user?.uid) === String(userId);
+
+      if (!matchesUser && !isAdmin) {
         return res.status(403).json({ error: "প্রোফাইল আপডেট করার অনুমতি নেই।" });
       }
 
@@ -949,7 +972,7 @@ app.post('/api/subscription/request', async (req, res) => {
       if (socialLinks?.linkedin !== undefined) updateData.linkedin_url = socialLinks.linkedin;
 
       if (Object.keys(updateData).length > 0) {
-        await db.doc("users/" + userId).update(updateData);
+        await db.doc("users/" + userId).set(updateData, { merge: true });
       }
       res.json({ success: true, message: "Profile updated successfully" });
     } catch (err: any) {
@@ -2900,6 +2923,57 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       console.error("Error updating usage:", error);
     }
   }
+
+  // Public Case Search / Tracking endpoint for Magic Case Tracker
+  app.get("/api/cases/search", async (req, res) => {
+    try {
+      const q = ((req.query.q as string) || "").trim();
+      if (!q) {
+        return res.status(400).json({ success: false, error: "Search query required" });
+      }
+
+      const bnMap: Record<string, string> = { '০':'0', '১':'1', '২':'2', '৩':'3', '৪':'4', '৫':'5', '৬':'6', '৭':'7', '৮':'8', '৯':'9' };
+      const enMap: Record<string, string> = { '0':'০', '1':'১', '2':'২', '3':'৩', '4':'৪', '5':'৫', '6':'৬', '7':'৭', '8':'৮', '9':'৯' };
+      const toEn = (s: string) => s.replace(/[০-৯]/g, (c) => bnMap[c] || c);
+      const toBn = (s: string) => s.replace(/[0-9]/g, (c) => enMap[c] || c);
+
+      // 1. Check doc ID lookup
+      try {
+        const docSnap = await db.collection("cases").doc(q).get();
+        if (docSnap && docSnap.exists) {
+          return res.json({ success: true, data: { id: docSnap.id, ...docSnap.data() } });
+        }
+      } catch (e) {}
+
+      // 2. Check caseNumber with exact, English, and Bengali variations
+      const variants = Array.from(new Set([q, toEn(q), toBn(q)]));
+      for (const variant of variants) {
+        if (!variant) continue;
+        const snap = await db.collection("cases").where("caseNumber", "==", variant).limit(1).get();
+        if (snap && snap.docs && snap.docs.length > 0) {
+          const first = snap.docs[0];
+          return res.json({ success: true, data: { id: first.id, ...first.data() } });
+        }
+      }
+
+      // 3. Check mobile numbers
+      const digitsOnly = q.replace(/[^0-9]/g, '');
+      if (digitsOnly.length >= 7) {
+        for (const field of ["petitionerMobile", "respondentMobile"]) {
+          const snap = await db.collection("cases").where(field, "==", q).limit(1).get();
+          if (snap && snap.docs && snap.docs.length > 0) {
+            const first = snap.docs[0];
+            return res.json({ success: true, data: { id: first.id, ...first.data() } });
+          }
+        }
+      }
+
+      return res.status(404).json({ success: false, error: "Case not found" });
+    } catch (err: any) {
+      console.error("[Public Case Search Error]", err);
+      return res.status(500).json({ success: false, error: "Failed to search case" });
+    }
+  });
 
   app.get("/api/cases", authenticate, async (req: any, res) => {
     try {

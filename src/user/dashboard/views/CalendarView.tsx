@@ -4720,29 +4720,9 @@ export const CalendarView = ({
                           {c.caseNumber}
                         </span>
 
-                        {/* Line 2: Party Badge (২য় লাইনে হবে) */}
-                        <div>
-                          {c.selectedParty === 'petitioner' ? (
-                            <span className="text-[6.5px] font-black px-1.5 py-0.2 bg-emerald-600 text-white rounded inline-block leading-tight shadow-3xs">
-                              {language === 'bn' ? 'বাদী' : 'Pet'}
-                            </span>
-                          ) : c.selectedParty === 'respondent' || c.selectedParty === 'accused' ? (
-                            <span className="text-[6.5px] font-black px-1.5 py-0.2 bg-rose-600 text-white rounded inline-block leading-tight shadow-3xs">
-                              {language === 'bn' ? 'আসামী' : 'Acc'}
-                            </span>
-                          ) : null}
-                        </div>
+                        {/* Line 2: Party Badge removed */}
 
-                        {/* Line 3: Case Type (৩য় লাইনে হবে - মোট ৩টি লাইন) */}
-                        <div>
-                          <span className={`text-[6.5px] font-extrabold px-1.5 py-0.2 rounded inline-block leading-tight ${
-                            c.caseType === 'Civil' 
-                              ? 'bg-blue-50 text-blue-700 border border-blue-150' 
-                              : 'bg-rose-50 text-rose-700 border border-rose-150'
-                          }`}>
-                            {c.caseType || (language === 'bn' ? 'ফৌজদারী' : 'Criminal')}
-                          </span>
-                        </div>
+                        {/* Case Type box removed */}
                       </div>
                     </td>
                     <td className="py-1.5 px-1.5 border-r border-[#e3dcc4]/10 max-w-[100px] truncate">
@@ -5163,15 +5143,7 @@ export const CalendarView = ({
                               <p className="text-base font-black text-slate-900 leading-none">
                                 {c.caseNumber}
                               </p>
-                              {c.selectedParty === 'petitioner' ? (
-                                <span className="text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 bg-emerald-600 text-white rounded-full">
-                                  {language === 'bn' ? 'আমার মক্কেল: বাদী পক্ষ' : 'Client: Petitioner'}
-                                </span>
-                              ) : c.selectedParty === 'respondent' || c.selectedParty === 'accused' ? (
-                                <span className="text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 bg-rose-600 text-white rounded-full">
-                                  {language === 'bn' ? 'আমার মক্কেল: আসামী পক্ষ' : 'Client: Defendant/Accused'}
-                                </span>
-                              ) : null}
+                              {/* Client party badge removed */}
                             </div>
                           </div>
 
@@ -5180,7 +5152,7 @@ export const CalendarView = ({
                               <button
                                 type="button"
                                 onClick={() => onOpenAiForCase(c)}
-                                className="px-2 py-1.5 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[10px]"
+                                className="px-2 py-1.5 rounded-xl bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-700 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[9px]"
                                 title={language === 'bn' ? 'এআই কে এই মামলা সম্পর্কে প্রশ্ন করুন' : 'Ask AI about this case'}
                               >
                                 <Sparkles size={11} className="text-indigo-600 animate-pulse" />
@@ -5191,7 +5163,7 @@ export const CalendarView = ({
                               <button
                                 type="button"
                                 onClick={() => setEditingCaseData(c)}
-                                className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[10px]"
+                                className="px-2 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200/50 hover:scale-[1.02] active:scale-[0.98] transition-all select-none flex items-center gap-1 cursor-pointer font-bold text-[9px]"
                                 title={language === 'bn' ? 'মামলার তথ্য সংশোধন করুন' : 'Edit Case Details'}
                               >
                                 <Edit2 size={11} />

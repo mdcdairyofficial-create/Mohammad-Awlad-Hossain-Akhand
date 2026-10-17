@@ -44,10 +44,21 @@ export default defineConfig(({mode}) => {
           ]
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          globPatterns: ['**/*.{js,css,html,ico,svg,woff,woff2}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           cleanupOutdatedCaches: true,
           runtimeCaching: [
+            {
+              urlPattern: /\.(?:png|jpg|jpeg|svg|webp|gif)$/,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'images-cache',
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
+                },
+              },
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',
@@ -55,7 +66,7 @@ export default defineConfig(({mode}) => {
                 cacheName: 'google-fonts-cache',
                 expiration: {
                   maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // <--- 365 days
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // 365 days
                 },
                 cacheableResponse: {
                   statuses: [0, 200]
@@ -63,15 +74,15 @@ export default defineConfig(({mode}) => {
               }
             },
             {
-              urlPattern: ({ url }) => !url.pathname.startsWith('/api'),
+              urlPattern: ({ url }) => url.origin === self.location.origin && !url.pathname.startsWith('/api'),
               handler: 'NetworkFirst',
               options: {
                 cacheName: 'others-cache',
                 expiration: {
                   maxEntries: 50,
-                  maxAgeSeconds: 60 * 60 * 24 * 30 // <--- 30 days
+                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
                 },
-                networkTimeoutSeconds: 10 // Fallback to cache after 10s
+                networkTimeoutSeconds: 4
               }
             }
           ]
@@ -84,6 +95,20 @@ export default defineConfig(({mode}) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+            'vendor-motion': ['motion/react'],
+            'vendor-icons': ['lucide-react'],
+            'vendor-charts': ['recharts'],
+            'vendor-pdf': ['jspdf', 'html-to-image'],
+            'vendor-qr': ['qrcode.react', '@yudiel/react-qr-scanner'],
+          }
+        }
+      }
     },
     resolve: {
       alias: {

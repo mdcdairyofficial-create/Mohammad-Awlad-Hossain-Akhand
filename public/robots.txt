@@ -4,5 +4,4 @@ Allow: /index.html
 Disallow: /api/
 Disallow: /admin/
 
-Sitemap: https://mdccasebook.vercel.app/sitemap.xml
-Sitemap: https://mdccasebook.onrender.com/sitemap.xml
+Sitemap: https://www.mdccasebook.com/sitemap.xml

@@ -79,6 +79,8 @@ export function checkWhatsAppNumber(phone: string, language: 'en' | 'bn' | 'hi' 
   }
 }
 
+import { getAppOrigin, getTrackUrl } from '../../utils/urlHelper';
+
 /**
  * Gets the direct Magic Tracking and Auto-Login URL for a case
  */
@@ -90,28 +92,7 @@ export function getMagicCaseTrackUrl(params: {
   clientName?: string;
   directDashboard?: boolean;
 }): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mdccasebook.vercel.app';
-  const query = new URLSearchParams();
-  if (params.caseId) {
-    query.set('track', String(params.caseId));
-  } else if (params.caseNumber) {
-    query.set('track', params.caseNumber);
-  }
-  query.set('role', 'client');
-  if (params.clientMobile) {
-    query.set('phone', params.clientMobile.trim());
-  }
-  if (params.clientName) {
-    query.set('name', params.clientName.trim());
-  }
-  query.set('magicAuth', '1');
-  if (params.referralCode) {
-    query.set('ref', params.referralCode);
-  }
-  if (params.directDashboard) {
-    query.set('view', 'dashboard');
-  }
-  return `${origin}/?${query.toString()}`;
+  return getTrackUrl(params);
 }
 
 /**

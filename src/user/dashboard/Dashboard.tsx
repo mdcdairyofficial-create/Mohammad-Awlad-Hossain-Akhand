@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { GoogleAdSense } from "../../components/GoogleAdSense";
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
@@ -75,21 +76,25 @@ import {
 } from 'lucide-react';
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
-import { doc, getDoc, updateDoc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, collection, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import Markdown from 'react-markdown';
 import { emergencyData } from '../../data/emergencyData';
 import CaseTimeline from '../cases/CaseTimeline';
 import { getPoliceStations, getCourtsForDistrict, BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS, formatCourtNameWithNo } from '../../constants';
-import MediGen from '../ai/MediGen';
-import AffiliateZone from '../resources/AffiliateZone';
-import BarAdminDashboard from '../../admin/BarAdminDashboard';
 import Media from '../resources/Media';
 import PaymentGateway from '../recharge/PaymentGateway';
 import Recharge from '../recharge/Recharge';
-import AdminPanel from '../../admin/AdminPanel';
-import LawyerDirectory from '../profile/LawyerDirectory';
-import ClerkDirectory from '../profile/ClerkDirectory';
-import ArchiveCaseHistory from '../cases/ArchiveCaseHistory';
+import { safeSetJson, safeGetJson, safeSetItem, safeGetItem } from '../../utils/safeStorage';
+import { getReferralUrl } from '../../utils/urlHelper';
+
+// Lazy-loaded secondary components (saves ~1.5MB from initial dashboard load)
+const MediGen = lazy(() => import('../ai/MediGen'));
+const AffiliateZone = lazy(() => import('../resources/AffiliateZone'));
+const BarAdminDashboard = lazy(() => import('../../admin/BarAdminDashboard'));
+const AdminPanel = lazy(() => import('../../admin/AdminPanel'));
+const LawyerDirectory = lazy(() => import('../profile/LawyerDirectory'));
+const ClerkDirectory = lazy(() => import('../profile/ClerkDirectory'));
+const ArchiveCaseHistory = lazy(() => import('../cases/ArchiveCaseHistory'));
 import { Case, Notification, UserMemory, ChatMessage, Task, ArchiveCase, CaseHistoryEntry, ChamberAssociate, isCaseOnDate } from '../../types';
 import CaseForm from '../cases/CaseForm';
 import CaseSavedWhatsAppModal from '../cases/CaseSavedWhatsAppModal';
@@ -128,18 +133,20 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { HomeView } from './views/HomeView';
 import { CasesView } from './views/CasesView';
-import { CalendarView } from './views/CalendarView';
 import { TasksView } from './views/TasksView';
 import { NewsView } from './views/NewsView';
-import { NewspapersView } from './views/NewspapersView';
 import { EmergencyView } from './views/EmergencyView';
 import { ProfileView } from './views/ProfileView';
-import { ReligiousTextsView } from './views/ReligiousTextsView';
 import { InvoicesView } from './views/InvoicesView';
-import { LegalDraftsView } from './views/LegalDraftsView';
-import { LibraryView } from './views/LibraryView';
 import { SubscriptionView } from './views/SubscriptionView';
-import { LotteryView } from './views/LotteryView';
+
+// Code-split heavy views to keep initial bundle ultra-light
+const CalendarView = lazy(() => import('./views/CalendarView').then(m => ({ default: m.CalendarView })));
+const NewspapersView = lazy(() => import('./views/NewspapersView').then(m => ({ default: m.NewspapersView })));
+const ReligiousTextsView = lazy(() => import('./views/ReligiousTextsView').then(m => ({ default: m.ReligiousTextsView })));
+const LegalDraftsView = lazy(() => import('./views/LegalDraftsView').then(m => ({ default: m.LegalDraftsView })));
+const LibraryView = lazy(() => import('./views/LibraryView').then(m => ({ default: m.LibraryView })));
+const LotteryView = lazy(() => import('./views/LotteryView').then(m => ({ default: m.LotteryView })));
 import { ChamberAssociatesView } from './views/ChamberAssociatesView';
 import { AssociatesAssignmentView } from './views/AssociatesAssignmentView';
 import { ClerkAssistantsAssignmentView } from './views/ClerkAssistantsAssignmentView';
@@ -230,6 +237,37 @@ const CaseHistoryModal = ({
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleRevertLastHistory = async () => {
+    if (!caseData || !caseData.history || caseData.history.length === 0) return;
+    if (!window.confirm(language === 'bn' ? 'শেষ আদেশ বা কার্যক্রম রিভার্ট বা বাতিল করতে চান?' : 'Do you want to revert or cancel the last order/activity?')) {
+      return;
+    }
+    const updatedHistory = caseData.history.slice(0, -1);
+    const lastRemaining = updatedHistory[updatedHistory.length - 1] as any;
+    const updatedCase: Case = {
+      ...caseData,
+      history: updatedHistory,
+      lastDate: lastRemaining ? lastRemaining.date : caseData.lastDate,
+      nextDate: lastRemaining ? (lastRemaining.nextDate || caseData.nextDate) : caseData.nextDate,
+      order: lastRemaining ? (lastRemaining.order || lastRemaining.description || caseData.order) : caseData.order,
+      status: lastRemaining ? (lastRemaining.status || caseData.status) : caseData.status
+    };
+    if (onUpdateCaseHistory) {
+      onUpdateCaseHistory(updatedCase);
+    }
+    try {
+      await updateCase(caseData.id.toString(), {
+        history: updatedHistory,
+        lastDate: updatedCase.lastDate,
+        nextDate: updatedCase.nextDate,
+        order: updatedCase.order,
+        status: updatedCase.status
+      });
+    } catch (e) {
+      console.error("Failed to revert last case history:", e);
+    }
   };
 
   return (
@@ -346,6 +384,17 @@ const CaseHistoryModal = ({
                       >
                         <Printer size={14} />
                         {language === 'bn' ? 'প্রিন্ট' : 'Print'}
+                      </button>
+                    )}
+
+                    {caseData.history && caseData.history.length > 0 && (
+                      <button 
+                        onClick={handleRevertLastHistory} 
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        title={language === 'bn' ? 'শেষ আদেশ বা কার্যক্রম রিভার্ট বা বাতিল করুন' : 'Revert/Cancel Last Order or Activity'}
+                      >
+                        <RotateCcw size={14} />
+                        {language === 'bn' ? 'শেষ আদেশ বাতিল' : 'Revert Last'}
                       </button>
                     )}
                   </div>
@@ -866,18 +915,222 @@ export default function Dashboard({
   onUpdateProfile 
 }: DashboardProps) {
   if (userType === 'bar_admin') {
-    return <BarAdminDashboard userId={initialFirebaseUid || (userId ? String(userId) : undefined)} userName={userName} />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">লোড হচ্ছে...</div>}>
+        <BarAdminDashboard userId={initialFirebaseUid || (userId ? String(userId) : undefined)} userName={userName} />
+      </Suspense>
+    );
   }
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeCallDropdownCaseId, setActiveCallDropdownCaseId] = useState<string | number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [currentViewMode, setCurrentViewMode] = useState<string>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType);
-  const isSubscribed = subscriptionPackage && subscriptionPackage !== 'free';
-  const isPremiumFeatures = ['premium', 'special', 'silver', 'gold', 'platinum', 'diamond'].includes(subscriptionPackage || '');
-  const isAdFree = ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
+
+  // Real-time System Accounts for Top Dropdown Switcher (Lawyer, Clerk, Client, Advertiser)
+  const [registeredAccounts, setRegisteredAccounts] = useState<{
+    id: string;
+    name: string;
+    mobile?: string;
+    email?: string;
+    userType: 'lawyer' | 'clerk' | 'client' | 'advertiser';
+    rawRole?: string;
+    district?: string;
+    country?: string;
+    firebaseUid?: string;
+  }[]>([]);
+
+  const [selectedAccountId, setSelectedAccountId] = useState<string>(() => {
+    return `role_${['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType}`;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    try {
+      const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+        if (!isMounted) return;
+        const accs: Array<{
+          id: string;
+          name: string;
+          mobile?: string;
+          email?: string;
+          userType: 'lawyer' | 'clerk' | 'client' | 'advertiser';
+          rawRole?: string;
+          district?: string;
+          country?: string;
+          firebaseUid?: string;
+        }> = [];
+
+        snapshot.forEach((d) => {
+          const data = d.data();
+          const rawRole = (data.user_type || data.userType || '').toLowerCase();
+          let role: 'lawyer' | 'clerk' | 'client' | 'advertiser' = 'lawyer';
+          if (rawRole === 'clerk') role = 'clerk';
+          else if (rawRole === 'client') role = 'client';
+          else if (rawRole === 'advertiser' || data.isAdvertiser || data.is_advertiser) role = 'advertiser';
+          else if (['lawyer', 'super_admin', 'admin', 'country_manager', 'bar_admin'].includes(rawRole)) role = 'lawyer';
+
+          const name = (data.name || data.fullName || '').trim();
+          const mobile = (data.mobile || data.phone || '').trim();
+          const email = (data.email || '').trim();
+          const district = (data.district || '').trim();
+
+          if (name || mobile || rawRole) {
+            accs.push({
+              id: d.id,
+              name: name || (mobile ? `ব্যবহারকারী (${mobile})` : 'ব্যবহারকারী'),
+              mobile,
+              email,
+              userType: role,
+              rawRole,
+              district,
+              country: data.country,
+              firebaseUid: data.firebase_uid || data.firebaseUid || d.id
+            });
+          }
+        });
+        setRegisteredAccounts(accs);
+      }, (err) => {
+        console.warn("Could not fetch users in account switcher:", err);
+      });
+
+      return () => {
+        isMounted = false;
+        unsub();
+      };
+    } catch (e) {
+      console.warn("Error subscribing to users in top dropdown:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedAccountId.startsWith('role_')) {
+      setSelectedAccountId(`role_${currentViewMode}`);
+    }
+  }, [currentViewMode]);
+
+  const lawyerAccounts = registeredAccounts.filter(a => a.userType === 'lawyer');
+  const clerkAccounts = registeredAccounts.filter(a => a.userType === 'clerk');
+  const clientAccounts = registeredAccounts.filter(a => a.userType === 'client');
+  const advertiserAccounts = registeredAccounts.filter(a => a.userType === 'advertiser');
+
+  const handleAccountSwitch = (selectedValue: string) => {
+    if (selectedValue.startsWith('account_')) {
+      const accId = selectedValue.replace('account_', '');
+      const acc = registeredAccounts.find(a => a.id === accId);
+      if (acc) {
+        setSelectedAccountId(selectedValue);
+        setCurrentViewMode(acc.userType);
+        setActiveTab('dashboard');
+
+        if (onUpdateProfile) {
+          onUpdateProfile({
+            id: acc.id as any,
+            firebaseUid: acc.firebaseUid,
+            fullName: acc.name,
+            mobile: acc.mobile,
+            email: acc.email,
+            userType: acc.userType,
+            district: acc.district || userDistrict,
+            isAdvertiser: acc.userType === 'advertiser'
+          });
+        }
+
+        try {
+          const saved = localStorage.getItem('appUser');
+          const parsed = saved ? JSON.parse(saved) : {};
+          localStorage.setItem('appUser', JSON.stringify({
+            ...parsed,
+            id: acc.id,
+            firebaseUid: acc.firebaseUid,
+            fullName: acc.name,
+            mobile: acc.mobile,
+            email: acc.email,
+            userType: acc.userType,
+            district: acc.district || userDistrict,
+            isAdvertiser: acc.userType === 'advertiser'
+          }));
+        } catch (e) {
+          console.warn("Could not sync appUser:", e);
+        }
+
+        const roleBengali = acc.userType === 'lawyer' ? 'আইনজীবী' : acc.userType === 'clerk' ? 'মুহুরি' : acc.userType === 'client' ? 'ক্লায়েন্ট' : 'বিজ্ঞাপনদাতা';
+        setSuccessMessage(`সফলভাবে "${acc.name}" (${roleBengali}) ড্যাশবোর্ডে স্যুইচ করা হয়েছে`);
+        setTimeout(() => setSuccessMessage(''), 3500);
+      }
+    } else if (selectedValue.startsWith('role_')) {
+      const targetRole = selectedValue.replace('role_', '');
+
+      const isAdmin = ['admin', 'super_admin', 'country_manager', 'bar_admin'].includes(userType);
+      const isAllowed = isAdmin || userType === targetRole;
+
+      if (!isAllowed) {
+        alert(language === 'bn' ? 'আপনার এই ড্যাশবোর্ডে প্রবেশ করার অ্যাকাউন্ট বা অনুমতি নেই।' : 'You do not have an account or permission for this dashboard.');
+        return;
+      }
+
+      setSelectedAccountId(selectedValue);
+      setCurrentViewMode(targetRole);
+      setActiveTab('dashboard');
+
+      if (onUpdateProfile) {
+        onUpdateProfile({
+          userType: targetRole,
+          isAdvertiser: targetRole === 'advertiser'
+        });
+      }
+
+      try {
+        const saved = localStorage.getItem('appUser');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          localStorage.setItem('appUser', JSON.stringify({
+            ...parsed,
+            userType: targetRole,
+            isAdvertiser: targetRole === 'advertiser'
+          }));
+        }
+      } catch (e) {}
+
+      const roleBengali = targetRole === 'lawyer' ? 'আইনজীবী' : 
+                         targetRole === 'clerk' ? 'মুহুরি' : 
+                         targetRole === 'client' ? 'ক্লায়েন্ট' : 
+                         targetRole === 'advertiser' ? 'বিজ্ঞাপনদাতা' : 
+                         targetRole === 'bar_admin' ? 'বার অ্যাডমিন' : 'অ্যাডমিন';
+      setSuccessMessage(`সফলভাবে ${roleBengali} ড্যাশবোর্ডে স্যুইচ করা হয়েছে`);
+      setTimeout(() => setSuccessMessage(''), 3500);
+    }
+  };
+
+  const isSubscribed = currentViewMode === 'client' ? false : (subscriptionPackage && subscriptionPackage !== 'free');
+  const isPremiumFeatures = currentViewMode === 'client' ? true : ['premium', 'special', 'silver', 'gold', 'platinum', 'diamond'].includes(subscriptionPackage || '');
+  const isAdFree = currentViewMode === 'client' ? false : ['premium', 'platinum', 'diamond'].includes(subscriptionPackage || '');
   const [showSubscriptionPrompt, setShowSubscriptionPrompt] = useState(false);
   const [subscriptionTarget, setSubscriptionTarget] = useState<'self' | 'clerk'>('self');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'clerk_assistants_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize' | 'casebook_panel'>(['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard');
+  const resolveInitialTab = (): any => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab') || searchParams.get('view');
+      if (tabParam) return tabParam;
+      const hashParam = window.location.hash.replace(/^#\/?/, '').trim();
+      if (hashParam) return hashParam;
+      const pathParam = window.location.pathname.replace(/^\//, '').split('/')[0];
+      const validTabs = [
+        'dashboard', 'performance', 'calendar', 'cases', 'chamber_associates',
+        'associates_assignment', 'clerk_assistants_assignment', 'news', 'library',
+        'resources', 'profile', 'affiliate', 'bar-admin', 'media', 'recharge',
+        'admin', 'documents', 'tasks', 'case_history_20y', 'professional_services',
+        'medigen', 'lawyers', 'affiliate_zone', 'emergency', 'subscription',
+        'settings', 'admin_panel', 'case_timeline', 'notifications', 'support_chat',
+        'lawyer_directory', 'clerk_directory', 'religious', 'invoices',
+        'legal_drafts', 'ad_campaigns', 'manage_ads', 'ad_reports', 'my_points',
+        'lottery', 'social', 'synchronize', 'casebook_panel'
+      ];
+      if (validTabs.includes(pathParam)) return pathParam;
+    }
+    return ['admin', 'super_admin', 'country_manager'].includes(userType) ? 'admin_panel' : 'dashboard';
+  };
+
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'performance' | 'calendar' | 'cases' | 'chamber_associates' | 'associates_assignment' | 'clerk_assistants_assignment' | 'news' | 'library' | 'resources' | 'profile' | 'affiliate' | 'bar-admin' | 'media' | 'recharge' | 'admin' | 'documents' | 'tasks' | 'case_history_20y' | 'professional_services' | 'medigen' | 'lawyers' | 'affiliate_zone' | 'emergency' | 'subscription' | 'settings' | 'admin_panel' | 'case_timeline' | 'notifications' | 'support_chat' | 'lawyer_directory' | 'clerk_directory' | 'religious' | 'invoices' | 'legal_drafts' | 'ad_campaigns' | 'manage_ads' | 'ad_reports' | 'my_points' | 'lottery' | 'social' | 'synchronize' | 'casebook_panel'>(resolveInitialTab());
   const [firebaseUid, setFirebaseUid] = useState<string | null>(initialFirebaseUid || auth.currentUser?.uid || null);
   const [chamberAssociates, setChamberAssociates] = useState<ChamberAssociate[]>(() => {
     try {
@@ -1098,6 +1351,20 @@ export default function Dashboard({
       return () => clearTimeout(timer);
     }
   }, [currentViewMode]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && activeTab) {
+      try {
+        const url = new URL(window.location.href);
+        if (activeTab === 'dashboard') {
+          url.searchParams.delete('tab');
+        } else {
+          url.searchParams.set('tab', activeTab);
+        }
+        window.history.replaceState({}, document.title, url.toString());
+      } catch {}
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (points !== undefined) setUserPoints(points);
@@ -1481,31 +1748,31 @@ export default function Dashboard({
           const data = snap.data();
           if (Array.isArray(data.chamberAssociates)) {
             setChamberAssociates(data.chamberAssociates);
-            localStorage.setItem(`chamber_associates_${firebaseUid}`, JSON.stringify(data.chamberAssociates));
+            safeSetJson(`chamber_associates_${firebaseUid}`, data.chamberAssociates);
           }
           if (Array.isArray(data.clerkAssistants)) {
             setClerkAssistants(data.clerkAssistants);
-            localStorage.setItem(`clerk_assistants_${firebaseUid}`, JSON.stringify(data.clerkAssistants));
+            safeSetJson(`clerk_assistants_${firebaseUid}`, data.clerkAssistants);
           }
           if (data.chamberName) {
             setChamberName(data.chamberName);
-            localStorage.setItem(`chamber_name_${firebaseUid}`, data.chamberName);
+            safeSetItem(`chamber_name_${firebaseUid}`, data.chamberName);
           }
           if (data.chamberAddress) {
             setChamberAddress(data.chamberAddress);
-            localStorage.setItem(`chamber_address_${firebaseUid}`, data.chamberAddress);
+            safeSetItem(`chamber_address_${firebaseUid}`, data.chamberAddress);
           }
         }
       } catch (e: any) {
         // Fallback to local storage
         try {
-          const cachedAssociates = localStorage.getItem(`chamber_associates_${firebaseUid}`);
-          if (cachedAssociates) setChamberAssociates(JSON.parse(cachedAssociates));
-          const cachedClerks = localStorage.getItem(`clerk_assistants_${firebaseUid}`);
-          if (cachedClerks) setClerkAssistants(JSON.parse(cachedClerks));
-          const cachedName = localStorage.getItem(`chamber_name_${firebaseUid}`);
+          const cachedAssociates = safeGetJson<any[] | null>(`chamber_associates_${firebaseUid}`, null);
+          if (cachedAssociates) setChamberAssociates(cachedAssociates);
+          const cachedClerks = safeGetJson<any[] | null>(`clerk_assistants_${firebaseUid}`, null);
+          if (cachedClerks) setClerkAssistants(cachedClerks);
+          const cachedName = safeGetItem(`chamber_name_${firebaseUid}`);
           if (cachedName) setChamberName(cachedName);
-          const cachedAddr = localStorage.getItem(`chamber_address_${firebaseUid}`);
+          const cachedAddr = safeGetItem(`chamber_address_${firebaseUid}`);
           if (cachedAddr) setChamberAddress(cachedAddr);
         } catch {}
 
@@ -1520,15 +1787,15 @@ export default function Dashboard({
   }, [firebaseUid]);
 
   useEffect(() => {
-    localStorage.setItem('appCases', JSON.stringify(cases));
+    safeSetJson('appCases', cases);
   }, [cases]);
 
   useEffect(() => {
-    localStorage.setItem('appTasks', JSON.stringify(tasks));
+    safeSetJson('appTasks', tasks);
   }, [tasks]);
 
   useEffect(() => {
-    localStorage.setItem('appNotifications', JSON.stringify(notifications));
+    safeSetJson('appNotifications', notifications);
   }, [notifications]);
 
   useEffect(() => {
@@ -1573,7 +1840,7 @@ export default function Dashboard({
       const safeTasks = Array.isArray(data) ? data : [];
       setTasks(safeTasks);
       if (safeTasks.length > 0) {
-        localStorage.setItem(`tasks_cache_${uid}`, JSON.stringify(safeTasks));
+        safeSetJson(`tasks_cache_${uid}`, safeTasks);
       }
     });
 
@@ -1581,7 +1848,7 @@ export default function Dashboard({
       const safeCases = Array.isArray(data) ? data : [];
       setCases(safeCases);
       if (safeCases.length > 0) {
-        localStorage.setItem(`cases_cache_${uid}`, JSON.stringify(safeCases));
+        safeSetJson(`cases_cache_${uid}`, safeCases);
       }
     }, undefined); // Always fetch all cases to cache locally and enable calendar offline support
 
@@ -1959,10 +2226,6 @@ export default function Dashboard({
   const [selectedThana, setSelectedThana] = useState<string>('');
 
   useEffect(() => {
-    localStorage.setItem('appCases', JSON.stringify(cases));
-  }, [cases]);
-
-  useEffect(() => {
     if (taskCaseNumber && !editingTask && isTaskFormOpen) {
       const relatedCase = cases.find(c => c.caseNumber === taskCaseNumber);
       if (relatedCase) {
@@ -1978,34 +2241,25 @@ export default function Dashboard({
   }, [taskCaseNumber, currentViewMode, cases, editingTask, isTaskFormOpen]);
 
   useEffect(() => {
+    // Only fetch cases via REST as a fallback if real-time subscription has not yet loaded cases
     const fetchCases = async () => {
-      if (navigator.onLine && userId) {
+      if (navigator.onLine && userId && cases.length === 0) {
         try {
           const res = await fetchWithAuth(`/api/cases?userId=${userId}`);
           if (res.ok) {
             const contentType = res.headers.get("content-type");
             if (contentType && contentType.indexOf("application/json") !== -1) {
               const serverCases = await res.json();
-              // Merge server cases with local cases (prefer server cases)
-              setCases(prev => {
-                const merged = [...serverCases];
-                // Add local cases that are not in server cases (e.g. created offline)
-                prev.forEach(pc => {
-                  if (!merged.find(sc => sc.id === pc.id)) {
-                    merged.push(pc);
-                  }
+              if (Array.isArray(serverCases) && serverCases.length > 0) {
+                setCases(prev => {
+                  if (prev.length > 0) return prev;
+                  return serverCases;
                 });
-                return merged;
-              });
-            } else {
-              const text = await res.text();
-              console.error('Expected JSON for cases, but received:', contentType, 'Response:', text.substring(0, 100));
+              }
             }
-          } else {
-            console.error('Failed to fetch cases from server, status:', res.status);
           }
         } catch (e) {
-          console.error('Failed to fetch cases from server', e);
+          console.warn('Fallback cases fetch notice:', e);
         }
       }
     };
@@ -2094,11 +2348,62 @@ export default function Dashboard({
         { id: 'settings', label: t('settings'), icon: Settings },
       ]
     }
+  ] : currentViewMode === 'client' ? [
+    {
+      title: language === 'bn' ? 'মামলার তারিখ ও তথ্য' : 'Cases & Dates',
+      items: [
+        { id: 'dashboard', label: language === 'bn' ? 'ক্লায়েন্ট ড্যাশবোর্ড' : 'Client Dashboard', icon: LayoutDashboard },
+        ...(userType === 'lawyer' || userType === 'clerk' || userType === 'admin' || userType === 'super_admin' ? [
+          { id: 'lawyer_dashboard', label: userType === 'clerk' ? (language === 'bn' ? 'মুহুরী ড্যাশবোর্ড ⚖️' : 'Clerk Dashboard ⚖️') : (language === 'bn' ? 'আইনজীবী ড্যাশবোর্ড ⚖️' : 'Lawyer Dashboard ⚖️'), icon: Briefcase }
+        ] : []),
+        { id: 'calendar', label: language === 'bn' ? 'তারিখ ও ক্যালেন্ডার' : 'Calendar & Dates', icon: Calendar },
+        { id: 'cases', label: t('my_cases'), icon: FileText },
+        { id: 'notifications', label: t('notifications'), icon: Bell },
+      ]
+    },
+    {
+      title: t('professional_tools'),
+      items: [
+        { id: 'lawyer_directory', label: t('lawyer_directory'), icon: Users },
+        { id: 'clerk_directory', label: t('clerk_directory'), icon: Users },
+      ]
+    },
+    {
+      title: language === 'bn' ? 'পবিত্র ঐশী গ্রন্থ' : 'Divine Books',
+      items: [
+        { id: 'religious', label: language === 'bn' ? 'পবিত্র ঐশী গ্রন্থ' : 'Divine Books', icon: BookOpen },
+      ]
+    },
+    {
+      title: t('income_offers'),
+      items: [
+        { id: 'affiliate_zone', label: t('affiliate_zone'), icon: ShoppingCart },
+        { id: 'my_points', label: language === 'bn' ? 'বল গেম ও ওয়ালেট 🔴' : 'Ball Game & Wallet 🔴', icon: Award },
+        { id: 'news', label: t('news'), icon: Newspaper },
+        { id: 'media', label: t('media'), icon: MonitorPlay },
+      ]
+    },
+    {
+      title: t('support_account'),
+      items: [
+        { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
+        { id: 'emergency', label: t('emergency'), icon: AlertCircle },
+      ]
+    },
+    {
+      title: t('settings'),
+      items: [
+        { id: 'profile', label: t('profile'), icon: User },
+        { id: 'synchronize', label: language === 'bn' ? 'সিঙ্ক্রোনাইজ' : 'Synchronize', icon: RefreshCw },
+        { id: 'settings', label: t('settings'), icon: Settings },
+      ]
+    }
   ] : [
     {
       title: t('case_management'),
       items: [
         { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
+        { id: 'client_dashboard', label: language === 'bn' ? 'ক্লায়েন্ট ড্যাশবোর্ড' : 'Client Dashboard', icon: Users },
         { id: 'casebook_panel', label: language === 'bn' ? 'কেসবুক প্যানেল 📋' : 'Casebook Panel 📋', icon: BookOpen },
         ...(currentViewMode === 'clerk' ? [
           { id: 'performance', label: t('performance_nav'), icon: Award, requiresSubscription: isSubRequired },
@@ -2106,7 +2411,7 @@ export default function Dashboard({
           { id: 'monthly_report', label: t('monthly_report'), icon: Landmark, requiresSubscription: isSubRequired },
           { id: 'clerk_assistants_assignment', label: language === 'bn' ? 'সহকারী মুহুরী বণ্টন' : 'Assistant Clerks', icon: UserCheck, requiresSubscription: isSubRequired },
         ] : []),
-        { id: 'cases', label: currentViewMode === 'client' ? t('my_cases') : t('cases'), icon: FileText },
+        { id: 'cases', label: t('cases'), icon: FileText },
         ...(currentViewMode === 'lawyer' ? [
           { id: 'chamber_associates', label: language === 'bn' ? 'ল’ চেম্বার ও অ্যাসোসিয়েট' : 'Chamber & Associates', icon: Briefcase, requiresSubscription: isSubRequired },
           { id: 'associates_assignment', label: language === 'bn' ? 'অ্যাসোসিয়েট বণ্টন' : 'Associate Assignment', icon: UserCheck, requiresSubscription: isSubRequired },
@@ -2115,9 +2420,7 @@ export default function Dashboard({
         ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
           { id: 'invoices', label: t('invoices'), icon: CreditCard, requiresSubscription: isSubRequired },
         ] : []),
-        ...(currentViewMode !== 'client' ? [
-          { id: 'tasks', label: t('task_management'), icon: CheckCircle2, requiresSubscription: isSubRequired },
-        ] : []),
+        { id: 'tasks', label: t('task_management'), icon: CheckCircle2, requiresSubscription: isSubRequired },
         { id: 'case_timeline', label: t('case_timeline'), icon: History },
         { id: 'notifications', label: t('notifications'), icon: Bell },
       ]
@@ -2125,8 +2428,8 @@ export default function Dashboard({
     {
       title: t('professional_tools'),
       items: [
-        { id: 'lawyer_directory', label: currentViewMode === 'client' ? t('find_lawyer') : t('lawyer_directory'), icon: Users },
-        { id: 'clerk_directory', label: currentViewMode === 'client' ? t('find_clerk') : t('clerk_directory'), icon: Users },
+        { id: 'lawyer_directory', label: t('lawyer_directory'), icon: Users },
+        { id: 'clerk_directory', label: t('clerk_directory'), icon: Users },
         ...(currentViewMode === 'lawyer' || currentViewMode === 'clerk' ? [
           { id: 'legal_drafts', label: language === 'bn' ? 'আইনি খসড়া ও ফরম' : 'Legal Drafts', icon: FileText, requiresSubscription: isSubRequired },
           { id: 'library', label: language === 'bn' ? 'লাইব্রেরি' : 'Library', icon: BookOpen, requiresSubscription: isSubRequired },
@@ -2154,9 +2457,7 @@ export default function Dashboard({
       items: [
         { id: 'social', label: language === 'bn' ? 'সোশ্যাল পেইজ' : 'Social Page', icon: Share2 },
         { id: 'emergency', label: t('emergency'), icon: AlertCircle },
-        ...(currentViewMode !== 'client' ? [
-          { id: 'subscription', label: t('subscription'), icon: CreditCard },
-        ] : []),
+        { id: 'subscription', label: t('subscription'), icon: CreditCard },
         ...((currentViewMode === 'lawyer' || currentViewMode === 'clerk') ? [
           { id: 'lottery', label: language === 'bn' ? 'সাপ্তাহিক লটারি 🎁' : 'Weekly Lottery 🎁', icon: Award, requiresSubscription: isSubRequired }
         ] : []),
@@ -2183,14 +2484,23 @@ export default function Dashboard({
       setShowIDCard(true);
       return;
     }
+    if (tab === 'client_dashboard') {
+      setCurrentViewMode('client');
+      setActiveTab('dashboard');
+      return;
+    }
+    if (tab === 'lawyer_dashboard') {
+      setCurrentViewMode(userType === 'clerk' ? 'clerk' : 'lawyer');
+      setActiveTab('dashboard');
+      return;
+    }
     const restrictedTabs = ['performance', 'cause_list', 'monthly_report', 'invoices', 'tasks', 'legal_drafts', 'library', 'medigen', 'lottery'];
     if (isSubRequired && restrictedTabs.includes(tab)) {
       setShowSubscriptionPrompt(true);
       return;
     }
     if (tab === 'calendar' && currentViewMode === 'client') {
-      setShowAd(true);
-      setAdAction(() => () => setActiveTab(tab as any));
+      setActiveTab(tab as any);
     } else {
       setActiveTab(tab as any);
     }
@@ -3420,6 +3730,31 @@ export default function Dashboard({
                  currentViewMode === 'client' ? t('role_client') : 
                  t('role_general_user')}
               </p>
+              <div className="mt-2.5 flex items-center justify-center">
+                <button
+                  onClick={() => {
+                    if (currentViewMode === 'client') {
+                      setCurrentViewMode(userType === 'clerk' ? 'clerk' : 'lawyer');
+                    } else {
+                      setCurrentViewMode('client');
+                    }
+                    setActiveTab('dashboard');
+                  }}
+                  className={`px-3 py-1 rounded-full text-[11px] font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                    currentViewMode === 'client'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/30'
+                      : 'bg-white/10 text-indigo-200 border border-white/20 hover:bg-white/20'
+                  }`}
+                  title={currentViewMode === 'client' ? (language === 'bn' ? 'আইনজীবী ড্যাশবোর্ডে স্যুইচ করুন' : 'Switch to Lawyer Dashboard') : (language === 'bn' ? 'ক্লায়েন্ট ড্যাশবোর্ডে স্যুইচ করুন' : 'Switch to Client Dashboard')}
+                >
+                  <Users size={12} className={currentViewMode === 'client' ? 'text-emerald-400' : 'text-indigo-300'} />
+                  <span>
+                    {currentViewMode === 'client'
+                      ? (language === 'bn' ? 'আইনজীবী মোড ⇄' : 'Lawyer Mode ⇄')
+                      : (language === 'bn' ? 'ক্লায়েন্ট ড্যাশবোর্ড ⇄' : 'Client Mode ⇄')}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3510,63 +3845,44 @@ export default function Dashboard({
           </div>
 
           <div className="flex items-center gap-3 sm:gap-6">
-            {/* Admin View Mode Selector */}
-            {(userType === 'admin' || userType === 'super_admin' || userType === 'country_manager') && (
-              <div className="hidden md:flex items-center gap-2 mr-2 bg-slate-100 p-1 rounded-lg border border-slate-200">
-                <Shield size={14} className="text-indigo-600 ml-1" />
-                <select
-                  value={currentViewMode}
-                  onChange={(e) => setCurrentViewMode(e.target.value as any)}
-                  className="text-[10px] bg-transparent border-none outline-none font-bold text-slate-600 px-1 cursor-pointer uppercase"
-                >
-                  <option value="lawyer">Lawyer</option>
-                  <option value="clerk">Clerk</option>
-                  <option value="client">Client</option>
-                  <option value="advertiser">Advertiser</option>
-                </select>
-              </div>
-            )}
-            {/* Multi-role/Advertiser View Mode Selector */}
-            {!(userType === 'admin' || userType === 'super_admin' || userType === 'country_manager') && isAdvertiser && (
-              <div className="flex items-center gap-2 mr-2 bg-amber-50 p-1 rounded-lg border border-amber-200 shadow-sm">
-                <Shield size={14} className="text-amber-600 ml-1" />
-                <select
-                  value={currentViewMode}
-                  onChange={(e) => {
-                    setCurrentViewMode(e.target.value as any);
-                    setActiveTab('dashboard'); // Reset active tab on switch
-                  }}
-                  className="text-[10px] bg-transparent border-none outline-none font-black text-amber-800 px-1 cursor-pointer uppercase"
-                >
-                  {userType !== 'advertiser' && (
-                    <option value={userType}>
-                      {userType === 'lawyer' ? t('role_lawyer') : userType === 'clerk' ? t('role_clerk') : t('role_client')}
+
+            {/* Top Dropdown List for Accounts and Dashboards (Lawyer, Clerk, Client, Advertiser) */}
+            <div className="flex items-center gap-1 sm:gap-2 bg-indigo-50/90 dark:bg-slate-800/90 hover:bg-indigo-100/70 dark:hover:bg-slate-700/60 transition-all p-1 sm:p-1.5 rounded-xl border border-indigo-200/90 dark:border-slate-700 shadow-sm max-w-[190px] xs:max-w-[230px] sm:max-w-xs md:max-w-sm lg:max-w-md">
+              <Users size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0 ml-1 hidden xs:block" />
+              <select
+                value={selectedAccountId}
+                onChange={(e) => handleAccountSwitch(e.target.value)}
+                className="text-xs sm:text-sm font-bold bg-transparent text-indigo-950 dark:text-indigo-100 border-none outline-none focus:outline-none focus:ring-0 cursor-pointer py-1 pr-1 truncate w-full appearance-auto"
+                title="আইনজীবী, মুহুরি, ক্লায়েন্ট ও বিজ্ঞাপনদাতা একাউন্ট তালিকা ও ড্যাশবোর্ড সিলেক্টর"
+              >
+                {/* ০. প্রশাসনিক ড্যাশবোর্ড (যদি এডমিন ইউজার হয়) */}
+                {(isAdminUser || userType === 'bar_admin' || userType === 'admin' || userType === 'super_admin' || currentViewMode === 'bar_admin' || currentViewMode === 'admin') && (
+                  <optgroup label="👑 প্রশাসনিক ড্যাশবোর্ড" className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-bold">
+                    <option value="role_bar_admin" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold py-1">
+                      🏛️ বার অ্যাসোসিয়েশন অ্যাডমিন
                     </option>
-                  )}
-                  <option value="advertiser">{t('role_advertiser')}</option>
-                </select>
-              </div>
-            )}
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ${
-              currentViewMode === 'lawyer' ? 'bg-blue-100 text-blue-700' : 
-              currentViewMode === 'clerk' ? 'bg-indigo-100 text-indigo-700' : 
-              currentViewMode === 'advertiser' ? 'bg-amber-100 text-amber-700' :
-              currentViewMode === 'client' ? 'bg-emerald-100 text-emerald-700' : 
-              'bg-orange-100 text-orange-700'
-            }`}>
-              <span className={`w-2.5 h-2.5 rounded-full ${
-                currentViewMode === 'lawyer' ? 'bg-blue-500' : currentViewMode === 'clerk' ? 'bg-indigo-500' : currentViewMode === 'advertiser' ? 'bg-amber-500' : currentViewMode === 'client' ? 'bg-emerald-500' : 'bg-orange-500'
-              }`}></span>
-              {currentViewMode === 'lawyer' ? t('role_lawyer') : 
-               currentViewMode === 'clerk' ? t('role_clerk') : 
-               currentViewMode === 'client' ? t('role_client') : 
-               currentViewMode === 'advertiser' ? t('role_advertiser') : 
-               currentViewMode === 'admin' ? (language === 'bn' ? 'অ্যাডমিন' : language === 'hi' ? 'व्यवस्थापक' : 'Admin') :
-               currentViewMode === 'super_admin' ? (language === 'bn' ? 'সুপার অ্যাডমিন' : language === 'hi' ? 'सुपर व्यवस्थापक' : 'Super Admin') :
-               currentViewMode === 'country_manager' ? (language === 'bn' ? 'কান্ট্রি ম্যানেজার' : language === 'hi' ? 'देश प्रबंधक' : 'Country Manager') :
-               t('role_general_user')}
+                    <option value="role_admin" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold py-1">
+                      👑 কেন্দ্রীয় সুপার অ্যাডমিন
+                    </option>
+                  </optgroup>
+                )}
+
+                {/* ৪ ক্যাটাগরি ড্যাশবোর্ড */}
+                <option value="role_lawyer" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                  ⚖️ আইনজীবী ড্যাশবোর্ড
+                </option>
+                <option value="role_clerk" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                  📋 মুহুরি ড্যাশবোর্ড
+                </option>
+                <option value="role_client" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                  👥 ক্লায়েন্ট ড্যাশবোর্ড
+                </option>
+                <option value="role_advertiser" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                  📢 বিজ্ঞাপনদাতা ড্যাশবোর্ড
+                </option>
+              </select>
             </div>
-            
+
             {currentViewMode !== 'client' && currentViewMode !== 'advertiser' && (
               <button 
                 onClick={() => setIsCaseFormOpen(true)}
@@ -3577,30 +3893,6 @@ export default function Dashboard({
               </button>
             )}
 
-            <div className="relative">
-              <button 
-                onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                className={`relative p-2 rounded-full transition-all ${isNotificationOpen ? 'bg-indigo-100 text-indigo-600' : 'text-slate-500 hover:bg-slate-100'}`}
-              >
-                <Bell size={22} />
-                {unreadCount > 0 && (
-                  <span className="absolute top-2 right-2 w-4 h-4 bg-red-500 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white animate-in zoom-in duration-200">
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
-              
-              <AnimatePresence>
-                {isNotificationOpen && (
-                  <NotificationPanel 
-                    notifications={notifications}
-                    onClose={() => setIsNotificationOpen(false)}
-                    onMarkAsRead={handleMarkAsRead}
-                    onMarkAllAsRead={handleMarkAllAsRead}
-                  />
-                )}
-              </AnimatePresence>
-            </div>
             
             <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
               <div className="text-right hidden sm:block">
@@ -3616,6 +3908,7 @@ export default function Dashboard({
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-2.5 sm:p-3.5 pb-20 lg:p-4 lg:pb-6 bg-[#87e9ab]">
+          <GoogleAdSense className="mb-4" />
           {successMessage && (
             <motion.div 
               initial={{ opacity: 0, y: -20 }}
@@ -3626,6 +3919,7 @@ export default function Dashboard({
               {successMessage}
             </motion.div>
           )}
+          <GoogleAdSense className="my-4" />
           <AnimatePresence mode="wait">
             {selectedCaseForTimeline ? (
               <motion.div
@@ -3659,6 +3953,12 @@ export default function Dashboard({
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
               >
+                <Suspense fallback={
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                    <div className="w-8 h-8 border-3 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-2" />
+                    <span className="text-xs font-medium">লোড হচ্ছে...</span>
+                  </div>
+                }>
                     {activeTab === 'case_timeline' && (
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
@@ -3743,7 +4043,7 @@ export default function Dashboard({
                     referralCount={referralHistory.length}
                     onCopyLink={() => {
                       const code = activeRefCode || referralCode;
-                      const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
+                      const link = getReferralUrl(code);
                       copyToClipboard(link).then((success) => {
                         if (success) {
                           alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Link Copied!'));
@@ -3754,7 +4054,7 @@ export default function Dashboard({
                     }}
                     onWhatsAppShare={() => {
                       const code = activeRefCode || referralCode;
-                      const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
+                      const link = getReferralUrl(code);
                       const text = `Join MDC Casebook and manage cases easily: ${link}`;
                       copyToClipboard(link).then((success) => {
                         if (success) {
@@ -4623,18 +4923,29 @@ export default function Dashboard({
                               {referralCode || '-'}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('subscription_expiry')}</span>
-                            <span className={`font-bold ${isExpired ? 'text-rose-500' : 'text-emerald-500'}`}>
-                              {subscriptionEndDate ? new Date(subscriptionEndDate).toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US') : '-'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('package_label')}</span>
-                            <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase">
-                              {subscriptionPackage}
-                            </span>
-                          </div>
+                          {currentViewMode !== 'client' ? (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500 font-medium">{t('subscription_expiry')}</span>
+                                <span className={`font-bold ${isExpired ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                  {subscriptionEndDate ? new Date(subscriptionEndDate).toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US') : '-'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500 font-medium">{t('package_label')}</span>
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase">
+                                  {subscriptionPackage}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500 font-medium">{language === 'bn' ? 'অ্যাকাউন্টের ধরন' : 'Account Type'}</span>
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                {language === 'bn' ? 'আজীবন ফ্রি (মেয়াদমুক্ত)' : 'Lifetime Free (No Expiry)'}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between">
                             <span className="text-slate-500 font-medium">{t('account_id_label')}</span>
                             <span className="font-bold text-slate-900 dark:text-white">#{userId}</span>
@@ -4857,7 +5168,7 @@ export default function Dashboard({
                                   })
                                 });
                                 if (!res.ok) {
-                                  console.error("Failed to update profile to server");
+                                  console.warn("Notice: server responded with non-200 for profile update, relying on local sync:", res.status);
                                 }
 
                                 if (auth.currentUser) {
@@ -5071,14 +5382,14 @@ export default function Dashboard({
                           <input 
                             type="text" 
                             readOnly 
-                            value={`https://mdccasebook.vercel.app/register?ref=${activeRefCode || referralCode || ''}`} 
+                            value={getReferralUrl(activeRefCode || referralCode || '')} 
                             className="bg-transparent flex-1 outline-none text-xs text-slate-600 dark:text-slate-300 font-mono px-2 select-all h-full min-w-0"
                           />
                           <button 
                             onClick={() => {
                               const code = activeRefCode || referralCode;
                               if (code) {
-                                const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
+                                const link = getReferralUrl(code);
                                 copyToClipboard(link).then((success) => {
                                   if (success) {
                                     alert(t('link_copied_success') || (language === 'bn' ? 'রেফারেল লিংক ক্লিপবোর্ডে কপি হয়েছে!' : 'Referral link copied to clipboard!'));
@@ -5101,7 +5412,7 @@ export default function Dashboard({
                             onClick={() => {
                               const code = activeRefCode || referralCode;
                               if (code) {
-                                const link = `https://mdccasebook.vercel.app/register?ref=${code}`;
+                                const link = getReferralUrl(code);
                                 const text = `Join MDC Casebook and manage cases easily: ${link}`;
                                 copyToClipboard(link).then((success) => {
                                   if (success) {
@@ -5121,7 +5432,7 @@ export default function Dashboard({
                           <button
                             onClick={() => {
                               const code = activeRefCode || referralCode;
-                              const link = `https://mdccasebook.vercel.app/register?ref=${code || ''}`;
+                              const link = getReferralUrl(code || '');
                               window.open(link, '_blank');
                             }}
                             className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700"
@@ -5209,6 +5520,46 @@ export default function Dashboard({
                             <Download size={18} />
                             {language === 'bn' ? 'লোগো ডাউনলোড করুন' : 'Download Logo'}
                           </a>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ক্লাউড ডেটা ব্যাকআপ ও ফেয়ার ইউসেজ পলিসি কার্ড */}
+                    <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+                      <h3 className="text-xl font-bold mb-4 flex items-center gap-3">
+                        <Shield className="text-indigo-600" />
+                        {language === 'bn' ? 'ক্লাউড ডেটা ব্যাকআপ ও স্টোরেজ পলিসি' : 'Cloud Data & Storage Policy'}
+                      </h3>
+                      <div className="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+                        <div className="p-4 bg-indigo-50/70 dark:bg-slate-800/80 rounded-2xl border border-indigo-100 dark:border-slate-700">
+                          <p className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-1 text-sm">
+                            <span>🛡️</span> {language === 'bn' ? 'মামলার টেক্সট রেকর্ড (আজীবন ফ্রি সংরক্ষণ)' : 'Case Text Records (Lifetime Free)'}
+                          </p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            {language === 'bn'
+                              ? 'মামলার নম্বর, আদালত, পক্ষগণের বিবরণ, শুনানির পূর্বাপর সকল তারিখ ও আদালতের আদেশ ক্লাউডে আজীবন সংরক্ষিত থাকে। সাবস্ক্রিপশন মেয়াদ শেষ হলেও আপনার ডায়েরির রেকর্ড কখনো নষ্ট বা মুছে ফেলা হবে না।'
+                              : 'Case numbers, court details, past hearing dates and orders remain stored in the cloud for a lifetime even after subscriptions lapse.'}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-emerald-50/70 dark:bg-slate-800/80 rounded-2xl border border-emerald-100 dark:border-slate-700">
+                          <p className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-1 text-sm">
+                            <span>📁</span> {language === 'bn' ? 'ছবি ও স্ক্যান করা ফাইল সংরক্ষণ পলিসি' : 'Documents & Image Storage'}
+                          </p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            {language === 'bn'
+                              ? 'সক্রিয় সাবস্ক্রিপশনে ক্লাউডে হাই-স্পিড ব্যাকআপ। সাবস্ক্রিপশন শেষ হলেও অন্তত ১ বছর পর্যন্ত স্ক্যান করা ফাইল ক্লাউডে অক্ষত থাকবে। ব্যবহারকারী যেকোনো সময় তার নথিপত্র এক ক্লিকে ডাউনলোড করে ব্যক্তিগত ড্রাইভে সংরক্ষণ করতে পারবেন।'
+                              : 'Scanned files remain preserved in the cloud for at least 1 year post-subscription, allowing users to download and back up their files anytime.'}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-amber-50/70 dark:bg-slate-800/80 rounded-2xl border border-amber-100 dark:border-slate-700">
+                          <p className="font-bold text-slate-800 dark:text-white flex items-center gap-2 mb-1 text-sm">
+                            <span>⚖️</span> {language === 'bn' ? 'ডিজিটাল লেগেসি ও চেম্বার সুরক্ষা' : 'Digital Legacy & Chamber Protection'}
+                          </p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            {language === 'bn'
+                              ? 'আইনজীবীর অনুপস্থিতি বা মৃত্যুর পর বার অ্যাসোসিয়েশন বা মনোনীত উত্তরসূরির প্রত্যয়ন সাপেক্ষে পুরো চেম্বার ফাইল রিকভারি ও নতুন জুনিয়রকে হস্তান্তরের সুযোগ রয়েছে।'
+                              : 'Chamber files can be recovered or transitioned to junior associates or legal heirs with proper bar association certification.'}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -5956,6 +6307,7 @@ export default function Dashboard({
                   </button>
                 </div>
               )}
+                </Suspense>
             </motion.div>
             )}
           </AnimatePresence>

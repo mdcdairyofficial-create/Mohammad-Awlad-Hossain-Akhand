@@ -9,7 +9,7 @@
       "destination": "https://mdccasebook.onrender.com/uploads/:path*"
     },
     {
-      "source": "/((?!api/|uploads/).*)",
+      "source": "/((?!api/|uploads/|google[a-zA-Z0-9]+\\.html).*)",
       "destination": "/index.html"
     }
   ]

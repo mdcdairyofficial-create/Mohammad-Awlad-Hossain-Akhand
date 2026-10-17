@@ -46,12 +46,27 @@ export default class ErrorBoundary extends Component<Props, State> {
             </div>
             <h2 className="text-xl font-bold text-slate-900 mb-2">সমস্যা হয়েছে</h2>
             <p className="text-slate-600 mb-6">{errorMessage}</p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="w-full py-3 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-colors"
-            >
-              আবার চেষ্টা করুন
-            </button>
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={() => window.location.reload()}
+                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors shadow-sm"
+              >
+                পুনরায় চেষ্টা করুন (Reload)
+              </button>
+              <button 
+                onClick={() => {
+                  try {
+                    localStorage.removeItem('appCases');
+                    localStorage.removeItem('appTasks');
+                    localStorage.removeItem('appNotifications');
+                  } catch {}
+                  window.location.reload();
+                }}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-xs transition-colors"
+              >
+                ক্যাশ সাফ করে পুনরায় লোড করুন
+              </button>
+            </div>
           </div>
         </div>
       );

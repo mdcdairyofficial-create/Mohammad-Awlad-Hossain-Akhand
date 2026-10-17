@@ -36,6 +36,7 @@ import {
 import { FullscreenAdViewer } from '../components/FullscreenAdViewer';
 import { fetchWithAuth } from '../../../lib/api';
 import { copyToClipboard } from '../../../utils/clipboard';
+import { getReferralUrl } from '../../../utils/urlHelper';
 
 interface PointsViewProps {
   language: 'bn' | 'en' | 'hi' | 'ur';
@@ -124,7 +125,7 @@ export const PointsView = ({ language, userPoints, onPointsUpdate, userType }: P
         setHasSharedToday(data.lastShareDate === todayStr);
       }
     }, (error) => {
-      console.error("Real-time snapshot error in PointsView:", error);
+      console.warn("Real-time snapshot notice in PointsView:", error?.message || error);
     });
 
     return () => unsubscribe();
@@ -204,7 +205,7 @@ export const PointsView = ({ language, userPoints, onPointsUpdate, userType }: P
       return;
     }
     
-    const referralLink = `https://mdccasebook.vercel.app/join?ref=${auth.currentUser!.uid}`;
+    const referralLink = getReferralUrl(auth.currentUser?.uid);
     
     try {
       const isCopied = await copyToClipboard(referralLink);

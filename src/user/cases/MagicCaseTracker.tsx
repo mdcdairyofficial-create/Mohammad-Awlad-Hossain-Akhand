@@ -22,11 +22,13 @@ import {
   BookmarkCheck,
   ChevronRight,
   ExternalLink,
-  Smartphone
+  Smartphone,
+  Search
 } from 'lucide-react';
 import { db } from '../../firebase';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { Case } from '../../types';
+import { normalizeSearchTerm, toEnglishDigits, toBanglaDigits } from '../../utils/urlHelper';
 import { 
   checkNotificationSupport, 
   getNotificationPermission, 
@@ -52,13 +54,14 @@ export default function MagicCaseTracker({
     if (trackQuery) return trackQuery;
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      return params.get('track') || params.get('caseId') || params.get('case') || '';
+      return params.get('track') || params.get('caseId') || params.get('case') || params.get('id') || '';
     }
     return '';
   });
 
+  const [searchInput, setSearchInput] = useState<string>(targetId);
   const [caseData, setCaseData] = useState<Case | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!!targetId);
   const [error, setError] = useState<string | null>(null);
   
   const [isPushActive, setIsPushActive] = useState(false);
@@ -84,11 +87,22 @@ export default function MagicCaseTracker({
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
 
+  const handleSearch = (customQuery?: string) => {
+    const queryToUse = (customQuery !== undefined ? customQuery : searchInput).trim();
+    if (!queryToUse) return;
+    setTargetId(queryToUse);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('track', queryToUse);
+      window.history.replaceState({}, document.title, url.toString());
+    } catch {}
+  };
+
   // Fetch case details
   useEffect(() => {
-    if (!targetId) {
+    if (!targetId || !targetId.trim()) {
       setIsLoading(false);
-      setError('কোনো মামলার ট্র্যাকিং আইডি পাওয়া যায়নি।');
+      setError(null);
       return;
     }
 
@@ -97,45 +111,93 @@ export default function MagicCaseTracker({
       setIsLoading(true);
       setError(null);
 
+      const cleanQuery = targetId.trim();
+      const norm = normalizeSearchTerm(cleanQuery);
+
       try {
         // 1. Check local storage cache first
-        const cached = localStorage.getItem(`track_cache_${targetId}`);
+        const cached = localStorage.getItem(`track_cache_${cleanQuery}`);
         if (cached) {
           try {
             const parsed = JSON.parse(cached);
-            if (isMounted) setCaseData(parsed);
+            if (isMounted) {
+              setCaseData(parsed);
+              setIsLoading(false);
+              return;
+            }
           } catch {}
         }
 
         // 2. Fetch directly from Firestore by Doc ID
-        const docRef = doc(db, 'cases', targetId);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists() && isMounted) {
-          const data = { id: docSnap.id, ...docSnap.data() } as Case;
-          setCaseData(data);
-          localStorage.setItem(`track_cache_${targetId}`, JSON.stringify(data));
-          setIsLoading(false);
-          return;
+        try {
+          const docRef = doc(db, 'cases', cleanQuery);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists() && isMounted) {
+            const data = { id: docSnap.id, ...docSnap.data() } as Case;
+            setCaseData(data);
+            localStorage.setItem(`track_cache_${cleanQuery}`, JSON.stringify(data));
+            setIsLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('[Tracker] DocId lookup failed, trying query...', e);
         }
 
-        // 3. Fallback: Search by caseNumber if targetId wasn't the doc id
-        const q = query(collection(db, 'cases'), where('caseNumber', '==', targetId));
-        const qSnap = await getDocs(q);
-        if (!qSnap.empty && isMounted) {
-          const first = qSnap.docs[0];
-          const data = { id: first.id, ...first.data() } as Case;
-          setCaseData(data);
-          localStorage.setItem(`track_cache_${targetId}`, JSON.stringify(data));
-          setIsLoading(false);
-          return;
+        // 3. Query Firestore by caseNumber variants (exact, English digits, Bangla digits)
+        const caseNumberVariants = Array.from(new Set([cleanQuery, norm.en, norm.bn]));
+        for (const variant of caseNumberVariants) {
+          if (!variant) continue;
+          try {
+            const q = query(collection(db, 'cases'), where('caseNumber', '==', variant), limit(1));
+            const qSnap = await getDocs(q);
+            if (!qSnap.empty && isMounted) {
+              const first = qSnap.docs[0];
+              const data = { id: first.id, ...first.data() } as Case;
+              setCaseData(data);
+              localStorage.setItem(`track_cache_${cleanQuery}`, JSON.stringify(data));
+              setIsLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.warn('[Tracker] Variant search failed for:', variant, err);
+          }
         }
 
-        // 4. Fallback: Check local appCases in case user is in offline mode
+        // 4. Query Firestore by mobile number if query looks like phone digits
+        const phoneDigits = cleanQuery.replace(/[^0-9]/g, '');
+        if (phoneDigits.length >= 7) {
+          for (const mobileField of ['petitionerMobile', 'respondentMobile']) {
+            try {
+              const qPhone = query(collection(db, 'cases'), where(mobileField, '==', cleanQuery), limit(1));
+              const qSnapPhone = await getDocs(qPhone);
+              if (!qSnapPhone.empty && isMounted) {
+                const first = qSnapPhone.docs[0];
+                const data = { id: first.id, ...first.data() } as Case;
+                setCaseData(data);
+                localStorage.setItem(`track_cache_${cleanQuery}`, JSON.stringify(data));
+                setIsLoading(false);
+                return;
+              }
+            } catch {}
+          }
+        }
+
+        // 5. Fallback: Search local appCases in case user is in offline mode
         const localCasesStr = localStorage.getItem('appCases');
         if (localCasesStr) {
           const list: Case[] = JSON.parse(localCasesStr);
-          const found = list.find(c => String(c.id) === targetId || c.caseNumber === targetId);
+          const found = list.find(c => {
+            const cNo = (c.caseNumber || '').trim();
+            const cId = String(c.id || '');
+            return (
+              cId === cleanQuery ||
+              cNo === cleanQuery ||
+              toEnglishDigits(cNo) === norm.en ||
+              toBanglaDigits(cNo) === norm.bn ||
+              c.petitionerMobile === cleanQuery ||
+              c.respondentMobile === cleanQuery
+            );
+          });
           if (found && isMounted) {
             setCaseData(found);
             setIsLoading(false);
@@ -143,19 +205,30 @@ export default function MagicCaseTracker({
           }
         }
 
+        // 6. Fallback: Check backend REST endpoint /api/cases
+        try {
+          const res = await fetch(`/api/cases/search?q=${encodeURIComponent(cleanQuery)}`);
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success && json.data) {
+              const data = json.data as Case;
+              if (isMounted) {
+                setCaseData(data);
+                localStorage.setItem(`track_cache_${cleanQuery}`, JSON.stringify(data));
+                setIsLoading(false);
+                return;
+              }
+            }
+          }
+        } catch {}
+
         if (isMounted) {
-          setError('মামলাটি পাওয়া যায়নি অথবা লিঙ্কটি সঠিক নয়। আপনার আইনজীবীর সাথে যোগাযোগ করুন।');
+          setError(`"${cleanQuery}" নম্বরের কোনো মামলা পাওয়া যায়নি। মামলা নম্বরটি বাংলায় বা ইংরেজিতে সঠিকভাবে লিখুন অথবা আপনার আইনজীবীর সাথে যোগাযোগ করুন।`);
         }
       } catch (err: any) {
         console.error('Error fetching case:', err);
         if (isMounted) {
-          // If Firestore quota or offline, fallback to cached
-          const cached = localStorage.getItem(`track_cache_${targetId}`);
-          if (cached) {
-            setCaseData(JSON.parse(cached));
-          } else {
-            setError('মামলার তথ্য লোড করা সম্ভব হয়নি। ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
-          }
+          setError('মামলার তথ্য লোড করা সম্ভব হয়নি। ইন্টারনেট সংযোগ পরীক্ষা করে পুনরায় চেষ্টা করুন।');
         }
       } finally {
         if (isMounted) setIsLoading(false);
@@ -327,6 +400,29 @@ ${window.location.href}`;
 
       {/* Main Container */}
       <main className="w-full max-w-xl flex flex-col gap-4 pb-12">
+        {/* Interactive Search Bar */}
+        <div className="w-full bg-slate-850/90 border border-slate-750 rounded-2xl p-2 sm:p-2.5 flex items-center gap-2 shadow-xl backdrop-blur-md">
+          <input
+            type="text"
+            placeholder="মামলা নম্বর বা ট্র্যাকিং আইডি লিখুন (যেমন: ১২৩/২০২৪ বা 123/2024)..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSearch();
+              }
+            }}
+            className="flex-1 bg-transparent px-3 py-2 text-xs sm:text-sm text-white placeholder-slate-400 outline-none font-medium min-w-0"
+          />
+          <button
+            onClick={() => handleSearch()}
+            className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-95 text-slate-950 font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Search size={15} className="stroke-[2.5]" />
+            <span>খুঁজুন</span>
+          </button>
+        </div>
+
         {isLoading ? (
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 flex flex-col items-center justify-center gap-3 text-center">
             <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -340,12 +436,33 @@ ${window.location.href}`;
             </div>
             <h3 className="text-base font-bold text-rose-300">মামলার তথ্য পাওয়া যায়নি</h3>
             <p className="text-xs text-slate-300 max-w-md">{error}</p>
-            <button
-              onClick={() => window.location.href = '/'}
-              className="mt-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
-            >
-              হোম পেজে ফিরে যান
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setError(null);
+                  setSearchInput('');
+                }}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
+              >
+                অন্য মামলা নম্বর দিয়ে খুঁজুন
+              </button>
+              <button
+                onClick={() => window.location.href = '/'}
+                className="bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all"
+              >
+                হোম পেজে ফিরে যান
+              </button>
+            </div>
+          </div>
+        ) : !caseData && !targetId ? (
+          <div className="bg-slate-850/60 border border-slate-750 rounded-3xl p-8 text-center flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+              <Scale size={26} />
+            </div>
+            <h3 className="text-base font-bold text-white">লাইভ কেস ট্র্যাকার</h3>
+            <p className="text-xs text-slate-400 max-w-md leading-relaxed">
+              আপনার মামলার নম্বর (বাংলা বা ইংরেজিতে) অথবা ট্র্যাকিং কোড লিখে উপরের "খুঁজুন" বাটনে ক্লিক করুন।
+            </p>
           </div>
         ) : caseData ? (
           <>

@@ -79,7 +79,7 @@ export const ProfessionalIDCard = ({
       text: isBn 
         ? `${userName}-এর ডিজিটাল আইডি কার্ড দেখুন` 
         : `View ${userName}'s Digital ID Card`,
-      url: window.location.href.replace(window.location.origin, 'https://mdccasebook.vercel.app'),
+      url: window.location.href,
     };
 
     try {
@@ -91,7 +91,7 @@ export const ProfessionalIDCard = ({
     } catch (err) {
       // Fallback for failed share or unsupported environments
       try {
-        const isCopied = await copyToClipboard(window.location.href.replace(window.location.origin, 'https://mdccasebook.vercel.app'));
+        const isCopied = await copyToClipboard(window.location.href);
         if (!isCopied) throw new Error('Fallback copy failed');
         alert(isBn ? 'লিঙ্ক কপি করা হয়েছে!' : 'Link copied to clipboard!');
       } catch (clipErr) {
