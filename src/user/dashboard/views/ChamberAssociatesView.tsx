@@ -760,11 +760,11 @@ export const ChamberAssociatesView: React.FC<ChamberAssociatesViewProps> = ({
                   {isBn ? 'চেম্বারে কোনো মামলা নেই।' : 'No cases in chamber.'}
                 </div>
               ) : (
-                cases.map((c) => {
+                cases.map((c, idx) => {
                   const isAssignedToThis = c.assignedAssociateName === assignModalAssociate.name;
                   return (
                     <div 
-                      key={c.id}
+                      key={`${c.id || 'chamber'}-${idx}`}
                       className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
                         isAssignedToThis 
                           ? 'bg-indigo-50/70 border-indigo-200' 

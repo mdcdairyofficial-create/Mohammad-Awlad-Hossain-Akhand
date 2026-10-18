@@ -557,7 +557,7 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredCases.map((c) => {
+                {filteredCases.map((c, idx) => {
                   const isOpen = selectedCaseId === c.id;
 
                   // Find assistant object to get photo
@@ -566,7 +566,7 @@ export const ClerkAssistantsAssignmentView: React.FC<ClerkAssistantsAssignmentVi
                   const isBothAssigned = c.assignedClerkAssistantId === 'both_head_assistants';
 
                   return (
-                    <tr key={c.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <tr key={`${c.id || 'asst'}-${idx}`} className="hover:bg-slate-50/50 transition-colors group">
                       {/* Case Info */}
                       <td className="p-4 align-middle">
                         <div className="space-y-1">

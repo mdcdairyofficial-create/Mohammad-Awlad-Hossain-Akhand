@@ -109,10 +109,14 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
 
   return onSnapshot(q, (snapshot) => {
     recordClientRead(snapshot.docs.length || 1, 'cases');
-    const cases = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as unknown as Case));
+    const casesMap = new Map<string, Case>();
+    snapshot.docs.forEach(doc => {
+      casesMap.set(doc.id, {
+        id: doc.id,
+        ...doc.data()
+      } as unknown as Case);
+    });
+    const cases = Array.from(casesMap.values());
     
     // Client-side sort to avoid missing index error
     cases.sort((a: any, b: any) => {

@@ -16,9 +16,10 @@ export function getAppOrigin(): string {
 }
 
 export function getReferralUrl(refCode?: string): string {
-  const origin = getAppOrigin();
+  // Use professional custom domain for branding & referrals
+  const domain = 'https://mdccasebook.com';
   const code = refCode ? refCode.trim() : '';
-  return code ? `${origin}/register?ref=${encodeURIComponent(code)}` : `${origin}/register`;
+  return code ? `${domain}/ref/${encodeURIComponent(code)}` : `${domain}/register`;
 }
 
 export function getTrackUrl(params: {

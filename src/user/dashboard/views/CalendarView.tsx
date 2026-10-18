@@ -4175,9 +4175,9 @@ const BookView = ({
                              t('other_label')}
                           </h5>
                           <div className="space-y-1 sm:space-y-1.5">
-                            {stepCases.map(c => (
+                            {stepCases.map((c, idx) => (
                               <MiniCasebook
-                                key={c.id}
+                                key={`${c.id || 'step'}-${idx}`}
                                 c={c}
                                 language={language}
                                 t={t}
@@ -4702,7 +4702,7 @@ export const CalendarView = ({
                 const displayOrder = histEntry?.order || c.order;
                 return (
                   <tr
-                    key={c.id}
+                    key={`${c.id || 'cal'}-${sIdx}`}
                     onClick={() => setFocusedCaseId(c.id)}
                     className={`group transition-colors cursor-pointer text-[10px] ${
                       c.selectedParty === 'petitioner'

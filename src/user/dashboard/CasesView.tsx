@@ -74,9 +74,9 @@ const CasesView: React.FC<CasesViewProps> = ({
               <p className="text-slate-500 font-bold">{language === 'bn' ? 'কোনো মামলা পাওয়া যায়নি' : 'No cases found'}</p>
             </div>
           ) : (
-            visibleCases.map((c) => (
+            visibleCases.map((c, idx) => (
               <motion.div 
-                key={c.id} 
+                key={`${c.id || 'case'}-${idx}`} 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={() => handleEditCase(c)}

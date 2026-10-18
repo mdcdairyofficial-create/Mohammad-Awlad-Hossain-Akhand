@@ -427,7 +427,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-50 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-50 relative overflow-hidden text-slate-950">
       {/* Decorative blurred circles for rich context */}
       <div className="absolute top-[-10%] left-[-10%] w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-purple-500/5 rounded-full blur-3xl"></div>
@@ -435,56 +435,56 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       <motion.div 
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-indigo-200/30 border border-white/80 overflow-hidden relative z-10"
+        className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-indigo-200/30 border border-white/80 overflow-hidden relative z-10 text-slate-950"
       >
         <div className="p-8">
           <div className="flex justify-center mb-8">
             <Logo size="xl" />
           </div>
           
-          <h2 className="text-2xl font-black text-center text-slate-900 mb-2 tracking-tight">
+          <h2 className="text-2xl font-black text-center text-slate-950 mb-2 tracking-tight">
             {resetMode ? 'পাসওয়ার্ড রিসেট' : (isLogin ? 'স্বাগতম!' : 'নতুন অ্যাকাউন্ট তৈরি করুন')}
           </h2>
-          <p className="text-center text-slate-500 mb-8 font-semibold text-xs uppercase tracking-wider">
+          <p className="text-center text-slate-800 mb-8 font-bold text-xs uppercase tracking-wider">
             {resetMode ? 'আপনার মোবাইল নম্বর বা ইমেইল দিন' : (isLogin ? 'আপনার তথ্য দিয়ে লগইন করুন' : 'নিচে আপনার সঠিক তথ্য প্রদান করুন')}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-rose-50 text-rose-600 p-3.5 rounded-xl text-xs font-bold border border-rose-100/50 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
+              <div className="bg-rose-50 text-rose-700 p-3.5 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0"></span>
                 {error}
               </div>
             )}
             {success && (
-              <div className="bg-emerald-50 text-emerald-600 p-3.5 rounded-xl text-xs font-bold border border-emerald-100/50 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+              <div className="bg-emerald-50 text-emerald-800 p-3.5 rounded-xl text-xs font-bold border border-emerald-200 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span>
                 {success}
               </div>
             )}
             
             {!resetMode && (
               <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10" size={20} />
+                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 z-10" size={20} />
                 <select
                   name="country"
                   value={formData.country}
                   onChange={handleChange}
-                  className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-700"
+                  className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-950 font-bold"
                   required
                 >
                   <option value="Bangladesh">Bangladesh</option>
                   <option value="India">India</option>
                   <option value="Pakistan">Pakistan</option>
                 </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={18} />
               </div>
             )}
             
             <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
               {!resetMode && (
-                <div className="absolute left-10 top-1/2 -translate-y-1/2 text-slate-500 font-medium border-r border-slate-200 pr-2">
+                <div className="absolute left-10 top-1/2 -translate-y-1/2 text-slate-950 font-black border-r border-slate-300 pr-2">
                   {COUNTRY_CODES[formData.country] || '+880'}
                 </div>
               )}
@@ -494,7 +494,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                 value={formData.mobile}
                 onChange={handleChange}
                 placeholder={resetMode ? "মোবাইল নম্বর বা ইমেইল" : (isLogin ? "মোবাইল নম্বর বা ইমেইল" : "মোবাইল নম্বর")}
-                className={cn("w-full pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all", !resetMode ? "pl-24" : "pl-11")}
+                className={cn("w-full pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-950 font-bold placeholder:text-slate-500", !resetMode ? "pl-24" : "pl-11")}
                 required
               />
             </div>
@@ -503,18 +503,18 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               <>
                 {/* Client Role Guarantee Card */}
                 {userType === 'client' && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 font-bold flex items-start gap-2.5 mb-2 shadow-xs animate-in fade-in duration-200">
-                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs text-slate-950 font-bold flex items-start gap-2.5 mb-2 shadow-xs animate-in fade-in duration-200">
+                    <CheckCircle2 size={18} className="text-emerald-700 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-black text-emerald-800">মক্কেল / পক্ষ একাউন্ট (Client Account)</p>
-                      <p className="text-[11px] text-emerald-700 font-medium mt-0.5 leading-relaxed">
+                      <p className="font-black text-slate-950">মক্কেল / পক্ষ একাউন্ট (Client Account)</p>
+                      <p className="text-[11px] text-slate-900 font-bold mt-0.5 leading-relaxed">
                         মামলার তারিখ দেখা ও স্বয়ংক্রিয় পুশ নোটিফিকেশন পেতে এই একাউন্টটি সম্পূর্ণ বিনামূল্যে চালু হচ্ছে।
                       </p>
                     </div>
                   </div>
                 )}
 
-                <div className="bg-slate-50 p-1.5 rounded-2xl flex flex-wrap gap-1.5 mb-2 border border-slate-200">
+                <div className="bg-slate-50 p-1.5 rounded-2xl flex flex-wrap gap-1.5 mb-2 border border-slate-300">
                   {([ 'client', 'lawyer', 'clerk', 'advertiser'] as UserRole[]).map((type) => {
                     const isCurrent = userType === type;
                     const label = type === 'client' ? 'মক্কেল / পক্ষ' :
@@ -540,12 +540,12 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                         className={cn(
                           "flex-1 min-w-[75px] py-2 px-1 text-xs font-bold rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 border-2",
                           isCurrent 
-                            ? (type === 'client' ? "bg-emerald-50 border-emerald-500 text-emerald-800 shadow-md ring-1 ring-emerald-500/20" : "bg-indigo-50 border-indigo-500 text-indigo-700 shadow-md")
-                            : "bg-white/50 border-slate-200 text-slate-600 hover:bg-white hover:border-indigo-300"
+                            ? (type === 'client' ? "bg-emerald-50 border-emerald-600 text-slate-950 shadow-md ring-1 ring-emerald-500/20" : "bg-indigo-50 border-indigo-600 text-slate-950 shadow-md")
+                            : "bg-white/80 border-slate-300 text-slate-900 hover:bg-white hover:border-indigo-400"
                         )}
                       >
-                        <span className="font-black text-[11px] leading-tight text-center">{label}</span>
-                        <span className={cn("text-[9px] font-bold leading-none", isCurrent ? (type === 'client' ? 'text-emerald-600' : 'text-indigo-600') : 'text-slate-400')}>
+                        <span className="font-black text-[11px] leading-tight text-center text-slate-950">{label}</span>
+                        <span className={cn("text-[9px] font-bold leading-none", isCurrent ? (type === 'client' ? 'text-emerald-900' : 'text-indigo-900') : 'text-slate-700')}>
                           {sub}
                         </span>
                       </button>
@@ -559,37 +559,37 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               <>
 
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                   <input
                     type="text"
                     name="fullName"
                     value={formData.fullName}
                     onChange={handleChange}
                     placeholder="পুরো নাম"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-950 font-bold placeholder:text-slate-500"
                     required
                   />
                 </div>
 
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="ইমেইল আইডি"
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-950 font-bold placeholder:text-slate-500"
                   />
                 </div>
 
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10" size={20} />
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 z-10" size={20} />
                   <select
                     name="district"
                     value={formData.district}
                     onChange={handleChange}
-                    className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-700"
+                    className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-950 font-bold"
                     required
                   >
                     <option value="" disabled>জেলা/রাজ্য নির্বাচন করুন</option>
@@ -598,58 +598,58 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                       : formData.country === 'Pakistan' 
                       ? PAKISTAN_DISTRICTS 
                       : BANGLADESH_DISTRICTS).map((district) => (
-                      <option key={district} value={district}>{district}</option>
+                      <option key={district} value={district} className="text-slate-950">{district}</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={18} />
                 </div>
 
                 {formData.district && (
                   <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10" size={20} />
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 z-10" size={20} />
                     <select
                       name="thana"
                       value={formData.thana}
                       onChange={handleChange}
-                      className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-700"
+                      className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all appearance-none cursor-pointer text-slate-950 font-bold"
                       required={formData.country === 'Bangladesh'}
                     >
-                      <option value="">থানা নির্বাচন করুন</option>
+                      <option value="" className="text-slate-950">থানা নির্বাচন করুন</option>
                       {getPoliceStations(formData.district, formData.country).map((thana) => (
-                        <option key={thana} value={thana}>{thana}</option>
+                        <option key={thana} value={thana} className="text-slate-950">{thana}</option>
                       ))}
                     </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={18} />
                   </div>
                 )}
 
                 <div className="space-y-1.5">
                   <div className="relative">
-                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                     <input
                       type="text"
                       name="referredBy"
                       value={formData.referredBy}
                       onChange={handleChange}
                       placeholder="রেফারেল কোড বা রেফারেন্স (ঐচ্ছিক)"
-                      className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all ${
+                      className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl focus:ring-2 focus:border-transparent outline-none transition-all text-slate-950 font-bold placeholder:text-slate-500 ${
                         referrerInfo?.valid 
                           ? 'border-emerald-300 focus:ring-emerald-500 bg-emerald-50/30' 
-                          : 'border-slate-200 focus:ring-indigo-500'
+                          : 'border-slate-300 focus:ring-indigo-500'
                       }`}
                     />
                     {referrerInfo?.valid && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                         <CheckCircle2 size={12} />
                         সক্রিয়
                       </span>
                     )}
                   </div>
                   {referrerInfo?.valid && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
-                      <Sparkles size={14} className="text-emerald-600 shrink-0" />
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg text-xs text-slate-950 font-medium">
+                      <Sparkles size={14} className="text-emerald-700 shrink-0" />
                       <span>
-                        <strong>রেফারেল লিংক সক্রিয়!</strong> রেফার করেছেন <strong>{referrerInfo.referrerName}</strong>। আপনি ১০০ বোনাস পয়েন্ট পাবেন।
+                        <strong className="text-slate-950">রেফারেল লিংক সক্রিয়!</strong> রেফার করেছেন <strong className="text-slate-950">{referrerInfo.referrerName}</strong>। আপনি ১০০ বোনাস পয়েন্ট পাবেন।
                       </span>
                     </div>
                   )}
@@ -659,20 +659,20 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
             {!resetMode && (
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                 <input
                   type={showPassword ? "text" : "password"}
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="পাসওয়ার্ড"
-                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-950 font-bold placeholder:text-slate-500"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-900"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -681,20 +681,20 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
             {!resetMode && !isLogin && (
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
                 <input
                   type={showConfirmPassword ? "text" : "password"}
                   name="confirmPassword"
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   placeholder="পাসওয়ার্ড নিশ্চিত করুন"
-                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all"
+                  className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-slate-950 font-bold placeholder:text-slate-500"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-900"
                 >
                   {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -706,7 +706,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                 <button 
                   type="button"
                   onClick={() => setResetMode(true)}
-                  className="text-sm text-indigo-600 hover:underline font-medium"
+                  className="text-sm text-slate-950 hover:text-indigo-600 hover:underline font-bold"
                 >
                   পাসওয়ার্ড ভুলে গেছেন?
                 </button>
@@ -730,10 +730,10 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
             <div className="relative py-4">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-200"></div>
+                <div className="w-full border-t border-slate-300"></div>
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-slate-500 font-medium">অথবা</span>
+                <span className="bg-white px-2 text-slate-950 font-bold">অথবা</span>
               </div>
             </div>
 
@@ -741,14 +741,14 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full bg-white hover:bg-slate-50 text-slate-700 font-bold py-3 rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70"
+              className="w-full bg-white hover:bg-slate-50 text-slate-950 font-bold py-3 rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70"
             >
               <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
               গুগল দিয়ে লগইন করুন
             </button>
           </form>
 
-          <div className="mt-8 text-center border-t border-slate-100 pt-6">
+          <div className="mt-8 text-center border-t border-slate-200 pt-6">
             <button
               onClick={() => {
                 setIsLogin(!isLogin);
@@ -756,16 +756,16 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
                 setError(null);
                 setSuccess(null);
               }}
-              className="text-indigo-600 font-bold hover:underline mb-4 block w-full"
+              className="text-slate-950 font-black hover:text-indigo-600 hover:underline mb-4 block w-full text-sm"
             >
               {resetMode ? 'লগইন পেজে ফিরে যান' : (isLogin ? 'নতুন অ্যাকাউন্ট তৈরি করুন' : 'আগে থেকেই অ্যাকাউন্ট আছে? লগইন করুন')}
             </button>
-            <div className="text-xs text-slate-400 space-x-2">
-              <a href="/TermsOfService_BN.md" target="_blank" className="hover:text-indigo-600 font-medium">শর্তাবলী</a>
+            <div className="text-xs text-slate-700 space-x-2 font-semibold">
+              <a href="/TermsOfService_BN.md" target="_blank" className="hover:text-indigo-600 font-bold text-slate-900">শর্তাবলী</a>
               <span>•</span>
-              <a href="/PrivacyPolicy_BN.md" target="_blank" className="hover:text-indigo-600 font-medium">গোপনীয়তা নীতি</a>
+              <a href="/PrivacyPolicy_BN.md" target="_blank" className="hover:text-indigo-600 font-bold text-slate-900">গোপনীয়তা নীতি</a>
               <span>•</span>
-              <a href="/RefundPolicy_BN.md" target="_blank" className="hover:text-indigo-600 font-medium">রিফান্ড নীতি</a>
+              <a href="/RefundPolicy_BN.md" target="_blank" className="hover:text-indigo-600 font-bold text-slate-900">রিফান্ড নীতি</a>
             </div>
           </div>
         </div>

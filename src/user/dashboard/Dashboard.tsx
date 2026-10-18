@@ -1,5 +1,5 @@
 import { GoogleAdSense } from "../../components/GoogleAdSense";
-import { useState, useRef, useEffect, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import { uploadFile, getPublicUrl } from '../../lib/storage';
@@ -141,7 +141,7 @@ import { InvoicesView } from './views/InvoicesView';
 import { SubscriptionView } from './views/SubscriptionView';
 
 // Code-split heavy views to keep initial bundle ultra-light
-const CalendarView = lazy(() => import('./views/CalendarView').then(m => ({ default: m.CalendarView })));
+import { CalendarView } from './views/CalendarView';
 const NewspapersView = lazy(() => import('./views/NewspapersView').then(m => ({ default: m.NewspapersView })));
 const ReligiousTextsView = lazy(() => import('./views/ReligiousTextsView').then(m => ({ default: m.ReligiousTextsView })));
 const LegalDraftsView = lazy(() => import('./views/LegalDraftsView').then(m => ({ default: m.LegalDraftsView })));
@@ -2267,7 +2267,20 @@ export default function Dashboard({
   }, [userId]);
 
   const isAdminUser = currentViewMode === 'admin' || currentViewMode === 'super_admin' || currentViewMode === 'country_manager' || currentViewMode === 'bar_admin';
-  const safeCases = Array.isArray(cases) ? cases : [];
+  const safeCases = useMemo(() => {
+    if (!Array.isArray(cases)) return [];
+    const map = new Map<string, Case>();
+    for (const c of cases) {
+      if (!c) continue;
+      const cid = String(c.id || '');
+      if (cid && !map.has(cid)) {
+        map.set(cid, c);
+      } else if (!cid) {
+        map.set(Math.random().toString(36).substring(2), c);
+      }
+    }
+    return Array.from(map.values());
+  }, [cases]);
   const visibleCases = isAdminUser ? safeCases : safeCases.filter(isUserAssociatedWithCase);
   const ownCasesCount = visibleCases.filter(c => c && c.user_id && String(c.user_id) === String(firebaseUid || userId)).length;
   const assignedCasesCount = visibleCases.length - ownCasesCount;
@@ -2998,7 +3011,7 @@ export default function Dashboard({
         const createdRef = await createCase(newCase as any);
         const newId = createdRef?.id || Date.now().toString();
         const savedNewCase = { ...newCase, id: newId };
-        setCases(prev => [savedNewCase, ...prev]);
+        setCases(prev => [savedNewCase, ...prev.filter(c => String(c.id) !== String(newId))]);
         setSuccessMessage(t('success_add'));
 
         const isPetitioner = isUserPetitioner(newCase as Case);
@@ -3248,7 +3261,7 @@ export default function Dashboard({
         const createdRef = await createCase(newCaseData);
         const createdId = createdRef?.id || Date.now().toString();
         const createdCase = { ...newCaseData, id: createdId };
-        setCases(prev => [createdCase, ...prev]);
+        setCases(prev => [createdCase, ...prev.filter(c => String(c.id) !== String(createdId))]);
         setSuccessMessage(t('success_join').replace('{caseNumber}', caseNumber));
         if (
           (side === 'petitioner' && createdCase.petitionerMobile) || 
@@ -3975,9 +3988,9 @@ export default function Dashboard({
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {cases.filter(c => c.caseNumber.toLowerCase().includes(timelineSearchQuery.toLowerCase())).map(c => (
+                    {cases.filter(c => c.caseNumber.toLowerCase().includes(timelineSearchQuery.toLowerCase())).map((c, idx) => (
                       <button 
-                        key={c.id}
+                        key={`${c.id || 'timeline'}-${idx}`}
                         onClick={() => setSelectedCaseForTimeline(c)}
                         className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all text-left"
                       >
@@ -5906,7 +5919,7 @@ export default function Dashboard({
                                       const isRes = isUserRespondent(c);
                                       const rowClass = isPet ? 'plaintiff-row' : isRes ? 'defendant-row' : '';
                                       return (
-                                        <tr key={c.id} className={rowClass}>
+                                        <tr key={`${c.id || 'case'}-${i}`} className={rowClass}>
                                           <td>{i + 1}</td>
                                         <td>{c.caseNumber}</td>
                                         <td>

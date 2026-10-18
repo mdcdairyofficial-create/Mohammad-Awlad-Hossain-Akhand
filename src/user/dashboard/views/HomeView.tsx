@@ -631,12 +631,12 @@ export const HomeView = ({
                   return c.nextDate <= today;
                 })
                 .sort((a, b) => (a.nextDate || '').localeCompare(b.nextDate || ''))
-                .map((c) => {
+                .map((c, idx) => {
                   const today = new Date().toISOString().split('T')[0];
                   const isOutdated = c.nextDate! < today;
                   
                   return (
-                    <tr key={c.id} className={`group hover:bg-slate-50/50 transition-colors ${isOutdated ? 'animate-blink' : ''}`}>
+                    <tr key={`${c.id || 'outdated'}-${idx}`} className={`group hover:bg-slate-50/50 transition-colors ${isOutdated ? 'animate-blink' : ''}`}>
                       <td className="py-4">
                         <div className="flex items-center gap-2">
                           {isOutdated && <span className="w-2 h-2 bg-rose-500 rounded-full"></span>}
@@ -776,8 +776,8 @@ export const HomeView = ({
             <button onClick={() => setActiveTab('cases')} className="text-indigo-600 text-sm font-bold hover:underline">{t('view_all')}</button>
           </div>
           <div className="space-y-4 flex-1">
-            {cases.slice(0, 4).map((c) => (
-              <div key={c.id} className="group flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer border border-transparent hover:border-slate-100">
+            {cases.slice(0, 4).map((c, idx) => (
+              <div key={`${c.id || 'recent'}-${idx}`} className="group flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer border border-transparent hover:border-slate-100">
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
                     {c.caseNumber.charAt(0)}

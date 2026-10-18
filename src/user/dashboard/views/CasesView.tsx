@@ -120,7 +120,11 @@ export const CasesView = ({
 
   const groupedByCourt = React.useMemo(() => {
     const groups: Record<string, Case[]> = {};
+    const seenCaseKeys = new Set<string>();
     filteredCases.forEach(c => {
+      const caseKey = String(c.id || c.caseNumber || Math.random());
+      if (seenCaseKeys.has(caseKey)) return;
+      seenCaseKeys.add(caseKey);
       const court = formatCourtNameWithNo(c.courtName, c.courtNumber) || (language === 'bn' ? 'অন্যান্য আদালত' : 'Other Court');
       if (!groups[court]) groups[court] = [];
       groups[court].push(c);
@@ -288,9 +292,9 @@ export const CasesView = ({
             {viewMode === 'grid' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 <AnimatePresence mode="popLayout">
-                  {courtCases.map((c) => (
+                  {courtCases.map((c, idx) => (
                     <motion.div
-                      key={c.id}
+                      key={`${c.id || 'case'}-${idx}`}
                       layout
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -437,9 +441,9 @@ export const CasesView = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                    {courtCases.map((c) => (
+                    {courtCases.map((c, idx) => (
                       <tr 
-                        key={c.id} 
+                        key={`${c.id || 'case'}-${idx}`} 
                         onClick={() => onViewCard(c)}
                         className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
                       >
