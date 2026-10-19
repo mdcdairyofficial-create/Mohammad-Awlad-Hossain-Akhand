@@ -60,8 +60,8 @@ export interface Case {
   history?: CaseHistoryEntry[];
   pastDates?: string[];
   totalRespondents?: string;
-  petitionerDetails?: { name: string; phone: string; serial: string | number; addedByMobile?: string; addedByName?: string; addedByRole?: string }[];
-  respondentDetails?: { name: string; phone: string; serial: string | number; addedByMobile?: string; addedByName?: string; addedByRole?: string }[];
+  petitionerDetails?: { name: string; phone: string; optionalPhone?: string; serial: string | number; addedByMobile?: string; addedByName?: string; addedByRole?: string }[];
+  respondentDetails?: { name: string; phone: string; optionalPhone?: string; serial: string | number; addedByMobile?: string; addedByName?: string; addedByRole?: string }[];
   additionalOrder?: string;
   documents?: { name: string; type: string; url: string }[];
   clerkCanCall?: boolean;

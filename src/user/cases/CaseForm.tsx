@@ -58,6 +58,7 @@ interface CaseFormProps {
 interface PartyRow {
   name: string;
   phone: string;
+  optionalPhone?: string;
   serial?: number;
   addedByMobile?: string;
   addedByName?: string;
@@ -138,8 +139,8 @@ export default function CaseForm({
   const [quickTotalRespondents, setQuickTotalRespondents] = useState(initialData?.totalRespondents || '');
   const [joinTotalRespondents, setJoinTotalRespondents] = useState(initialData?.totalRespondents || '');
 
-  const [plaintiffs, setPlaintiffs] = useState<PartyRow[]>([{ name: '', phone: '' }]);
-  const [defendants, setDefendants] = useState<PartyRow[]>([{ name: '', phone: '', serial: 1 }]);
+  const [plaintiffs, setPlaintiffs] = useState<PartyRow[]>([{ name: '', phone: '', optionalPhone: '' }]);
+  const [defendants, setDefendants] = useState<PartyRow[]>([{ name: '', phone: '', optionalPhone: '', serial: 1 }]);
   const [lawyers, setLawyers] = useState<PartyRow[]>([{ name: '', phone: '' }]);
   const [clerks, setClerks] = useState<PartyRow[]>([{ name: '', phone: '' }]);
   const [showSecondaryMobile, setShowSecondaryMobile] = useState<boolean>(
@@ -157,15 +158,18 @@ export default function CaseForm({
   const criminalTypes = ['জি.আর', 'সি.আর', 'মানব পাচার পিটিশন', 'পিটিশন', 'ICT', 'জি আর', 'সি আর', 'এস টি', 'দায়রা', 'ফৌজদারী'];
   const civilTypes = ['দেওয়ানী', 'পারিবারিক', 'অর্থঋণ', 'ল্যান্ড ট্রাইব্যুনাল', 'দেওয়ানি'];
 
+  const isCriminalCase = caseCategory === 'Criminal' || criminalTypes.includes(formData.caseType || '') || formData.caseType === 'ফৌজদারী';
+  const isCivilCase = caseCategory === 'Civil' || civilTypes.includes(formData.caseType || '') || formData.caseType === 'দেওয়ানী' || formData.caseType === 'পারিবারিক' || formData.caseType === 'দেওয়ানি';
+
   const quickPickSteps = useMemo(() => {
-    if (caseCategory === 'Criminal' || criminalTypes.includes(formData.caseType || '') || formData.caseType === 'ফৌজদারী') {
+    if (isCriminalCase) {
       return CRIMINAL_CASE_STEPS;
     }
-    if (caseCategory === 'Civil' || civilTypes.includes(formData.caseType || '') || formData.caseType === 'দেওয়ানী' || formData.caseType === 'পারিবারিক' || formData.caseType === 'দেওয়ানি') {
+    if (isCivilCase) {
       return CIVIL_CASE_STEPS;
     }
-    return [...CIVIL_CASE_STEPS, ...CRIMINAL_CASE_STEPS];
-  }, [caseCategory, formData.caseType]);
+    return CRIMINAL_CASE_STEPS;
+  }, [isCriminalCase, isCivilCase]);
 
   useEffect(() => {
     if (initialData) {
@@ -248,11 +252,12 @@ export default function CaseForm({
         setPlaintiffs(initialData.petitionerDetails.map(p => ({
           name: p.name,
           phone: p.phone,
+          optionalPhone: p.optionalPhone,
           serial: Number(p.serial) || 1
         })));
       } else if (initialData.petitioner) {
         const names = initialData.petitioner.split(', ');
-        setPlaintiffs(names.map(name => ({ name, phone: initialData.petitionerMobile || '' })));
+        setPlaintiffs(names.map(name => ({ name, phone: initialData.petitionerMobile || '', optionalPhone: '' })));
       }
       
       // Parse Respondent/Defendants
@@ -260,6 +265,7 @@ export default function CaseForm({
         setDefendants(initialData.respondentDetails.map(d => ({ 
           name: d.name, 
           phone: d.phone, 
+          optionalPhone: d.optionalPhone,
           serial: Number(d.serial) || 1,
           addedByMobile: d.addedByMobile,
           addedByName: d.addedByName,
@@ -267,7 +273,7 @@ export default function CaseForm({
         })));
       } else if (initialData.respondent) {
         const names = initialData.respondent.split(', ');
-        setDefendants(names.map((name, i) => ({ name, phone: initialData.respondentMobile || '', serial: i + 1 })));
+        setDefendants(names.map((name, i) => ({ name, phone: initialData.respondentMobile || '', optionalPhone: '', serial: i + 1 })));
       }
 
       // Parse Lawyers
@@ -618,7 +624,14 @@ export default function CaseForm({
             <WhatsAppPhoneInput
               value={row.phone || ''}
               onChange={(val) => handlePartyChange(index, 'phone', val, setter)}
-              placeholder={language === 'bn' ? 'মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Mobile (WhatsApp)'}
+              placeholder={language === 'bn' ? 'মেইন মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Main Mobile (WhatsApp)'}
+              language={language}
+              className="h-[38px]"
+            />
+            <WhatsAppPhoneInput
+              value={row.optionalPhone || ''}
+              onChange={(val) => handlePartyChange(index, 'optionalPhone', val, setter)}
+              placeholder={language === 'bn' ? 'অপশনাল মোবাইল নং (ঐচ্ছিক)' : 'Optional Mobile (Optional)'}
               language={language}
               className="h-[38px]"
             />
@@ -1066,7 +1079,36 @@ export default function CaseForm({
                                     }}
                                     required={index === 0 && formData.selectedParty === 'petitioner'}
                                     placeholder={language === 'bn' ? `বাদীর নাম ${index + 1}` : `Petitioner ${index + 1}`}
-                                    className="w-full px-3 py-2 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-xs sm:text-sm"
+                                    className="flex-1 min-w-[100px] px-2.5 py-1.5 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-xs sm:text-sm h-[34px] transition-all"
+                                  />
+                                  <WhatsAppPhoneInput
+                                    value={p.phone || ''}
+                                    onChange={(val) => {
+                                      setPlaintiffs(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], phone: val };
+                                        return next;
+                                      });
+                                      if (index === 0) setFormData(prev => ({ ...prev, petitionerMobile: val }));
+                                    }}
+                                    placeholder={language === 'bn' ? 'মেইন' : 'Main'}
+                                    language={language}
+                                    compactExpandable
+                                    className="h-[34px]"
+                                  />
+                                  <WhatsAppPhoneInput
+                                    value={p.optionalPhone || ''}
+                                    onChange={(val) => {
+                                      setPlaintiffs(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], optionalPhone: val };
+                                        return next;
+                                      });
+                                    }}
+                                    placeholder={language === 'bn' ? 'অপ্ট' : 'Opt'}
+                                    language={language}
+                                    compactExpandable
+                                    className="h-[34px]"
                                   />
                                   {plaintiffs.length > 1 && (
                                     <button
@@ -1099,7 +1141,7 @@ export default function CaseForm({
                             <div className="space-y-2 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
                               {defendants.map((d, index) => (
                                 <div key={index} className="flex items-center gap-1.5 relative bg-rose-50/40 p-2 rounded-xl border border-rose-100">
-                                  <span className="text-[10px] font-bold text-slate-500 shrink-0 w-5 text-center">{d.serial || index + 1}.</span>
+                                  <span className="text-[10px] font-bold text-slate-500 shrink-0 w-4 text-center">{d.serial || index + 1}.</span>
                                   <input
                                     type="text"
                                     value={d.name}
@@ -1114,7 +1156,36 @@ export default function CaseForm({
                                     }}
                                     required={index === 0 && formData.selectedParty === 'respondent'}
                                     placeholder={language === 'bn' ? `আসামী/বিবাদীর নাম ${index + 1}` : `Defendant ${index + 1}`}
-                                    className="w-full px-3 py-2 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-rose-500 font-bold text-xs sm:text-sm"
+                                    className="flex-1 min-w-[100px] px-2.5 py-1.5 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-rose-500 font-bold text-xs sm:text-sm h-[34px] transition-all"
+                                  />
+                                  <WhatsAppPhoneInput
+                                    value={d.phone || ''}
+                                    onChange={(val) => {
+                                      setDefendants(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], phone: val };
+                                        return next;
+                                      });
+                                      if (index === 0) setFormData(prev => ({ ...prev, respondentMobile: val }));
+                                    }}
+                                    placeholder={language === 'bn' ? 'মেইন' : 'Main'}
+                                    language={language}
+                                    compactExpandable
+                                    className="h-[34px]"
+                                  />
+                                  <WhatsAppPhoneInput
+                                    value={d.optionalPhone || ''}
+                                    onChange={(val) => {
+                                      setDefendants(prev => {
+                                        const next = [...prev];
+                                        next[index] = { ...next[index], optionalPhone: val };
+                                        return next;
+                                      });
+                                    }}
+                                    placeholder={language === 'bn' ? 'অপ্ট' : 'Opt'}
+                                    language={language}
+                                    compactExpandable
+                                    className="h-[34px]"
                                   />
                                   {defendants.length > 1 && (
                                     <button
@@ -1131,77 +1202,7 @@ export default function CaseForm({
                           </div>
                         </div>
 
-                        {/* Client Mobile WhatsApp Input */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-700 block">
-                              {formData.selectedParty === 'petitioner' 
-                                ? (language === 'bn' ? 'মক্কেলের মোবাইল (বাদী পক্ষ)' : 'Client Mobile (Petitioner)') 
-                                : (language === 'bn' ? 'মক্কেলের মোবাইল (বিবাদী পক্ষ)' : 'Client Mobile (Respondent)')}
-                            </span>
-                            {!showSecondaryMobile && (
-                              <button
-                                type="button"
-                                onClick={() => setShowSecondaryMobile(true)}
-                                className="text-xs font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-lg border border-indigo-200/60 flex items-center gap-1 transition-all cursor-pointer"
-                              >
-                                <Plus size={12} /> {language === 'bn' ? 'আরেকটি মোবাইল যোগ করুন' : 'Add another mobile'}
-                              </button>
-                            )}
-                          </div>
-                          <WhatsAppPhoneInput
-                            value={
-                              formData.selectedParty === 'petitioner' 
-                                ? (plaintiffs[0]?.phone || formData.petitionerMobile || '')
-                                : (defendants[0]?.phone || formData.respondentMobile || '')
-                            }
-                            onChange={(val) => {
-                              if (formData.selectedParty === 'petitioner') {
-                                setPlaintiffs(prev => [{ ...prev[0], phone: val }]);
-                                setFormData(prev => ({ ...prev, petitionerMobile: val }));
-                              } else {
-                                setDefendants(prev => [{ ...prev[0], phone: val }]);
-                                setFormData(prev => ({ ...prev, respondentMobile: val }));
-                              }
-                            }}
-                            placeholder={language === 'bn' ? 'প্রধান মোবাইল নং (হোয়াটসঅ্যাপ)' : 'Primary Mobile (WhatsApp)'}
-                            language={language}
-                            className="h-[40px]"
-                          />
 
-                          {showSecondaryMobile && (
-                            <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-200">
-                              <div className="flex-1">
-                                <WhatsAppPhoneInput
-                                  value={secondaryMobile}
-                                  onChange={(val) => {
-                                    setSecondaryMobile(val);
-                                    if (formData.selectedParty === 'petitioner') {
-                                      setFormData(prev => ({ ...prev, petitionerSecondaryMobile: val }));
-                                    } else {
-                                      setFormData(prev => ({ ...prev, respondentSecondaryMobile: val }));
-                                    }
-                                  }}
-                                  placeholder={language === 'bn' ? 'বিকল্প মোবাইল নং (ঐচ্ছিক)' : 'Alternate Mobile (Optional)'}
-                                  language={language}
-                                  className="h-[40px]"
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowSecondaryMobile(false);
-                                  setSecondaryMobile('');
-                                  setFormData(prev => ({ ...prev, petitionerSecondaryMobile: '', respondentSecondaryMobile: '' }));
-                                }}
-                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Remove secondary mobile"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          )}
-                        </div>
                       </div>
 
                       {/* Section 5: Today's Hearing Step / Order */}
@@ -1218,22 +1219,100 @@ export default function CaseForm({
                           placeholder={language === 'bn' ? 'যেমন: হাজিরা, শুনানি, সাক্ষ্য গ্রহণ, জামিন শুনানি...' : 'e.g. Hearing, Evidence, Bail hearing...'}
                           className="w-full px-3.5 py-2.5 bg-white border border-[#d8d0b8] rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-xs"
                         />
-                        <div className="flex flex-wrap gap-1.5">
-                          {quickPickSteps.map((sItem) => (
-                            <button
-                              key={sItem}
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, order: sItem }))}
-                              className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all border cursor-pointer ${
-                                formData.order === sItem
-                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                  : 'bg-white text-slate-800 font-bold border-[#d8d0b8] hover:bg-emerald-50'
-                              }`}
-                            >
-                              {sItem}
-                            </button>
-                          ))}
-                        </div>
+                        {/* Distinct & Separated Steps Display */}
+                        {isCriminalCase ? (
+                          <div className="space-y-1.5 pt-1">
+                            <span className="text-[11px] font-black text-rose-800 flex items-center gap-1">
+                              ⚖️ {language === 'bn' ? 'ফৌজদারী মামলার পদক্ষেপসমূহ:' : 'Criminal Case Steps:'}
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {CRIMINAL_CASE_STEPS.map((sItem) => (
+                                <button
+                                  key={sItem}
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, order: sItem }))}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all border cursor-pointer ${
+                                    formData.order === sItem
+                                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                      : 'bg-white text-slate-800 font-bold border-rose-200 hover:bg-rose-50'
+                                  }`}
+                                >
+                                  {sItem}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : isCivilCase ? (
+                          <div className="space-y-1.5 pt-1">
+                            <span className="text-[11px] font-black text-indigo-800 flex items-center gap-1">
+                              📜 {language === 'bn' ? 'দেওয়ানী মামলার পদক্ষেপসমূহ:' : 'Civil Case Steps:'}
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {CIVIL_CASE_STEPS.map((sItem) => (
+                                <button
+                                  key={sItem}
+                                  type="button"
+                                  onClick={() => setFormData(prev => ({ ...prev, order: sItem }))}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all border cursor-pointer ${
+                                    formData.order === sItem
+                                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                      : 'bg-white text-slate-800 font-bold border-indigo-200 hover:bg-indigo-50'
+                                  }`}
+                                >
+                                  {sItem}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5 pt-1">
+                            {/* Criminal Steps */}
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-black text-rose-800 flex items-center gap-1">
+                                ⚖️ {language === 'bn' ? 'ফৌজদারী মামলার পদক্ষেপ:' : 'Criminal Case Steps:'}
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {CRIMINAL_CASE_STEPS.map((sItem) => (
+                                  <button
+                                    key={sItem}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, order: sItem }))}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all border cursor-pointer ${
+                                      formData.order === sItem
+                                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                        : 'bg-white text-slate-800 font-bold border-rose-200 hover:bg-rose-50'
+                                    }`}
+                                  >
+                                    {sItem}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Civil Steps */}
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-black text-indigo-800 flex items-center gap-1">
+                                📜 {language === 'bn' ? 'দেওয়ানী মামলার পদক্ষেপ:' : 'Civil Case Steps:'}
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {CIVIL_CASE_STEPS.map((sItem) => (
+                                  <button
+                                    key={sItem}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, order: sItem }))}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all border cursor-pointer ${
+                                      formData.order === sItem
+                                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                                        : 'bg-white text-slate-800 font-bold border-indigo-200 hover:bg-indigo-50'
+                                    }`}
+                                  >
+                                    {sItem}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Section 6: Next Date (Optional) & Authority */}

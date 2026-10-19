@@ -427,17 +427,17 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-50 relative overflow-hidden text-slate-950">
+    <div className="min-h-screen w-full flex items-center justify-center p-3 sm:p-6 bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 relative overflow-x-hidden text-slate-950 dark:text-slate-100 transition-colors duration-300">
       {/* Decorative blurred circles for rich context */}
-      <div className="absolute top-[-10%] left-[-10%] w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-purple-500/5 rounded-full blur-3xl"></div>
+      <div className="absolute top-[-10%] left-[-10%] w-72 h-72 bg-indigo-500/15 dark:bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 bg-purple-500/10 dark:bg-purple-500/5 rounded-full blur-3xl pointer-events-none"></div>
       
       <motion.div 
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-[24px] shadow-2xl shadow-indigo-200/30 border border-white/80 overflow-hidden relative z-10 text-slate-950"
+        className="w-full max-w-sm sm:max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[28px] shadow-2xl shadow-indigo-200/30 dark:shadow-none border border-white/80 dark:border-slate-800 overflow-hidden relative z-10 text-slate-950 dark:text-slate-100 transition-all"
       >
-        <div className="p-8">
+        <div className="p-5 sm:p-8">
           <div className="flex justify-center mb-8">
             <Logo size="xl" />
           </div>

@@ -433,7 +433,9 @@ export const HomeView = ({
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {([
-          { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab(userType === 'client' ? 'my_points' : 'recharge') },
+          ...(userType !== 'client' ? [
+            { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab('recharge') }
+          ] : []),
           { label: language === 'bn' ? 'আমার নিজের মামলা' : 'My Own Cases', value: `${ownCasesCount} টি`, icon: FileText, color: 'bg-gradient-to-tr from-indigo-550 to-indigo-700', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
           { label: language === 'bn' ? 'আমার মোট মামলা সংখ্যা' : 'My Total Cases', value: `${cases.length} টি`, subtitle: language === 'bn' ? `(নিজের: ${ownCasesCount} | দায়িত্বপ্রাপ্ত: ${assignedCasesCount})` : `(Own: ${ownCasesCount} | Assigned: ${assignedCasesCount})`, icon: Briefcase, color: 'bg-gradient-to-tr from-blue-600 to-indigo-650', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
           ...(userType !== 'client' ? [

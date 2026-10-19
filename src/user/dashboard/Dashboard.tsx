@@ -2391,7 +2391,6 @@ export default function Dashboard({
       title: t('income_offers'),
       items: [
         { id: 'affiliate_zone', label: t('affiliate_zone'), icon: ShoppingCart },
-        { id: 'my_points', label: language === 'bn' ? 'বল গেম ও ওয়ালেট 🔴' : 'Ball Game & Wallet 🔴', icon: Award },
         { id: 'news', label: t('news'), icon: Newspaper },
         { id: 'media', label: t('media'), icon: MonitorPlay },
       ]
