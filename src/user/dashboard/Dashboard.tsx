@@ -83,6 +83,7 @@ import CaseTimeline from '../cases/CaseTimeline';
 import { getPoliceStations, getCourtsForDistrict, BANGLADESH_DISTRICTS, INDIA_DISTRICTS, PAKISTAN_DISTRICTS, formatCourtNameWithNo } from '../../constants';
 import Media from '../resources/Media';
 import PaymentGateway from '../recharge/PaymentGateway';
+import { PWAInstallButton } from '../../pwa/PWAInstallButton';
 import Recharge from '../recharge/Recharge';
 import { safeSetJson, safeGetJson, safeSetItem, safeGetItem } from '../../utils/safeStorage';
 import { getReferralUrl } from '../../utils/urlHelper';
@@ -3818,6 +3819,10 @@ export default function Dashboard({
             ))}
           </nav>
 
+          <div className="px-4 pb-2">
+            <PWAInstallButton variant="sidebar" language={language} />
+          </div>
+
           <div className="p-4 border-t border-white/10">
             <button 
               onClick={onLogout}
@@ -3904,6 +3909,8 @@ export default function Dashboard({
                 {t('add_case_btn')}
               </button>
             )}
+
+            <PWAInstallButton variant="header" language={language} />
 
             
             <div className="flex items-center gap-3 pl-3 border-l border-slate-200">
@@ -7138,6 +7145,9 @@ export default function Dashboard({
           </span>
         </div>
       )}
+
+      {/* Floating PWA Install Banner */}
+      <PWAInstallButton variant="banner" language={language} />
     </div>
   );
 }

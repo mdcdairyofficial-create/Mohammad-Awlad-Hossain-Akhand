@@ -16,6 +16,7 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import type { UserRole } from '../../types';
 import { Logo } from '../../components/Logo';
 import { fetchWithAuth } from '../../lib/api';
+import { PWAInstallButton } from '../../pwa/PWAInstallButton';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -438,8 +439,9 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         className="w-full max-w-sm sm:max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl rounded-[28px] shadow-2xl shadow-indigo-200/30 dark:shadow-none border border-white/80 dark:border-slate-800 overflow-hidden relative z-10 text-slate-950 dark:text-slate-100 transition-all"
       >
         <div className="p-5 sm:p-8">
-          <div className="flex justify-center mb-8">
+          <div className="flex flex-col items-center justify-center mb-6 gap-3">
             <Logo size="xl" />
+            <PWAInstallButton variant="header" language="bn" />
           </div>
           
           <h2 className="text-2xl font-black text-center text-slate-950 mb-2 tracking-tight">
@@ -770,6 +772,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           </div>
         </div>
       </motion.div>
+      <PWAInstallButton variant="banner" language="bn" />
     </div>
   );
 }
