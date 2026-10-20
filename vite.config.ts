@@ -16,30 +16,35 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        includeAssets: ['favicon.png', 'favicon-32x32.png', 'favicon-16x16.png', 'apple-touch-icon.png', 'logo.png'],
         manifest: {
-          name: 'Advocate Central',
-          short_name: 'LawAdmin',
-          description: 'আইনজীবীদের জন্য ডিজিটাল মামলা ব্যবস্থাপনা প্ল্যাটফর্ম',
-          theme_color: '#4f46e5',
-          background_color: '#ffffff',
+          id: '/',
+          name: 'MDCCASEBOOK - এমডিসি কেসবুক',
+          short_name: 'MDCCASEBOOK',
+          description: 'আদালত ভিত্তিক মামলার তথ্য ও ডিজিটাল ডায়েরি ব্যবস্থাপনা প্ল্যাটফর্ম (বিজ্ঞ আইনজীবী, মুহুরী ও ক্লায়েন্টদের জন্য)',
+          theme_color: '#0f172a',
+          background_color: '#0f172a',
           display: 'standalone',
+          start_url: '/',
+          scope: '/',
           icons: [
             {
-              src: 'pwa-192x192.png',
+              src: '/pwa-192x192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: 'pwa-512x512.png',
-              sizes: '512x512',
-              type: 'image/png'
-            },
-            {
-              src: 'pwa-512x512.png',
+              src: '/pwa-512x512.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         },
