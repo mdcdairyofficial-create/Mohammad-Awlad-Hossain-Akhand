@@ -1009,15 +1009,80 @@ export default function Dashboard({
     }
   }, [currentViewMode]);
 
-  const lawyerAccounts = registeredAccounts.filter(a => a.userType === 'lawyer');
-  const clerkAccounts = registeredAccounts.filter(a => a.userType === 'clerk');
-  const clientAccounts = registeredAccounts.filter(a => a.userType === 'client');
-  const advertiserAccounts = registeredAccounts.filter(a => a.userType === 'advertiser');
+  // Helper to normalize Bangladeshi / international phone numbers for exact matching
+  const cleanMobileDigits = (phone?: string) => {
+    if (!phone) return '';
+    let digits = String(phone).replace(/[^0-9]/g, '');
+    if (digits.startsWith('880')) digits = '0' + digits.substring(3);
+    else if (digits.startsWith('88') && digits.length === 13) digits = '0' + digits.substring(2);
+    return digits;
+  };
+
+  // Find all accounts registered with the current user's mobile number
+  const myAccounts = useMemo(() => {
+    const cleanPhone = cleanMobileDigits(userMobile);
+
+    const matched = registeredAccounts.filter(acc => {
+      const accPhone = cleanMobileDigits(acc.mobile);
+      const phoneMatches = Boolean(cleanPhone && cleanPhone.length >= 6 && accPhone === cleanPhone);
+      const uidMatches = Boolean(
+        (acc.firebaseUid && initialFirebaseUid && acc.firebaseUid === initialFirebaseUid) || 
+        (acc.id && userId && acc.id === String(userId))
+      );
+      return phoneMatches || uidMatches;
+    });
+
+    const currentRole = (['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType) as 'lawyer' | 'clerk' | 'client' | 'advertiser';
+    const hasCurrent = matched.some(m => m.userType === currentRole || m.id === String(userId) || (m.firebaseUid && m.firebaseUid === initialFirebaseUid));
+
+    if (!hasCurrent) {
+      matched.unshift({
+        id: initialFirebaseUid || String(userId || 'current'),
+        name: userName || 'ব্যবহারকারী',
+        mobile: userMobile,
+        userType: currentRole,
+        rawRole: userType,
+        firebaseUid: initialFirebaseUid,
+        district: userDistrict,
+        country: userCountry
+      });
+    }
+
+    return matched;
+  }, [registeredAccounts, userMobile, userId, initialFirebaseUid, userName, userType, userDistrict, userCountry]);
+
+  // Only the dashboards that were signed up with the same mobile number will be visible
+  const availableRoles = useMemo(() => {
+    const cleanPhone = cleanMobileDigits(userMobile);
+    const cachedRoles = cleanPhone ? safeGetJson<string[]>('mdc_roles_' + cleanPhone, []) : [];
+    const roles = new Set<string>(cachedRoles);
+
+    // Current active role is always available
+    const currentRole = ['admin', 'super_admin', 'country_manager'].includes(userType) ? 'lawyer' : userType;
+    roles.add(currentRole);
+
+    if (isAdvertiser) {
+      roles.add('advertiser');
+    }
+
+    // Add roles from all accounts registered with this same mobile number
+    myAccounts.forEach(acc => {
+      if (acc.userType) roles.add(acc.userType);
+      if (acc.rawRole === 'advertiser') roles.add('advertiser');
+    });
+
+    // Save to local cache so switching is instantaneous and survives offline
+    if (cleanPhone) {
+      safeSetJson('mdc_roles_' + cleanPhone, Array.from(roles));
+    }
+
+    return Array.from(roles);
+  }, [myAccounts, userType, isAdvertiser, userMobile]);
 
   const handleAccountSwitch = (selectedValue: string) => {
     if (selectedValue.startsWith('account_')) {
       const accId = selectedValue.replace('account_', '');
-      const acc = registeredAccounts.find(a => a.id === accId);
+      const acc = myAccounts.find(a => a.id === accId) || registeredAccounts.find(a => a.id === accId);
       if (acc) {
         setSelectedAccountId(selectedValue);
         setCurrentViewMode(acc.userType);
@@ -1028,8 +1093,8 @@ export default function Dashboard({
             id: acc.id as any,
             firebaseUid: acc.firebaseUid,
             fullName: acc.name,
-            mobile: acc.mobile,
-            email: acc.email,
+            mobile: acc.mobile || userMobile,
+            email: acc.email || userEmail,
             userType: acc.userType,
             district: acc.district || userDistrict,
             isAdvertiser: acc.userType === 'advertiser'
@@ -1044,8 +1109,8 @@ export default function Dashboard({
             id: acc.id,
             firebaseUid: acc.firebaseUid,
             fullName: acc.name,
-            mobile: acc.mobile,
-            email: acc.email,
+            mobile: acc.mobile || userMobile,
+            email: acc.email || userEmail,
             userType: acc.userType,
             district: acc.district || userDistrict,
             isAdvertiser: acc.userType === 'advertiser'
@@ -1062,18 +1127,32 @@ export default function Dashboard({
       const targetRole = selectedValue.replace('role_', '');
 
       const isAdmin = ['admin', 'super_admin', 'country_manager', 'bar_admin'].includes(userType);
-      const isAllowed = isAdmin || userType === targetRole;
+      const isAllowed = isAdmin || availableRoles.includes(targetRole);
 
       if (!isAllowed) {
-        alert(language === 'bn' ? 'আপনার এই ড্যাশবোর্ডে প্রবেশ করার অ্যাকাউন্ট বা অনুমতি নেই।' : 'You do not have an account or permission for this dashboard.');
+        alert(language === 'bn' ? 'এই মোবাইল নম্বর দিয়ে এই ড্যাশবোর্ডে সাইন-আপ করা হয়নি।' : 'You have not signed up for this dashboard with this mobile number.');
         return;
       }
+
+      // Check if there is an account specifically for this role under this mobile number
+      const matchedAccount = myAccounts.find(a => a.userType === targetRole);
 
       setSelectedAccountId(selectedValue);
       setCurrentViewMode(targetRole);
       setActiveTab('dashboard');
 
-      if (onUpdateProfile) {
+      if (matchedAccount && onUpdateProfile) {
+        onUpdateProfile({
+          id: matchedAccount.id as any,
+          firebaseUid: matchedAccount.firebaseUid,
+          fullName: matchedAccount.name,
+          mobile: matchedAccount.mobile || userMobile,
+          email: matchedAccount.email || userEmail,
+          userType: targetRole,
+          district: matchedAccount.district || userDistrict,
+          isAdvertiser: targetRole === 'advertiser'
+        });
+      } else if (onUpdateProfile) {
         onUpdateProfile({
           userType: targetRole,
           isAdvertiser: targetRole === 'advertiser'
@@ -1086,6 +1165,14 @@ export default function Dashboard({
           const parsed = JSON.parse(saved);
           localStorage.setItem('appUser', JSON.stringify({
             ...parsed,
+            ...(matchedAccount ? {
+              id: matchedAccount.id,
+              firebaseUid: matchedAccount.firebaseUid,
+              fullName: matchedAccount.name,
+              mobile: matchedAccount.mobile || userMobile,
+              email: matchedAccount.email || userEmail,
+              district: matchedAccount.district || userDistrict,
+            } : {}),
             userType: targetRole,
             isAdvertiser: targetRole === 'advertiser'
           }));
@@ -1093,12 +1180,12 @@ export default function Dashboard({
       } catch (e) {}
 
       const roleBengali = targetRole === 'lawyer' ? 'আইনজীবী' : 
-                         targetRole === 'clerk' ? 'মুহুরি' : 
-                         targetRole === 'client' ? 'ক্লায়েন্ট' : 
-                         targetRole === 'advertiser' ? 'বিজ্ঞাপনদাতা' : 
-                         targetRole === 'bar_admin' ? 'বার অ্যাডমিন' : 'অ্যাডমিন';
+                          targetRole === 'clerk' ? 'মুহুরি' : 
+                          targetRole === 'client' ? 'ক্লায়েন্ট' : 
+                          targetRole === 'advertiser' ? 'বিজ্ঞাপনদাতা' : 
+                          targetRole === 'bar_admin' ? 'বার অ্যাডমিন' : 'অ্যাডমিন';
       setSuccessMessage(`সফলভাবে ${roleBengali} ড্যাশবোর্ডে স্যুইচ করা হয়েছে`);
-      setTimeout(() => setSuccessMessage(''), 3500);
+      setTimeout(() => setSuccessMessage(''), 3000);
     }
   };
 
@@ -3863,14 +3950,14 @@ export default function Dashboard({
 
           <div className="flex items-center gap-3 sm:gap-6">
 
-            {/* Top Dropdown List for Accounts and Dashboards (Lawyer, Clerk, Client, Advertiser) */}
+            {/* Top Dropdown List for Accounts and Dashboards (Lawyer, Clerk, Client, Advertiser) - Only displays dashboards signed up with this mobile number */}
             <div className="flex items-center gap-1 sm:gap-2 bg-indigo-50/90 dark:bg-slate-800/90 hover:bg-indigo-100/70 dark:hover:bg-slate-700/60 transition-all p-1 sm:p-1.5 rounded-xl border border-indigo-200/90 dark:border-slate-700 shadow-sm max-w-[190px] xs:max-w-[230px] sm:max-w-xs md:max-w-sm lg:max-w-md">
               <Users size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0 ml-1 hidden xs:block" />
               <select
                 value={selectedAccountId}
                 onChange={(e) => handleAccountSwitch(e.target.value)}
                 className="text-xs sm:text-sm font-bold bg-transparent text-indigo-950 dark:text-indigo-100 border-none outline-none focus:outline-none focus:ring-0 cursor-pointer py-1 pr-1 truncate w-full appearance-auto"
-                title="আইনজীবী, মুহুরি, ক্লায়েন্ট ও বিজ্ঞাপনদাতা একাউন্ট তালিকা ও ড্যাশবোর্ড সিলেক্টর"
+                title={userMobile ? `মোবাইল (${userMobile}) নম্বরে সাইন-আপ করা ড্যাশবোর্ডসমূহ` : "ড্যাশবোর্ড সিলেক্টর"}
               >
                 {/* ০. প্রশাসনিক ড্যাশবোর্ড (যদি এডমিন ইউজার হয়) */}
                 {(isAdminUser || userType === 'bar_admin' || userType === 'admin' || userType === 'super_admin' || currentViewMode === 'bar_admin' || currentViewMode === 'admin') && (
@@ -3884,19 +3971,38 @@ export default function Dashboard({
                   </optgroup>
                 )}
 
-                {/* ৪ ক্যাটাগরি ড্যাশবোর্ড */}
-                <option value="role_lawyer" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
-                  ⚖️ আইনজীবী ড্যাশবোর্ড
-                </option>
-                <option value="role_clerk" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
-                  📋 মুহুরি ড্যাশবোর্ড
-                </option>
-                <option value="role_client" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
-                  👥 ক্লায়েন্ট ড্যাশবোর্ড
-                </option>
-                <option value="role_advertiser" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
-                  📢 বিজ্ঞাপনদাতা ড্যাশবোর্ড
-                </option>
+                {/* এই মোবাইল নম্বর দিয়ে সাইন-আপ করা ড্যাশবোর্ডগুলো শুধুমাত্র প্রদর্শিত হবে */}
+                {availableRoles.includes('lawyer') && (
+                  <option value="role_lawyer" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                    ⚖️ আইনজীবী ড্যাশবোর্ড
+                  </option>
+                )}
+                {availableRoles.includes('clerk') && (
+                  <option value="role_clerk" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                    📋 মুহুরি ড্যাশবোর্ড
+                  </option>
+                )}
+                {availableRoles.includes('client') && (
+                  <option value="role_client" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                    👥 ক্লায়েন্ট ড্যাশবোর্ড
+                  </option>
+                )}
+                {availableRoles.includes('advertiser') && (
+                  <option value="role_advertiser" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-1">
+                    📢 বিজ্ঞাপনদাতা ড্যাশবোর্ড
+                  </option>
+                )}
+
+                {/* একই মোবাইল নম্বরে যদি একাধিক স্বতন্ত্র একাউন্ট থাকে */}
+                {myAccounts.length > 1 && (
+                  <optgroup label={`📱 মোবাইল (${userMobile || ''}) এর একাউন্টসমূহ`} className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-bold">
+                    {myAccounts.map(acc => (
+                      <option key={acc.id} value={`account_${acc.id}`} className="bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium py-1">
+                        {acc.userType === 'lawyer' ? '⚖️' : acc.userType === 'clerk' ? '📋' : acc.userType === 'advertiser' ? '📢' : '👥'} {acc.name} ({acc.userType === 'lawyer' ? 'আইনজীবী' : acc.userType === 'clerk' ? 'মুহুরি' : acc.userType === 'advertiser' ? 'বিজ্ঞাপনদাতা' : 'ক্লায়েন্ট'})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -4268,9 +4374,9 @@ export default function Dashboard({
                         adMediaPath,
                         fbCoverPhotoUrl,
                         fbCoverPhotoPath,
-                        status: 'pending',
+                        status: config.paymentMethod === 'mobile' ? 'active' : 'pending',
                         paymentMethod: config.paymentMethod || 'mobile',
-                        paymentStatus: 'pending',
+                        paymentStatus: config.paymentMethod === 'mobile' ? 'active' : 'pending',
                         createdAt: serverTimestamp(),
                         updatedAt: serverTimestamp()
                       };
@@ -4278,8 +4384,8 @@ export default function Dashboard({
                       await addDoc(collection(db, 'campaigns'), campaignData);
 
                       alert(language === 'bn' 
-                        ? 'ক্যাম্পেইন সফলভাবে তৈরি হয়েছে এবং অনুমোদনের জন্য অপেক্ষমান আছে!' 
-                        : 'Campaign created successfully and is pending approval!');
+                        ? 'লোকাল বিজ্ঞাপন ক্যাম্পেইন সফলভাবে তৈরি হয়েছে এবং স্বয়ংক্রিয়ভাবে সক্রিয় হয়েছে! গুগল অ্যাডসেন্স ও লোকাল অ্যাড ব্যানারে প্রদর্শিত হবে।' 
+                        : 'Local ad campaign created successfully and is now active alongside Google AdSense!');
                       setActiveTab('manage_ads');
                     } catch (error) {
                       console.error('Error saving campaign:', error);

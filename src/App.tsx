@@ -9,7 +9,6 @@ import { AnimatePresence } from "motion/react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "./firebase";
 import { onSnapshot, doc, query, collection, where } from "firebase/firestore";
-import SplashScreen from "./user/auth/SplashScreen";
 import Auth from "./user/auth/Auth";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { OfflineNotice } from "./components/OfflineNotice";
@@ -68,26 +67,6 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [showSplash, setShowSplash] = useState(() => {
-    if (typeof window === "undefined") return false;
-    const p = window.location.pathname;
-    // Bypasses splash screen completely for public pages so Google AdSense crawler and public visitors get raw HTML instantly
-    if (
-      p === "/" ||
-      p === "/features" ||
-      p === "/blog" ||
-      p.startsWith("/blog/") ||
-      p === "/privacy" ||
-      p === "/terms" ||
-      p === "/refund" ||
-      p === "/login" ||
-      p === "/track" ||
-      p.startsWith("/case/")
-    ) {
-      return false;
-    }
-    return true;
-  });
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(() => {
     return safeGetJson<UserProfile | null>("appUser", null);
@@ -519,14 +498,6 @@ function AppContent() {
     return () => unsubscribe();
   }, [user?.firebaseUid, authReady]);
 
-  useEffect(() => {
-    if (showSplash) {
-      const timer = setTimeout(() => {
-        setShowSplash(false);
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [showSplash]);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -761,7 +732,6 @@ function AppContent() {
                     showTelegramGate={showTelegramGate}
                     setShowTelegramGate={setShowTelegramGate}
                     setTelegramCompleted={setTelegramCompleted}
-                    setShowSplash={setShowSplash}
                     visitedReferralWhileLoggedIn={visitedReferralWhileLoggedIn}
                     setVisitedReferralWhileLoggedIn={setVisitedReferralWhileLoggedIn}
                     handleLogout={handleLogout}
@@ -776,10 +746,7 @@ function AppContent() {
           </Suspense>
         </div>
 
-        {/* Overlay Splash Screen for initial app launch */}
-        <AnimatePresence>
-          {showSplash && <SplashScreen key="splash" />}
-        </AnimatePresence>
+
       </div>
     </ErrorBoundary>
   );
@@ -795,7 +762,6 @@ interface ProtectedDashboardProps {
   showTelegramGate: boolean;
   setShowTelegramGate: (val: boolean) => void;
   setTelegramCompleted: (val: boolean) => void;
-  setShowSplash: (val: boolean) => void;
   visitedReferralWhileLoggedIn: boolean;
   setVisitedReferralWhileLoggedIn: (val: boolean) => void;
   handleLogout: () => void;
@@ -812,7 +778,6 @@ function ProtectedDashboard({
   showTelegramGate,
   setShowTelegramGate,
   setTelegramCompleted,
-  setShowSplash,
   visitedReferralWhileLoggedIn,
   setVisitedReferralWhileLoggedIn,
   handleLogout,
@@ -852,7 +817,6 @@ function ProtectedDashboard({
           localStorage.setItem("telegramVerifiedCompleted", "true");
           setTelegramCompleted(true);
           setShowTelegramGate(false);
-          setShowSplash(true);
         }}
       />
     );

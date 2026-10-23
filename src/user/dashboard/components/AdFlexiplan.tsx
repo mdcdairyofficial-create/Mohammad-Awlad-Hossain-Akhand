@@ -26,7 +26,8 @@ import {
   Youtube,
   Link,
   Video,
-  Layers
+  Layers,
+  Sparkles
 } from 'lucide-react';
 
 interface AdFlexiplanProps {
@@ -275,8 +276,37 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
   const [otherLink, setOtherLink] = useState('');
   const [adMedia, setAdMedia] = useState<File | null>(null);
   const [adMediaType, setAdMediaType] = useState<'image' | 'video'>('image');
+  const [isIndemnityAccepted, setIsIndemnityAccepted] = useState(false);
+  const [safetyError, setSafetyError] = useState<string | null>(null);
 
   const t = (bn: string, en: string) => language === 'bn' ? bn : en;
+
+  // Automated Content Safety Filter (Bangladesh Cyber Security & Ad Standards)
+  const validateAdContent = (): boolean => {
+    const combinedText = `${adTitle} ${adDescription} ${fbLink} ${ytLink} ${otherLink}`.toLowerCase();
+    
+    // Prohibited categories: gambling/betting, pornography/adult, crypto/financial fraud, defamation/hate speech
+    const prohibitedKeywords = [
+      'জুয়া', 'জুয়া', 'ক্যাসিনো', 'বেটিং', '1xbet', 'melbet', 'bet365', 'টাকা ডাবল',
+      'সেক্স', 'পর্ন', 'adult', 'escort', 'কলগার্ল', 'call girl',
+      'বিকাশ হ্যাক', 'নগদ হ্যাক', 'ফ্রি লোন', 'এমএলএম', 'হোয়াটসঅ্যাপ ইনভেস্ট',
+      'ধর্ম অবমাননা', 'রাষ্ট্রবিরোধী', 'দাঙ্গা', 'গুপ্তঘাতক'
+    ];
+
+    for (const kw of prohibitedKeywords) {
+      if (combinedText.includes(kw)) {
+        setSafetyError(
+          language === 'bn'
+            ? `⚠️ স্বয়ংক্রিয় এআই নিরাপত্তা ফিল্টার: বিজ্ঞাপনে নিষিদ্ধ শব্দ বা বিষয়বস্তু ("${kw}") সনাক্ত হয়েছে। আইন ও নীতিমালা অনুযায়ী এটি প্রচার করা যাবে না।`
+            : `⚠️ Automated AI Safety Filter: Prohibited keyword ("${kw}") detected. This ad violates platform safety policies and cannot be submitted.`
+        );
+        return false;
+      }
+    }
+
+    setSafetyError(null);
+    return true;
+  };
 
   const adTypes = [
     { id: 'Banner', label: t('ব্যানার', 'Banner'), icon: MonitorPlay, priceMult: 1, special: false },
@@ -458,12 +488,19 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-8 space-y-12 pb-48">
       {/* Header with very large text */}
-      <div className="text-center space-y-4 mb-16">
+      <div className="text-center space-y-4 mb-10">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-black shadow-xs">
+          <Sparkles size={14} />
+          <span>{t('হাইব্রিড নেটওয়ার্ক: লোকাল বিজ্ঞাপন + গুগল অ্যাডসেন্স', 'HYBRID NETWORK: LOCAL ADS + GOOGLE ADSENSE')}</span>
+        </div>
         <h2 className="text-4xl lg:text-5xl font-black text-indigo-950 dark:text-white tracking-tighter">
           {t('বিজ্ঞাপন ফ্লেক্সি-প্ল্যান', 'AD FLEXIPLAN')}
         </h2>
-        <p className="text-slate-900 dark:text-slate-100 font-black uppercase tracking-[0.3em] text-base lg:text-lg opacity-60">
-          {t('আপনার প্রয়োজন অনুযায়ী প্যাক তৈরি করুন', 'BUILD YOUR CUSTOM AD BUNDLE')}
+        <p className="text-slate-700 dark:text-slate-300 font-bold text-sm lg:text-base max-w-2xl mx-auto">
+          {t(
+            'সরাসরি জেলা, থানা ও পেশা (আইনজীবী, মুহুরী, ক্লায়েন্ট) টার্গেট করে লোকাল বিজ্ঞাপন প্রচার করুন। পাশাপাশি গুগল অ্যাডসেন্স নেটওয়ার্কের স্বয়ংক্রিয় ব্যাকআপ সংযুক্ত রয়েছে।',
+            'Target specific districts, police stations, and professions with custom local campaigns backed by Google AdSense.'
+          )}
         </p>
       </div>
 
@@ -1208,6 +1245,50 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
         </div>
       </div>
 
+      {/* Automated AI Safety Scanner & Legal Indemnity Section */}
+      <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] border-2 border-indigo-500/50 shadow-2xl space-y-5">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 bg-indigo-600/30 text-indigo-400 rounded-2xl flex items-center justify-center shrink-0 border border-indigo-500/40">
+            <Zap size={24} />
+          </div>
+          <div className="space-y-1">
+            <h4 className="text-lg md:text-xl font-black text-white flex items-center gap-2">
+              <span>{t('স্বয়ংক্রিয় এআই নিরাপত্তা ও আইনি দায়মুক্তি নীতি', 'AUTOMATED AI SAFETY & LEGAL INDEMNITY')}</span>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold">100% AUTOMATED</span>
+            </h4>
+            <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+              {t(
+                'এমডিসি কেসবুকে কোনো বিজ্ঞাপন অ্যাডমিন ম্যানুয়ালি রিভিউ করে না। আমাদের স্বয়ংক্রিয় এআই বট বিজ্ঞাপনের লেখা ও ছবি যাচাই করে অননুমোদিত উপাদান (যেমন: জুয়া, পর্নোগ্রাফি, সাইবার ক্রাইম, আর্থিক প্রতারণা বা ভুয়া তথ্য) তাৎক্ষণিকভাবে ব্লক করে।',
+                'Ads on MDC Casebook are 100% automatically moderated by AI safety filters. No admin manually screens your ad.'
+              )}
+            </p>
+          </div>
+        </div>
+
+        {safetyError && (
+          <div className="p-4 bg-rose-500/20 border-2 border-rose-500 rounded-2xl text-rose-200 text-xs md:text-sm font-bold flex items-center gap-3">
+            <X size={20} className="shrink-0 text-rose-400" />
+            <span>{safetyError}</span>
+          </div>
+        )}
+
+        {/* Mandatory Advertiser Self-Indemnity Checkbox */}
+        <label className="flex items-start gap-3.5 p-4 rounded-2xl bg-slate-800/80 border border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors">
+          <input 
+            type="checkbox"
+            checked={isIndemnityAccepted}
+            onChange={(e) => setIsIndemnityAccepted(e.target.checked)}
+            className="w-5 h-5 mt-0.5 accent-indigo-600 rounded cursor-pointer shrink-0"
+          />
+          <span className="text-xs md:text-sm font-semibold text-slate-200 leading-relaxed">
+            {t(
+              'আইনি দায় স্বীকারোক্তি: আমি অঙ্গীকার করছি যে আমার প্রচারিত বিজ্ঞাপনের যাবতীয় বিষয়বস্তু, ছবি, দাবি ও সেবার আইনি বৈধতার জন্য আমি সম্পূর্ণ ব্যক্তিগতভাবে দায়ী থাকব। কোনো প্রকার অসত্য, প্রতারণামূলক বা আইনবিরোধী কন্টেন্টের জন্য এমডিসি কেসবুক বা অ্যাডমিন কোনোভাবেই দায়ী থাকবে না (সাইবার নিরাপত্তা আইন ও ইন্টারমিডিয়ারি সেফ হারবার নীতিমালা অনুসারে)।',
+              'Legal Indemnity: I certify that I am solely and personally liable for the legal compliance, truthfulness, and content of this advertisement. MDC Casebook and its administration bear zero legal liability.'
+            )}
+          </span>
+        </label>
+      </div>
+
       {/* Confirmation Sticky Footer */}
       <div className="fixed bottom-24 left-4 right-4 lg:left-80 lg:right-8 z-40">
         <motion.div 
@@ -1249,7 +1330,17 @@ export const AdFlexiplan = ({ language, onPurchase }: AdFlexiplanProps) => {
             </div>
           </div>
           <button
-            onClick={() => setShowPaymentModal(true)}
+            onClick={() => {
+              if (!validateAdContent()) return;
+              if (!isIndemnityAccepted) {
+                alert(t(
+                  'অনুগ্রহ করে "স্বয়ংক্রিয় এআই নিরাপত্তা ও আইনি দায় স্বীকারোক্তি" বক্সে টিক দিয়ে সম্মতি জানান।',
+                  'Please accept the Legal Indemnity Agreement before activating your ad.'
+                ));
+                return;
+              }
+              setShowPaymentModal(true);
+            }}
             className="w-full md:w-auto px-8 md:px-12 py-4 md:py-5 bg-indigo-700 text-white rounded-xl md:rounded-2xl font-black text-lg md:text-xl hover:bg-indigo-800 transition-all flex items-center justify-center gap-3 md:gap-4 uppercase shadow-2xl shadow-indigo-100 active:scale-95"
           >
             {t('এক্টিভেট করুন', 'ACTIVATE NOW')}
