@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -7,17 +7,47 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+
+  // Check if running in installed mode or previously marked as installed
+  const checkIsInstalled = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches ||
+        window.matchMedia('(display-mode: minimal-ui)').matches ||
+        (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
+        document.referrer.includes('android-app://') ||
+        localStorage.getItem('mdc_pwa_installed') === 'true';
+      return isStandalone;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const [isInstalled, setIsInstalled] = useState<boolean>(checkIsInstalled);
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    // Detect standalone mode (already installed as PWA)
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
-      document.referrer.includes('android-app://');
+    // Initial verification
+    if (checkIsInstalled()) {
+      setIsInstalled(true);
+    }
 
-    setIsInstalled(isStandalone);
+    // Media query listener for real-time standalone transition
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayModeChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        try {
+          localStorage.setItem('mdc_pwa_installed', 'true');
+        } catch { /* ignore */ }
+        setIsInstalled(true);
+      }
+    };
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleDisplayModeChange);
+    }
 
     // Detect iOS devices
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -26,10 +56,18 @@ export function usePWAInstall() {
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      // If already installed, do nothing
+      if (checkIsInstalled()) {
+        setIsInstalled(true);
+        return;
+      }
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
 
     const handleAppInstalled = () => {
+      try {
+        localStorage.setItem('mdc_pwa_installed', 'true');
+      } catch { /* ignore */ }
       setIsInstalled(true);
       setDeferredPrompt(null);
     };
@@ -38,9 +76,20 @@ export function usePWAInstall() {
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener('change', handleDisplayModeChange);
+      }
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
+  }, [checkIsInstalled]);
+
+  const markAsInstalled = useCallback(() => {
+    try {
+      localStorage.setItem('mdc_pwa_installed', 'true');
+    } catch { /* ignore */ }
+    setIsInstalled(true);
+    setDeferredPrompt(null);
   }, []);
 
   const install = async () => {
@@ -49,8 +98,7 @@ export function usePWAInstall() {
       await deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
       if (choice.outcome === 'accepted') {
-        setIsInstalled(true);
-        setDeferredPrompt(null);
+        markAsInstalled();
         return true;
       }
     } catch (err) {
@@ -60,10 +108,11 @@ export function usePWAInstall() {
   };
 
   return {
-    isInstallable: !!deferredPrompt,
+    isInstallable: !!deferredPrompt && !isInstalled,
     isInstalled,
     isIOS,
     install,
+    markAsInstalled,
     deferredPrompt
   };
 }

@@ -1,5 +1,8 @@
+process.env.DISABLE_HMR = 'true';
+
 import { GoogleGenAI } from "@google/genai";
 import express from "express";
+import http from "http";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import path from "path";
@@ -491,6 +494,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 // No SQLite needed anymore
 async function startServer() {
   const app = express();
+  const server = http.createServer(app);
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json({ limit: '50mb' }));
@@ -4278,8 +4282,12 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    process.env.DISABLE_HMR = 'true';
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -4301,7 +4309,7 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
-  app.listen(PORT, "0.0.0.0", () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log("Server running on http://localhost:" + PORT);
   });
 }

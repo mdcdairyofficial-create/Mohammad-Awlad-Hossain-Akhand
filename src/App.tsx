@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, useParams } from "react-router-dom";
 import { AnimatePresence } from "motion/react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth, db } from "./firebase";
@@ -14,6 +15,11 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { OfflineNotice } from "./components/OfflineNotice";
 import type { UserRole } from "./types";
 import { safeGetJson, safeSetJson, safeRemoveItem } from "./utils/safeStorage";
+
+import PublicNavbar from "./components/PublicNavbar";
+import LandingPage from "./pages/LandingPage";
+import Blog from "./pages/Blog";
+import LegalPages from "./pages/LegalPages";
 
 // Directly import Dashboard so logged-in users see the UI on frame 1 without any buffering spinner
 import Dashboard from "./user/dashboard/Dashboard";
@@ -58,8 +64,30 @@ interface UserProfile {
 
 import { fetchWithAuth } from "./lib/api";
 
-export default function App() {
-  const [showSplash, setShowSplash] = useState(true);
+function AppContent() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const p = window.location.pathname;
+    // Bypasses splash screen completely for public pages so Google AdSense crawler and public visitors get raw HTML instantly
+    if (
+      p === "/" ||
+      p === "/features" ||
+      p === "/blog" ||
+      p.startsWith("/blog/") ||
+      p === "/privacy" ||
+      p === "/terms" ||
+      p === "/refund" ||
+      p === "/login" ||
+      p === "/track" ||
+      p.startsWith("/case/")
+    ) {
+      return false;
+    }
+    return true;
+  });
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(() => {
     return safeGetJson<UserProfile | null>("appUser", null);
@@ -500,8 +528,18 @@ export default function App() {
     }
   }, [showSplash]);
 
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const trackParam = urlParams.get("track") || urlParams.get("caseId") || urlParams.get("case");
+    if (trackParam && (location.pathname === "/" || location.pathname === "/login")) {
+      navigate(`/track?track=${encodeURIComponent(trackParam)}`, { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
   const handleAuthSuccess = (profile: UserProfile) => {
     setUser(profile);
+    safeSetJson("appUser", profile);
+    navigate("/dashboard");
   };
 
   const handleLogout = async () => {
@@ -511,6 +549,8 @@ export default function App() {
       console.error("Firebase signOut failed:", e);
     }
     setUser(null);
+    safeRemoveItem("appUser");
+    navigate("/login");
   };
 
   const handleUpdateProfile = (updatedProfile: Partial<UserProfile>) => {
@@ -522,152 +562,403 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="antialiased">
+      <div className="antialiased min-h-screen bg-slate-950 text-slate-100 flex flex-col">
         <OfflineNotice />
 
-        {/* Main Content (Dashboard, Admin, Auth, etc.) - rendered immediately in background */}
-        <div className="w-full min-h-screen">
-          <Suspense fallback={
-            <div className="w-full min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-              <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-3" />
-              <span className="text-slate-400 text-sm font-medium tracking-wide">লোড হচ্ছে...</span>
-            </div>
-          }>
-            {window.location.pathname === "/admin" ? (
-              <AdminDashboard
-                currentUser={{
-                  role: user?.userType === "admin" ? "admin" : "client",
-                  country: user?.country,
-                  district: user?.district,
-                }}
-              />
-            ) : (isTrackingScreen || trackCaseId) ? (
-              <MagicCaseTracker
-                trackQuery={trackCaseId || ""}
-                isLoggedIn={!!user}
-                onGoToAuth={() => {
-                  setIsTrackingScreen(false);
-                  setTrackCaseId(null);
-                  try {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("track");
-                    url.searchParams.delete("caseId");
-                    url.searchParams.delete("case");
-                    url.searchParams.delete("id");
-                    window.history.replaceState({}, document.title, url.pathname === "/track" ? "/" : url.pathname);
-                  } catch {}
-                }}
-                onGoToDashboard={() => {
-                  setIsTrackingScreen(false);
-                  setTrackCaseId(null);
-                  try {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("track");
-                    url.searchParams.delete("caseId");
-                    url.searchParams.delete("case");
-                    url.searchParams.delete("id");
-                    window.history.replaceState({}, document.title, url.pathname === "/track" ? "/" : url.pathname);
-                  } catch {}
-                }}
-              />
-            ) : !user ? (
-              <Auth onAuthSuccess={handleAuthSuccess} />
-            ) : !youtubeCompleted ? (
-              <YoutubeGate
-                onComplete={() => {
-                  localStorage.setItem("youtubeVerifiedCompleted", "true");
-                  setYoutubeCompleted(true);
-                }}
-              />
-            ) : showFacebookGate ? (
-              <FacebookGate
-                onComplete={() => {
-                  localStorage.setItem("facebookVerifiedCompleted", "true");
-                  setFacebookCompleted(true);
-                  setShowFacebookGate(false);
-                }}
-              />
-            ) : showTelegramGate ? (
-              <TelegramGate
-                onComplete={() => {
-                  localStorage.setItem("telegramVerifiedCompleted", "true");
-                  setTelegramCompleted(true);
-                  setShowTelegramGate(false);
-                  setShowSplash(true);
-                }}
-              />
-            ) : (
-              <>
-                {visitedReferralWhileLoggedIn && (
-                  <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 border-b border-indigo-500/30 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs shadow-lg relative z-50">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span>
-                        <strong>রেফারেল লিংক ওপেন করা হয়েছে:</strong> আপনি বর্তমানে <strong>{user?.fullName}</strong> হিসেবে সাইন-ইন আছেন। নতুন একাউন্ট রেজিস্টার করতে চাইলে লগআউট করুন।
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleLogout}
-                        className="px-3 py-1 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-lg font-bold transition-all shadow-sm cursor-pointer"
-                      >
-                        লগআউট করে নতুন একাউন্ট খুলুন
-                      </button>
-                      <button
-                        onClick={() => setVisitedReferralWhileLoggedIn(false)}
-                        className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white rounded-lg transition-all cursor-pointer"
-                      >
-                        বন্ধ করুন
-                      </button>
-                    </div>
+        <div className="w-full flex-1 flex flex-col">
+          <Suspense
+            fallback={
+              <div className="w-full min-h-[60vh] flex flex-col items-center justify-center p-4">
+                <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-3" />
+                <span className="text-slate-400 text-sm font-medium tracking-wide">লোড হচ্ছে...</span>
+              </div>
+            }
+          >
+            <Routes>
+              {/* Public Landing & Features */}
+              <Route
+                path="/"
+                element={
+                  <div className="min-h-screen bg-slate-950 flex flex-col">
+                    <PublicNavbar
+                      isLoggedIn={!!user}
+                      onGoToPortal={() => navigate(user ? "/dashboard" : "/login")}
+                    />
+                    <main className="flex-1">
+                      <LandingPage isLoggedIn={!!user} />
+                    </main>
                   </div>
-                )}
-                <Dashboard
-                userId={user.id}
-                firebaseUid={user.firebaseUid}
-                userType={user.userType}
-                userName={user.fullName}
-                userEmail={user.email}
-                userMobile={user.mobile}
-                userDistrict={user.district}
-                userCountry={user.country}
-                referralCode={user.referralCode}
-                subscriptionEndDate={user.subscriptionEndDate}
-                subscriptionPackage={user.subscriptionPackage}
-                profilePicture={user.profilePicture}
-                aiQuestionsCount={user.aiQuestionsCount}
-                lastAiResetDate={user.lastAiResetDate}
-                points={user.points}
-                displayDataMb={user.displayDataMb}
-                estimatedBillTaka={user.estimatedBillTaka}
-                chamberAddress={user.chamberAddress}
-                officeHours={user.officeHours}
-                barAssociation={user.barAssociation}
-                membershipId={user.membershipId}
-                facebookUrl={user.facebookUrl}
-                linkedinUrl={user.linkedinUrl}
-                userPoliceStation={user.policeStation}
-                trustScore={user.trustScore !== undefined ? user.trustScore : 100}
-                warningsCount={user.warningsCount || 0}
-                redBallsCount={user.redBallsCount || 0}
-                isSuspended={user.isSuspended || false}
-                suspensionReason={user.suspensionReason || ""}
-                isAdvertiser={user.isAdvertiser || false}
-                onLogout={handleLogout}
-                onUpdateProfile={handleUpdateProfile}
+                }
               />
-              </>
-            )}
+              <Route
+                path="/features"
+                element={
+                  <div className="min-h-screen bg-slate-950 flex flex-col">
+                    <PublicNavbar
+                      isLoggedIn={!!user}
+                      onGoToPortal={() => navigate(user ? "/dashboard" : "/login")}
+                    />
+                    <main className="flex-1">
+                      <LandingPage isLoggedIn={!!user} />
+                    </main>
+                  </div>
+                }
+              />
+
+              {/* Public Legal Blog (12 legal awareness articles for public + AdSense) */}
+              <Route
+                path="/blog"
+                element={
+                  <div className="min-h-screen bg-slate-950 flex flex-col">
+                    <PublicNavbar
+                      isLoggedIn={!!user}
+                      onGoToPortal={() => navigate(user ? "/dashboard" : "/login")}
+                    />
+                    <main className="flex-1">
+                      <Blog />
+                    </main>
+                  </div>
+                }
+              />
+
+              {/* Public Privacy Policy (with Google AdSense cookie disclosure) */}
+              <Route
+                path="/privacy"
+                element={
+                  <div className="min-h-screen bg-slate-950 flex flex-col">
+                    <PublicNavbar
+                      isLoggedIn={!!user}
+                      onGoToPortal={() => navigate(user ? "/dashboard" : "/login")}
+                    />
+                    <main className="flex-1">
+                      <LegalPages initialTab="privacy" />
+                    </main>
+                  </div>
+                }
+              />
+
+              {/* Public Terms of Service */}
+              <Route
+                path="/terms"
+                element={
+                  <div className="min-h-screen bg-slate-950 flex flex-col">
+                    <PublicNavbar
+                      isLoggedIn={!!user}
+                      onGoToPortal={() => navigate(user ? "/dashboard" : "/login")}
+                    />
+                    <main className="flex-1">
+                      <LegalPages initialTab="terms" />
+                    </main>
+                  </div>
+                }
+              />
+
+              {/* Public Refund Policy */}
+              <Route
+                path="/refund"
+                element={
+                  <div className="min-h-screen bg-slate-950 flex flex-col">
+                    <PublicNavbar
+                      isLoggedIn={!!user}
+                      onGoToPortal={() => navigate(user ? "/dashboard" : "/login")}
+                    />
+                    <main className="flex-1">
+                      <LegalPages initialTab="refund" />
+                    </main>
+                  </div>
+                }
+              />
+
+              {/* Public Case Tracker */}
+              <Route
+                path="/track"
+                element={
+                  <MagicCaseTrackerWrapper
+                    isLoggedIn={!!user}
+                    onGoToAuth={() => navigate("/login")}
+                    onGoToDashboard={() => navigate("/dashboard")}
+                  />
+                }
+              />
+              <Route
+                path="/track/:caseId"
+                element={
+                  <MagicCaseTrackerWrapper
+                    isLoggedIn={!!user}
+                    onGoToAuth={() => navigate("/login")}
+                    onGoToDashboard={() => navigate("/dashboard")}
+                  />
+                }
+              />
+              <Route
+                path="/case/:caseId"
+                element={
+                  <MagicCaseTrackerWrapper
+                    isLoggedIn={!!user}
+                    onGoToAuth={() => navigate("/login")}
+                    onGoToDashboard={() => navigate("/dashboard")}
+                  />
+                }
+              />
+
+              {/* Admin Dashboard */}
+              <Route
+                path="/admin"
+                element={
+                  <Suspense
+                    fallback={
+                      <div className="w-full min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+                        <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-3" />
+                        <span className="text-slate-400 text-sm font-medium tracking-wide">লোড হচ্ছে...</span>
+                      </div>
+                    }
+                  >
+                    <AdminDashboard
+                      currentUser={{
+                        role: user?.userType === "admin" ? "admin" : "client",
+                        country: user?.country,
+                        district: user?.district,
+                      }}
+                    />
+                  </Suspense>
+                }
+              />
+
+              {/* Login / Portal Route */}
+              <Route
+                path="/login"
+                element={
+                  user ? (
+                    <Navigate to="/dashboard" replace />
+                  ) : (
+                    <div className="min-h-screen bg-slate-950 flex flex-col">
+                      <PublicNavbar
+                        isLoggedIn={false}
+                        onGoToPortal={() => navigate("/login")}
+                      />
+                      <main className="flex-1">
+                        <Auth onAuthSuccess={handleAuthSuccess} />
+                      </main>
+                    </div>
+                  )
+                }
+              />
+              <Route path="/register" element={<Navigate to="/login" replace />} />
+              <Route path="/signup" element={<Navigate to="/login" replace />} />
+              <Route path="/join" element={<Navigate to="/login" replace />} />
+
+              {/* Protected Dashboards (Lawyer, Mohuri, Client, Advertiser) */}
+              <Route
+                path="/dashboard/*"
+                element={
+                  <ProtectedDashboard
+                    user={user}
+                    youtubeCompleted={youtubeCompleted}
+                    setYoutubeCompleted={setYoutubeCompleted}
+                    showFacebookGate={showFacebookGate}
+                    setShowFacebookGate={setShowFacebookGate}
+                    setFacebookCompleted={setFacebookCompleted}
+                    showTelegramGate={showTelegramGate}
+                    setShowTelegramGate={setShowTelegramGate}
+                    setTelegramCompleted={setTelegramCompleted}
+                    setShowSplash={setShowSplash}
+                    visitedReferralWhileLoggedIn={visitedReferralWhileLoggedIn}
+                    setVisitedReferralWhileLoggedIn={setVisitedReferralWhileLoggedIn}
+                    handleLogout={handleLogout}
+                    handleUpdateProfile={handleUpdateProfile}
+                  />
+                }
+              />
+
+              {/* Fallback to Home */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
           </Suspense>
         </div>
 
-        {/* Improved Overlay Splash Screen (fades out beautifully with absolute safety) */}
+        {/* Overlay Splash Screen for initial app launch */}
         <AnimatePresence>
           {showSplash && <SplashScreen key="splash" />}
         </AnimatePresence>
-
-
       </div>
     </ErrorBoundary>
+  );
+}
+
+interface ProtectedDashboardProps {
+  user: UserProfile | null;
+  youtubeCompleted: boolean;
+  setYoutubeCompleted: (val: boolean) => void;
+  showFacebookGate: boolean;
+  setShowFacebookGate: (val: boolean) => void;
+  setFacebookCompleted: (val: boolean) => void;
+  showTelegramGate: boolean;
+  setShowTelegramGate: (val: boolean) => void;
+  setTelegramCompleted: (val: boolean) => void;
+  setShowSplash: (val: boolean) => void;
+  visitedReferralWhileLoggedIn: boolean;
+  setVisitedReferralWhileLoggedIn: (val: boolean) => void;
+  handleLogout: () => void;
+  handleUpdateProfile: (p: Partial<UserProfile>) => void;
+}
+
+function ProtectedDashboard({
+  user,
+  youtubeCompleted,
+  setYoutubeCompleted,
+  showFacebookGate,
+  setShowFacebookGate,
+  setFacebookCompleted,
+  showTelegramGate,
+  setShowTelegramGate,
+  setTelegramCompleted,
+  setShowSplash,
+  visitedReferralWhileLoggedIn,
+  setVisitedReferralWhileLoggedIn,
+  handleLogout,
+  handleUpdateProfile,
+}: ProtectedDashboardProps) {
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!youtubeCompleted) {
+    return (
+      <YoutubeGate
+        onComplete={() => {
+          localStorage.setItem("youtubeVerifiedCompleted", "true");
+          setYoutubeCompleted(true);
+        }}
+      />
+    );
+  }
+
+  if (showFacebookGate) {
+    return (
+      <FacebookGate
+        onComplete={() => {
+          localStorage.setItem("facebookVerifiedCompleted", "true");
+          setFacebookCompleted(true);
+          setShowFacebookGate(false);
+        }}
+      />
+    );
+  }
+
+  if (showTelegramGate) {
+    return (
+      <TelegramGate
+        onComplete={() => {
+          localStorage.setItem("telegramVerifiedCompleted", "true");
+          setTelegramCompleted(true);
+          setShowTelegramGate(false);
+          setShowSplash(true);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="w-full min-h-screen bg-slate-950 text-slate-100">
+      {visitedReferralWhileLoggedIn && (
+        <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 border-b border-indigo-500/30 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs shadow-lg relative z-50">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>
+              <strong>রেফারেল লিংক ওপেন করা হয়েছে:</strong> আপনি বর্তমানে <strong>{user?.fullName}</strong> হিসেবে সাইন-ইন আছেন। নতুন একাউন্ট রেজিস্টার করতে চাইলে লগআউট করুন।
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1 bg-rose-600 hover:bg-rose-500 active:scale-95 text-white rounded-lg font-bold transition-all shadow-sm cursor-pointer"
+            >
+              লগআউট করে নতুন একাউন্ট খুলুন
+            </button>
+            <button
+              onClick={() => setVisitedReferralWhileLoggedIn(false)}
+              className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white rounded-lg transition-all cursor-pointer"
+            >
+              বন্ধ করুন
+            </button>
+          </div>
+        </div>
+      )}
+      <Dashboard
+        userId={user.id}
+        firebaseUid={user.firebaseUid}
+        userType={user.userType}
+        userName={user.fullName}
+        userEmail={user.email}
+        userMobile={user.mobile}
+        userDistrict={user.district}
+        userCountry={user.country}
+        referralCode={user.referralCode}
+        subscriptionEndDate={user.subscriptionEndDate}
+        subscriptionPackage={user.subscriptionPackage}
+        profilePicture={user.profilePicture}
+        aiQuestionsCount={user.aiQuestionsCount}
+        lastAiResetDate={user.lastAiResetDate}
+        points={user.points}
+        displayDataMb={user.displayDataMb}
+        estimatedBillTaka={user.estimatedBillTaka}
+        chamberAddress={user.chamberAddress}
+        officeHours={user.officeHours}
+        barAssociation={user.barAssociation}
+        membershipId={user.membershipId}
+        facebookUrl={user.facebookUrl}
+        linkedinUrl={user.linkedinUrl}
+        userPoliceStation={user.policeStation}
+        trustScore={user.trustScore !== undefined ? user.trustScore : 100}
+        warningsCount={user.warningsCount || 0}
+        redBallsCount={user.redBallsCount || 0}
+        isSuspended={user.isSuspended || false}
+        suspensionReason={user.suspensionReason || ""}
+        isAdvertiser={user.isAdvertiser || false}
+        onLogout={handleLogout}
+        onUpdateProfile={handleUpdateProfile}
+      />
+    </div>
+  );
+}
+
+function MagicCaseTrackerWrapper({
+  isLoggedIn,
+  onGoToAuth,
+  onGoToDashboard,
+}: {
+  isLoggedIn: boolean;
+  onGoToAuth: () => void;
+  onGoToDashboard: () => void;
+}) {
+  const { caseId } = useParams();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const trackQuery = searchParams.get("track") || searchParams.get("caseId") || searchParams.get("case") || caseId || "";
+
+  return (
+    <Suspense
+      fallback={
+        <div className="w-full min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
+          <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-3" />
+          <span className="text-slate-400 text-sm font-medium tracking-wide">লোড হচ্ছে...</span>
+        </div>
+      }
+    >
+      <MagicCaseTracker
+        trackQuery={trackQuery}
+        isLoggedIn={isLoggedIn}
+        onGoToAuth={onGoToAuth}
+        onGoToDashboard={onGoToDashboard}
+      />
+    </Suspense>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }

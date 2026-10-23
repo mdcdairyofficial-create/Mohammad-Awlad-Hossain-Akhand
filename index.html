@@ -7,6 +7,96 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#0f172a" />
+    <script>
+      (function() {
+        if (typeof window === 'undefined') return;
+        var OriginalWebSocket = window.WebSocket;
+        if (OriginalWebSocket) {
+          function isViteHmr(protocols) {
+            if (!protocols) return false;
+            if (typeof protocols === 'string') return protocols === 'vite-hmr';
+            if (Array.isArray(protocols)) return protocols.indexOf('vite-hmr') !== -1;
+            return false;
+          }
+          function MockViteWebSocket(url, protocols) {
+            if (!isViteHmr(protocols)) {
+              return new OriginalWebSocket(url, protocols);
+            }
+            var target = new EventTarget();
+            target.url = url;
+            target.protocol = 'vite-hmr';
+            target.readyState = 1;
+            target.binaryType = 'blob';
+            target.bufferedAmount = 0;
+            target.extensions = '';
+            target.onopen = null;
+            target.onclose = null;
+            target.onerror = null;
+            target.onmessage = null;
+            target.send = function() {};
+            target.close = function(code, reason) {
+              target.readyState = 3;
+              var ev = new Event('close');
+              ev.wasClean = true;
+              ev.code = code || 1000;
+              ev.reason = reason || 'normal';
+              if (typeof target.onclose === 'function') target.onclose(ev);
+              target.dispatchEvent(ev);
+            };
+            setTimeout(function() {
+              target.readyState = 1;
+              var ev = new Event('open');
+              if (typeof target.onopen === 'function') target.onopen(ev);
+              target.dispatchEvent(ev);
+            }, 0);
+            return target;
+          }
+          MockViteWebSocket.prototype = OriginalWebSocket.prototype;
+          MockViteWebSocket.CONNECTING = 0;
+          MockViteWebSocket.OPEN = 1;
+          MockViteWebSocket.CLOSING = 2;
+          MockViteWebSocket.CLOSED = 3;
+          window.WebSocket = MockViteWebSocket;
+        }
+
+        var origConsoleError = console.error;
+        console.error = function() {
+          var firstArg = arguments[0];
+          if (firstArg) {
+            var msg = typeof firstArg === 'string' ? firstArg : (firstArg.message || String(firstArg));
+            if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('@vite/client') !== -1 || msg.indexOf('[vite]') !== -1) {
+              return;
+            }
+          }
+          return origConsoleError.apply(console, arguments);
+        };
+
+        window.addEventListener('error', function(e) {
+          if (e && (
+            (e.message && (
+              e.message.includes('WebSocket') || 
+              e.message.includes('@vite/client') || 
+              e.message.includes('WebSocket closed without opened')
+            )) ||
+            (e.filename && e.filename.includes('@vite/client'))
+          )) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          if (e && e.reason && (
+            String(e.reason).includes('WebSocket') ||
+            String(e.reason).includes('@vite/client')
+          )) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
     <!-- সাধারণ ব্রাউজার ও ডেস্কটপ শর্টকাটের জন্য -->
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />

@@ -50,28 +50,37 @@ export default defineConfig(({mode}) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,svg,woff,woff2}'],
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
           cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api/],
           runtimeCaching: [
             {
-              urlPattern: /\.(?:png|jpg|jpeg|svg|webp|gif)$/,
+              // Images and Media (App icons, logo, attachments) - CacheFirst for 60 days
+              urlPattern: /\.(?:png|jpg|jpeg|svg|webp|gif|ico)$/i,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'images-cache',
                 expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
+                  maxEntries: 100,
+                  maxAgeSeconds: 60 * 24 * 60 * 60, // 60 Days
                 },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
               },
             },
             {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              // Google Fonts (Stylesheets and Webfonts) - CacheFirst for 1 year
+              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'google-fonts-cache',
                 expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60 * 24 * 365 // 365 days
+                  maxEntries: 20,
+                  maxAgeSeconds: 365 * 24 * 60 * 60 // 365 days
                 },
                 cacheableResponse: {
                   statuses: [0, 200]
@@ -79,15 +88,33 @@ export default defineConfig(({mode}) => {
               }
             },
             {
-              urlPattern: ({ url }) => url.origin === self.location.origin && !url.pathname.startsWith('/api'),
-              handler: 'NetworkFirst',
+              // Static Bundles (JS & CSS chunks) - StaleWhileRevalidate for instant launch from phone memory
+              urlPattern: /\.(?:js|css)$/i,
+              handler: 'StaleWhileRevalidate',
               options: {
-                cacheName: 'others-cache',
+                cacheName: 'static-resources',
                 expiration: {
-                  maxEntries: 50,
-                  maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+                  maxEntries: 100,
+                  maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
                 },
-                networkTimeoutSeconds: 4
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            },
+            {
+              // HTML Pages & Navigation Routes - StaleWhileRevalidate so pages open instantly without network delay
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'pages-cache',
+                expiration: {
+                  maxEntries: 30,
+                  maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
               }
             }
           ]

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Smartphone, X, CheckCircle2, Share, PlusSquare } from 'lucide-react';
+import { Download, Smartphone, X, CheckCircle2, Share, PlusSquare, Check } from 'lucide-react';
 import { usePWAInstall } from './usePWAInstall';
 
 interface PWAInstallButtonProps {
@@ -11,11 +11,17 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   variant = 'header',
   language = 'bn'
 }) => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, install, markAsInstalled } = usePWAInstall();
   const [showModal, setShowModal] = useState(false);
-  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(() => {
+    try {
+      return localStorage.getItem('mdc_pwa_banner_dismissed') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
-  // If already running standalone (installed PWA), don't show prompt
+  // If already installed on mobile/desktop, completely remove all install buttons & banners
   if (isInstalled) {
     return null;
   }
@@ -27,9 +33,21 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         setShowModal(true);
       }
     } else {
-      // Show guided instructions for iOS or desktop browsers where event didn't fire yet
+      // Show guided instructions for iOS or browsers where prompt event hasn't fired
       setShowModal(true);
     }
+  };
+
+  const handleDismissBanner = () => {
+    setIsBannerDismissed(true);
+    try {
+      localStorage.setItem('mdc_pwa_banner_dismissed', 'true');
+    } catch { /* ignore */ }
+  };
+
+  const handleConfirmInstalled = () => {
+    markAsInstalled();
+    setShowModal(false);
   };
 
   return (
@@ -98,7 +116,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setIsBannerDismissed(true)}
+              onClick={handleDismissBanner}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
               title="Close"
             >
@@ -174,13 +192,24 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={() => setShowModal(false)}
-              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer"
-            >
-              {language === 'bn' ? 'বুঝেছি / বন্ধ করুন' : 'Got it / Close'}
-            </button>
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmInstalled}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <Check size={14} />
+                {language === 'bn' ? 'ইনস্টল সম্পন্ন করেছি (বাটনটি মুছুন)' : 'Already Installed (Hide button)'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-bold rounded-xl text-xs transition-all cursor-pointer"
+              >
+                {language === 'bn' ? 'পরে করব / বন্ধ করুন' : 'Later / Close'}
+              </button>
+            </div>
           </div>
         </div>
       )}
