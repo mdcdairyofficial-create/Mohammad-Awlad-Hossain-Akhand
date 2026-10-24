@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   TrendingUp, 
   FileText, 
@@ -21,11 +21,24 @@ import {
   Sparkles,
   Gift,
   Bell,
-  BellRing
+  BellRing,
+  Gavel,
+  FolderOpen,
+  Users,
+  Settings,
+  Search,
+  BookOpen,
+  Scale,
+  Eye,
+  Clock,
+  ArrowRight,
+  ShieldCheck,
+  Check,
+  Flame,
+  LayoutGrid
 } from 'lucide-react';
 import { AdBanner } from '../AdBanner';
 import { Case, Task } from '../../../types';
-import { AnimatePresence } from 'motion/react';
 import { 
   checkNotificationSupport, 
   requestNotificationPermission, 
@@ -71,7 +84,7 @@ interface HomeViewProps {
   assignedCasesCount?: number;
 }
 
-export const HomeView = ({
+export const HomeView: React.FC<HomeViewProps> = ({
   userName,
   userType,
   cases,
@@ -97,7 +110,7 @@ export const HomeView = ({
   allCasesCount = 0,
   ownCasesCount = 0,
   assignedCasesCount = 0
-}: HomeViewProps) => {
+}) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
   const [totalDue, setTotalDue] = React.useState(0);
@@ -133,17 +146,19 @@ export const HomeView = ({
   }, [initialShowScoreModal]);
 
   React.useEffect(() => {
-    // Calculate total due from invoices
     const saved = localStorage.getItem('mdc_invoices');
     if (saved) {
-      const invoices = JSON.parse(saved);
-      const due = invoices.reduce((acc: number, curr: any) => acc + (curr.amount - curr.paidAmount), 0);
-      setTotalDue(due);
+      try {
+        const invoices = JSON.parse(saved);
+        const due = invoices.reduce((acc: number, curr: any) => acc + (curr.amount - (curr.paidAmount || 0)), 0);
+        setTotalDue(due);
+      } catch (e) {
+        console.error('Error parsing invoices', e);
+      }
     }
   }, []);
 
   const [copiedLink, setCopiedLink] = React.useState(false);
-
   const effectiveReferralCode = referralCode || '';
   const fullReferralLink = getReferralUrl(effectiveReferralCode);
 
@@ -226,29 +241,86 @@ export const HomeView = ({
 
   const chartData = getChartData();
 
+  // 3D User Role Options for the Interactive Role Cards (matching reference design)
+  const roleCards = [
+    {
+      id: 'lawyer',
+      title: 'আইনজীবী',
+      subtitle: 'নিজের মামলা, কোর্ট ডায়েরি, তারিখ ও পেশাগত কাজকর্ম পরিচালনা।',
+      gradient: 'from-[#0b2878] via-[#081f5c] to-[#040e33]',
+      glow: 'shadow-[0_15px_35px_rgba(11,40,120,0.45)]',
+      border: 'border-blue-400/50 hover:border-cyan-400',
+      iconImg: '/assets/aistudio/icon_3d_lawyer.png',
+      buttonBg: 'bg-gradient-to-r from-[#0099ff] to-[#0052cc] hover:from-[#38bdf8] hover:to-[#0284c7] text-white shadow-md shadow-blue-500/30',
+      action: () => setActiveTab('cases')
+    },
+    {
+      id: 'muhuri',
+      title: 'মুহুরী',
+      subtitle: 'মামলা এন্ট্রি, পরবর্তী তারিখ, হাজিরা এবং অফিসের দৈনন্দিন কাজ পরিচালনা।',
+      gradient: 'from-[#4e0766] via-[#370548] to-[#1c0226]',
+      glow: 'shadow-[0_15px_35px_rgba(78,7,102,0.45)]',
+      border: 'border-purple-400/50 hover:border-fuchsia-400',
+      iconImg: '/assets/aistudio/icon_3d_muhuri.png',
+      buttonBg: 'bg-gradient-to-r from-[#b026ff] to-[#7916e0] hover:from-[#c084fc] hover:to-[#9333ea] text-white shadow-md shadow-purple-500/30',
+      action: () => setActiveTab('cases')
+    },
+    {
+      id: 'client',
+      title: 'ক্লায়েন্ট',
+      subtitle: 'নিজের মামলার তথ্য, পরবর্তী তারিখ এবং অগ্রগতি আপডেট দেখা।',
+      gradient: 'from-[#045242] via-[#033b30] to-[#02211b]',
+      glow: 'shadow-[0_15px_35px_rgba(4,82,66,0.45)]',
+      border: 'border-emerald-400/50 hover:border-teal-300',
+      iconImg: '/assets/aistudio/icon_3d_client.png',
+      buttonBg: 'bg-gradient-to-r from-[#00c9a7] to-[#008f7a] hover:from-[#34d399] hover:to-[#059669] text-white shadow-md shadow-teal-500/30',
+      action: () => setActiveTab('cases')
+    },
+    {
+      id: 'admin',
+      title: 'প্রশাসক',
+      subtitle: 'অনুমোদিত প্রশাসনিক কার্যক্রম, ব্যবহারকারী ও সিস্টেম ব্যবস্থাপনা।',
+      gradient: 'from-[#7c280b] via-[#591c08] to-[#331004]',
+      glow: 'shadow-[0_15px_35px_rgba(124,40,11,0.45)]',
+      border: 'border-amber-400/50 hover:border-orange-400',
+      iconImg: '/assets/aistudio/icon_3d_admin.png',
+      buttonBg: 'bg-gradient-to-r from-[#ff9f1a] to-[#e65c00] hover:from-[#fcd34d] hover:to-[#ea580c] text-white shadow-md shadow-amber-500/30',
+      action: () => setActiveTab('profile')
+    }
+  ];
+
+  // Cases to display in Recent/Today Table (Fallback matches user reference design exactly)
+  const referenceCases = [
+    { id: 'ref-1', caseNumber: 'জি. আর মামলা - ১০০/২০২৩', policeStation: 'কালকিনি', petitioner: 'কালু', respondent: 'লালু', courtName: 'চীফ জুডিসিয়াল ম্যাজিস্ট্রেট আদালত', caseStep: 'হাজিরা', nextDate: '2026-10-28', status: 'active', attendance: 'present' },
+    { id: 'ref-2', caseNumber: 'নং মামলা - ১২৩/২০২৩', policeStation: 'রাজবাড়ী', petitioner: 'রহিম', respondent: 'করিম', courtName: 'জেলা জজ আদালত', caseStep: 'দরখাস্ত', nextDate: '2026-11-12', status: 'active', attendance: 'absent' },
+    { id: 'ref-3', caseNumber: 'সিভিল মামলা - ৪৫/২০২৩', policeStation: 'ঢাকা', petitioner: 'আবুল', respondent: 'রহিম', courtName: 'ঢাকা মেট্রোপলিটন আদালত', caseStep: 'যুক্তিতর্ক', nextDate: '2026-11-06', status: 'active', attendance: 'present' },
+    { id: 'ref-4', caseNumber: 'ফৌজদারি মামলা - ৩৮/২০২৩', policeStation: 'মোহাম্মদপুর', petitioner: 'সুমন', respondent: 'রফিক', courtName: 'মেট্রোপলিটন ম্যাজিস্ট্রেট আদালত', caseStep: 'সাক্ষ্য গ্রহণ', nextDate: '2026-11-20', status: 'active', attendance: 'none' }
+  ];
+  const tableCases = cases.length > 0 ? cases.slice(0, 6) : referenceCases;
+
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="space-y-8 animate-in fade-in duration-500 text-slate-800 dark:text-slate-100">
       <AdBanner isPremium={isPremiumForAds} />
 
       {/* Dynamic Warning Alert Banner */}
       {warningsCount > 0 && (
-        <div className="bg-rose-50 border border-rose-100 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-start gap-4 shadow-xl shadow-rose-500/5 animate-in slide-in-from-top-4 duration-500">
-          <div className="p-4 bg-rose-500 text-white rounded-2xl shrink-0">
-            <ShieldAlert size={28} />
+        <div className="bg-rose-950/80 border border-rose-500/40 backdrop-blur-xl rounded-3xl p-6 sm:p-7 flex flex-col sm:flex-row items-start gap-4 shadow-2xl shadow-rose-950/40 animate-in slide-in-from-top-4 duration-500 text-white">
+          <div className="p-3.5 bg-gradient-to-br from-rose-500 to-red-600 text-white rounded-2xl shrink-0 shadow-lg shadow-rose-500/30">
+            <ShieldAlert size={26} />
           </div>
           <div className="space-y-2 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-black text-slate-900">সতর্ক বার্তা! পেনাল্টি নোটিশ</h3>
-              <span className="bg-rose-600 text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
+              <h3 className="text-lg font-black tracking-tight text-rose-100">সতর্ক বার্তা! পেনাল্টি নোটিশ</h3>
+              <span className="bg-rose-500 text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider animate-pulse">
                 সতর্কতা {warningsCount}/৩
               </span>
               {redBallsCount > 0 && (
-                <span className="bg-rose-900 text-rose-100 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 flex items-center gap-1">
+                <span className="bg-rose-900/90 border border-rose-700 text-rose-100 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0 flex items-center gap-1">
                   ● {redBallsCount} লাল বল
                 </span>
               )}
             </div>
-            <p className="text-slate-600 text-sm font-semibold leading-relaxed">
+            <p className="text-rose-200/90 text-sm font-medium leading-relaxed">
               আপনার অ্যাকাউন্টে নীতি লঙ্ঘনজনিত কারণে অথবা মামলার ভুল তথ্য রিপোর্টের ফলস্বরূপ সতর্ক সংকেত রয়েছে। ৩টি স্তর পূর্ণ হলে আপনার আইনজীবী/মুহুরি লাইসেন্স সাময়িকভাবে স্থগিত হতে পারে।
             </p>
             <div className="flex gap-2.5 pt-1.5">
@@ -257,8 +329,8 @@ export const HomeView = ({
                   key={strike} 
                   className={`w-4 h-4 rounded-full border transition-all duration-300 ${
                     strike <= warningsCount 
-                      ? 'bg-rose-600 border-rose-700 shadow-md shadow-rose-300 scale-110' 
-                      : 'bg-slate-200 border-slate-300'
+                      ? 'bg-rose-500 border-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.8)] scale-110' 
+                      : 'bg-white/10 border-white/20'
                   }`}
                   title={`সংকেত ${strike}`}
                 />
@@ -267,268 +339,546 @@ export const HomeView = ({
           </div>
         </div>
       )}
-      
-      {/* Welcome Section */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-blue-700 via-indigo-600 to-indigo-700 rounded-3xl p-6 sm:p-8 lg:p-12 text-white shadow-xl shadow-indigo-500/10">
-        <div className="relative z-10">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
+
+      {/* Hero Banner Section - Royal Blue 3D Atmosphere from Reference Design */}
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-r from-[#003db3] via-[#0057e7] to-[#042878] border border-cyan-400/35 shadow-[0_25px_60px_rgba(0,35,110,0.5)] text-white group">
+        {/* Integrated Background Backdrop Layer */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+          <img 
+            src="/assets/aistudio/hero_banner_cropped.png" 
+            alt="3D Theme Backdrop" 
+            className="w-full h-full object-cover object-right lg:object-center opacity-25 mix-blend-overlay filter blur-[1px] scale-105"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#002f8a]/95 via-[#0047cc]/85 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#001f66]/80 via-transparent to-transparent" />
+        </div>
+
+        {/* Dynamic Glow Orbs for 3D Lighting */}
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-blue-600/30 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-1/2 right-10 w-72 h-72 bg-sky-400/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 p-6 sm:p-8 lg:p-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left Content Column */}
+            <motion.div 
+              initial={{ opacity: 0, x: -25 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2 }}
-              className="flex-1"
+              transition={{ duration: 0.5 }}
+              className="lg:col-span-6 space-y-5"
             >
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black mb-4 break-words">
-                {language === 'bn' ? `স্বাগতম, ${userName}!` : `Welcome, ${userName}!`}
-              </h2>
-              <p className="text-indigo-100 text-lg sm:text-xl font-medium max-w-xl leading-relaxed">
-                {language === 'bn' 
-                  ? 'আপনার আইনি কার্যক্রমকে আরও সহজ ও সাশ্রয়ী করতে আমরা সবসময় আপনার পাশে আছি।' 
-                  : 'We are always with you to make your legal activities easier and more cost-effective.'}
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 border border-white/25 text-cyan-200 text-xs sm:text-sm font-bold backdrop-blur-md shadow-sm">
+                <Sparkles size={16} className="text-cyan-300 animate-pulse" />
+                <span>স্মার্ট কোর্ট ম্যানেজমেন্ট • ডিজিটাল বাংলাদেশ</span>
+              </div>
+
+              {/* Title & Subtitle matching reference */}
+              <div className="space-y-1.5">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white drop-shadow-md">
+                  MDC Casebook
+                </h1>
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-sky-200 to-yellow-300 drop-shadow">
+                  ডিজিটাল কেস ও লিগ্যাল ডায়েরি প্ল্যাটফর্ম
+                </h2>
+              </div>
+
+              {/* Description */}
+              <p className="text-blue-100/90 text-xs sm:text-sm lg:text-base leading-relaxed max-w-xl font-medium">
+                আইনজীবী, মুহুরী ও ক্লায়েন্টদের জন্য একটি সমন্বিত স্মার্ট প্ল্যাটফর্ম। মামলা ব্যবস্থাপনা, পরবর্তী তারিখ, হাজিরা, আদালতের কার্যক্রম এবং গুরুত্বপূর্ণ নথি পরিচালনা করুন সহজেই।
               </p>
+
+              {/* User greeting pill */}
+              <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-white/10 backdrop-blur-md rounded-full border border-white/20 text-xs sm:text-sm text-cyan-200 font-semibold shadow-inner">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>{language === 'bn' ? `স্বাগতম, ${userName}!` : `Welcome, ${userName}!`}</span>
+              </div>
+
+              {/* Hero Action Buttons - Styled exactly as reference rounded pills */}
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  onClick={() => setActiveTab('cases')}
+                  className="px-6 sm:px-7 py-3.5 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-600 hover:from-cyan-300 hover:to-indigo-500 text-white font-black text-xs sm:text-sm rounded-full shadow-[0_10px_25px_rgba(6,182,212,0.4)] hover:shadow-[0_15px_30px_rgba(6,182,212,0.6)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2.5 group cursor-pointer"
+                >
+                  <Zap size={18} className="text-yellow-300 fill-yellow-300 group-hover:rotate-12 transition-transform" />
+                  <span>আমার ড্যাশবোর্ডে প্রবেশ করুন</span>
+                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('cases')}
+                  className="px-5 py-3.5 bg-blue-950/60 hover:bg-blue-900/80 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-full border border-blue-400/40 backdrop-blur-md shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <Search size={16} className="text-cyan-300" />
+                  <span>মামলা খুঁজুন</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab('library')}
+                  className="px-5 py-3.5 bg-blue-950/60 hover:bg-blue-900/80 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-full border border-blue-400/40 backdrop-blur-md shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <BookOpen size={16} className="text-cyan-300" />
+                  <span>আইন ও টিপস</span>
+                </button>
+              </div>
+
+              {/* Quick stats badges row for real-time awareness */}
+              <div className="flex items-center gap-3 pt-3 flex-wrap">
+                <div 
+                  onClick={() => setActiveTab('cases')}
+                  className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-xs text-white font-bold cursor-pointer transition-all flex items-center gap-2"
+                >
+                  <span className="text-cyan-300">মোট মামলা:</span>
+                  <span className="font-black text-amber-300">{cases.length} টি</span>
+                </div>
+                <div 
+                  onClick={() => setActiveTab('calendar')}
+                  className="px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-xs text-white font-bold cursor-pointer transition-all flex items-center gap-2"
+                >
+                  <span className="text-cyan-300">আজকের শুনানী:</span>
+                  <span className="font-black text-emerald-300">
+                    {cases.filter(c => c.nextDate === new Date().toISOString().split('T')[0]).length} টি
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveTab('newCase')}
+                  className="px-3.5 py-1.5 rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-black cursor-pointer transition-all flex items-center gap-1.5"
+                >
+                  <FolderOpen size={13} />
+                  <span>+ নতুন মামলা</span>
+                </button>
+              </div>
             </motion.div>
 
-            {/* Efficiency Dashboard for User */}
-            {userType !== 'client' && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] shadow-inner"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-amber-400 rounded-lg text-amber-900">
-                      <Zap size={16} fill="currentColor" />
-                    </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">সিস্টেম এফিসিয়েন্সি</span>
-                  </div>
-                  <div className="text-[10px] font-black bg-emerald-500 px-2 py-0.5 rounded-full text-white">LIVE</div>
-                </div>
-
-                <div className="space-y-4">
-                  {isPremium && (
-                    <div className="bg-white/20 backdrop-blur-md border border-white/30 p-3 rounded-2xl flex items-center gap-3 mb-2">
-                      <div className="p-2 bg-amber-400 rounded-xl text-amber-900 shrink-0">
-                        <Award size={20} fill="currentColor" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black uppercase text-indigo-100 leading-none mb-1">লটারি স্ট্যাটাস</p>
-                        <p className="text-sm font-bold text-white">সাপ্তাহিক প্রতিটি লটারির জন্য এলিজিবেল</p>
-                      </div>
-                    </div>
-                  )}
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-1">
-                      <span>{language === 'bn' ? 'ডেটা সাশ্রয়' : 'Data Saving'}</span>
-                      <span className="text-amber-300">৯৫%</span>
-                    </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div className="h-full bg-amber-400 w-[95%] rounded-full shadow-[0_0_10px_rgba(251,191,36,0.5)]"></div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
-                      <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'ডেটা রিড' : 'DATA READ'}</p>
-                      <p className="text-lg font-black">{showAllCases ? 'HIGH' : 'LOW'}</p>
-                    </div>
-                    <div className="text-center p-3 bg-white/5 rounded-2xl border border-white/5">
-                      <p className="text-[9px] font-black text-indigo-200 uppercase mb-1">{language === 'bn' ? 'সেশন কস্ট' : 'SESSION COST'}</p>
-                      <p className="text-lg font-black">৳{estimatedBillTaka.toFixed(2)}</p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={onToggleShowAll}
-                    className={`w-full py-3 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
-                      showAllCases 
-                        ? 'bg-white text-indigo-600 hover:bg-slate-100' 
-                        : 'bg-indigo-500 text-white hover:bg-indigo-400 shadow-lg shadow-indigo-900/40'
-                    }`}
-                  >
-                    {showAllCases 
-                      ? (language === 'bn' ? 'অপ্টিমাইজ মুড অন করুন' : 'Turn On Optimized Mode')
-                      : (language === 'bn' ? 'সব মামলা লোড করুন' : 'Load All Cases')
-                    }
-                  </button>
-                </div>
-              </motion.div>
-            )}
-
-            {/* Smart Push Notification card for Client User */}
-            {userType === 'client' && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2rem] flex flex-col min-w-[280px] sm:min-w-[320px] shadow-inner justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 bg-emerald-400 rounded-lg text-emerald-950">
-                        <Bell size={16} />
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">
-                        {language === 'bn' ? 'অটো পুশ নোটিফিকেশন' : 'Push Notifications'}
-                      </span>
-                    </div>
-                    <div className={`text-[10px] font-black px-2.5 py-0.5 rounded-full text-white ${
-                      clientPushGranted ? 'bg-emerald-500' : 'bg-amber-500'
-                    }`}>
-                      {clientPushGranted ? (language === 'bn' ? 'সক্রিয়' : 'ACTIVE') : (language === 'bn' ? 'অপেক্ষমান' : 'PENDING')}
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-indigo-100 leading-relaxed mb-4">
-                    {language === 'bn'
-                      ? 'আদালত থেকে আপনার মামলার পরবর্তী ধার্য তারিখ বা নতুন আদেশ আসার সাথে সাথে আপনার মোবাইলে সরাসরি এলার্ট পৌঁছে যাবে।'
-                      : 'Get real-time push alerts on your phone whenever case hearing dates or orders change.'}
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  {clientPushGranted ? (
-                    <button
-                      onClick={handleTestClientNotification}
-                      className="w-full py-2.5 rounded-2xl text-xs font-black bg-white/10 text-white hover:bg-white/20 border border-white/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                    >
-                      <BellRing size={14} />
-                      <span>{language === 'bn' ? 'টেস্ট এলার্ট পাঠান' : 'Send Test Alert'}</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleEnableClientNotification}
-                      className="w-full py-2.5 rounded-2xl text-xs font-black bg-emerald-400 text-slate-950 hover:bg-emerald-300 shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer font-sans active:scale-95"
-                    >
-                      <Bell size={14} />
-                      <span>{language === 'bn' ? '১-ট্যাপে নোটিফিকেশন চালু করুন' : 'Enable 1-Tap Alerts'}</span>
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </div>
-          
-          <div className="flex flex-wrap gap-4 mt-8 justify-center sm:justify-start">
-            <button 
-              onClick={() => setActiveTab('cases')}
-              className="px-8 py-3.5 bg-white text-indigo-600 rounded-2xl font-bold hover:scale-105 transition-transform shadow-xl shadow-indigo-900/20 flex items-center gap-2"
+            {/* Right 3D Visual Centerpiece Column */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.15 }}
+              className="lg:col-span-6 relative flex flex-col items-center justify-center"
             >
-              {language === 'bn' ? 'মামলা দেখুন' : t('view_cases')} <ChevronRight size={18} />
-            </button>
-            <button 
-              onClick={() => setActiveTab('calendar')}
-              className="px-8 py-3.5 bg-indigo-500/30 backdrop-blur-md text-white border border-white/20 rounded-2xl font-bold hover:bg-indigo-500/40 transition-all"
-            >
-              <span>{language === 'bn' ? 'ক্যালেন্ডার' : t('menu_calendar')}</span>
-            </button>
+              <div className="relative w-full max-w-[560px] group/art cursor-pointer" onClick={() => setActiveTab('cases')}>
+                <img 
+                  src="/assets/aistudio/hero_3d_artwork.png" 
+                  alt="MDC Casebook 3D Justice & Platform Showcase" 
+                  className="w-full h-auto object-contain rounded-2xl drop-shadow-[0_20px_45px_rgba(0,0,0,0.5)] transform hover:scale-[1.03] transition-transform duration-500"
+                />
+                {/* Floating Online Tag */}
+                <div className="absolute top-2 right-2 flex items-center gap-1.5 text-[10px] uppercase font-black tracking-wider text-emerald-300 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full border border-emerald-500/40 shadow-lg">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  MDC LIVE ONLINE
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
-        
-        {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
-        <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-indigo-400/20 rounded-full translate-y-1/2 blur-2xl" />
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      {/* 3D User Type Role Selection Section ("আপনি কোন ধরনের ব্যবহারকারী?") */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/30">
+              <Scale size={20} />
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+              আপনি কোন ধরনের ব্যবহারকারী?
+            </h3>
+          </div>
+          <button 
+            onClick={() => setActiveTab('profile')}
+            className="text-xs sm:text-sm font-bold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1 group"
+          >
+            <span>আপনার ভূমিকা নির্বাচন করুন</span>
+            <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+
+        {/* 4 Glowing 3D Role Cards matching user reference design */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {roleCards.map((role, idx) => (
+            <motion.div
+              key={role.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 * idx, duration: 0.4 }}
+              onClick={role.action}
+              className={`group relative overflow-hidden rounded-[2rem] p-6 bg-gradient-to-b ${role.gradient} border ${role.border} ${role.glow} text-white cursor-pointer hover:-translate-y-2 hover:scale-[1.02] transition-all duration-300 flex flex-col justify-between`}
+            >
+              {/* Glass reflection top highlight */}
+              <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-[2rem]" />
+              
+              <div className="relative z-10 space-y-4">
+                {/* 3D Icon Container from Reference */}
+                <div className="flex items-center justify-between">
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+                    <img 
+                      src={role.iconImg} 
+                      alt={role.title} 
+                      className="w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.35)]"
+                    />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20">
+                    3D ROLE
+                  </span>
+                </div>
+
+                <div>
+                  <h4 className="text-2xl font-black tracking-tight text-white mb-2 drop-shadow">
+                    {role.title}
+                  </h4>
+                  <p className="text-xs sm:text-sm text-white/90 font-medium leading-relaxed">
+                    {role.subtitle}
+                  </p>
+                </div>
+              </div>
+
+              {/* Card Action Pill Button */}
+              <div className="relative z-10 pt-5 mt-auto">
+                <div className={`w-full py-2.5 px-4 rounded-full font-bold text-xs flex items-center justify-center gap-2 ${role.buttonBg} transition-all`}>
+                  <span>প্রবেশ করুন</span>
+                  <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* Recent Cases Section ("সাম্প্রতিক মামলা সমূহ") - Clean High-Contrast White Card Style from Reference */}
+      <div className="rounded-[2.5rem] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-200/40 dark:shadow-none p-6 sm:p-8 space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-3 pb-2">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-cyan-400 flex items-center justify-center shadow-sm">
+              <FileText size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                সাম্প্রতিক মামলা সমূহ
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">আজকের ও সাম্প্রতিক ধার্য তারিখের মামলা তালিকা</p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setActiveTab('cases')}
+            className="text-xs sm:text-sm font-bold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1 group cursor-pointer"
+          >
+            <span>সবগুলো দেখুন</span>
+            <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+
+        {/* Responsive Table matching reference */}
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800">
+          <table className="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 text-[11px] font-bold">
+                <th className="py-3.5 px-4">মামলা নং (থানা)</th>
+                <th className="py-3.5 px-4">পক্ষগণ</th>
+                <th className="py-3.5 px-4">আদালত</th>
+                <th className="py-3.5 px-4">পদক্ষেপ</th>
+                <th className="py-3.5 px-4">পরবর্তী তারিখ</th>
+                <th className="py-3.5 px-4">হাজিরা</th>
+                <th className="py-3.5 px-4">স্ট্যাটাস</th>
+                <th className="py-3.5 px-4 text-center">অ্যাকশন</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {tableCases.length > 0 ? (
+                tableCases.map((c, idx) => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const isOutdated = c.nextDate ? c.nextDate < today : false;
+                  const isToday = c.nextDate ? c.nextDate === today : false;
+                  const attendance = (c as any).attendance || 'present';
+
+                  return (
+                    <tr 
+                      key={`${c.id || 'case'}-${idx}`}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group"
+                    >
+                      {/* Case Number & Station */}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          {isOutdated && <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 animate-ping" />}
+                          {isToday && <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />}
+                          <div>
+                            <p className="font-bold text-slate-800 dark:text-cyan-200 group-hover:text-blue-600 dark:group-hover:text-cyan-300 transition-colors">
+                              {c.caseNumber || 'মামলা নং নেই'}
+                            </p>
+                            {c.policeStation && (
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-normal">({c.policeStation})</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Parties */}
+                      <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-medium max-w-[200px] truncate">
+                        {c.petitioner || 'বাদী'} বনাম {c.respondent || 'বিবাদী'}
+                      </td>
+
+                      {/* Court */}
+                      <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {c.courtName || 'আদালত নির্ধারিত নয়'}
+                      </td>
+
+                      {/* Step */}
+                      <td className="py-3.5 px-4 text-slate-700 dark:text-slate-200 whitespace-nowrap font-semibold">
+                        {(c as any).caseStep || c.order || 'হাজিরা'}
+                      </td>
+
+                      {/* Next Date with Inline Display */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                            {c.nextDate || '২৮-১০-২০২৩'}
+                          </span>
+                          {isOutdated && (
+                            <span className="text-[10px] text-rose-500 font-black uppercase">তারিখ পার</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Attendance Pill matching reference */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        {attendance === 'present' ? (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60 shadow-sm">
+                            <Check size={12} />
+                            হাজিরা ✓
+                          </span>
+                        ) : attendance === 'absent' ? (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            ✕ অনুপস্থিত
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            ✕ নেই
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Status Pill matching reference */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-3.5 py-1 rounded-full text-xs font-bold shadow-sm ${
+                          c.status === 'completed' || c.status === 'resolved'
+                            ? 'bg-emerald-600 text-white shadow-emerald-500/25'
+                            : 'bg-[#0080ff] text-white shadow-blue-500/25'
+                        }`}>
+                          {c.status === 'completed' || c.status === 'resolved' ? 'নিষ্পত্তি' : 'চালু আছে'}
+                        </span>
+                      </td>
+
+                      {/* Action Button */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => setActiveTab('cases')}
+                          title="মামলা বিস্তারিত দেখুন"
+                          className="w-8 h-8 rounded-full border border-sky-400 dark:border-sky-500 text-sky-500 dark:text-sky-400 hover:bg-sky-500 hover:text-white inline-flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-10 text-center text-slate-400 font-semibold">
+                    কোন মামলা পাওয়া যায়নি। নতুন মামলা এন্ট্রি করতে &quot;মামলা দেখুন&quot; ট্যাবে যান।
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 3D Real Stats Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {([
           ...(userType !== 'client' ? [
-            { label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', value: points, icon: Award, color: 'bg-gradient-to-tr from-teal-500 to-emerald-600', shadow: 'shadow-teal-500/5', action: () => setActiveTab('recharge') }
+            { 
+              label: language === 'bn' ? 'আপনার পয়েন্ট' : 'Your Points', 
+              value: points, 
+              icon: Award, 
+              gradient: 'from-teal-500 via-emerald-600 to-teal-800', 
+              glow: 'shadow-[0_10px_25px_rgba(20,184,166,0.3)]',
+              border: 'border-teal-400/40',
+              action: () => setActiveTab('recharge') 
+            }
           ] : []),
-          { label: language === 'bn' ? 'আমার নিজের মামলা' : 'My Own Cases', value: `${ownCasesCount} টি`, icon: FileText, color: 'bg-gradient-to-tr from-indigo-550 to-indigo-700', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
-          { label: language === 'bn' ? 'আমার মোট মামলা সংখ্যা' : 'My Total Cases', value: `${cases.length} টি`, subtitle: language === 'bn' ? `(নিজের: ${ownCasesCount} | দায়িত্বপ্রাপ্ত: ${assignedCasesCount})` : `(Own: ${ownCasesCount} | Assigned: ${assignedCasesCount})`, icon: Briefcase, color: 'bg-gradient-to-tr from-blue-600 to-indigo-650', shadow: 'shadow-indigo-500/5', action: () => setActiveTab('cases') },
+          { 
+            label: language === 'bn' ? 'আমার নিজের মামলা' : 'My Own Cases', 
+            value: `${ownCasesCount} টি`, 
+            icon: FileText, 
+            gradient: 'from-blue-600 via-indigo-600 to-blue-800', 
+            glow: 'shadow-[0_10px_25px_rgba(37,99,235,0.3)]',
+            border: 'border-blue-400/40',
+            action: () => setActiveTab('cases') 
+          },
+          { 
+            label: language === 'bn' ? 'আমার মোট মামলা সংখ্যা' : 'My Total Cases', 
+            value: `${cases.length} টি`, 
+            subtitle: language === 'bn' ? `(নিজের: ${ownCasesCount} | দায়িত্ব: ${assignedCasesCount})` : `(Own: ${ownCasesCount} | Assigned: ${assignedCasesCount})`, 
+            icon: Briefcase, 
+            gradient: 'from-indigo-600 via-purple-700 to-indigo-900', 
+            glow: 'shadow-[0_10px_25px_rgba(99,102,241,0.3)]',
+            border: 'border-indigo-400/40',
+            action: () => setActiveTab('cases') 
+          },
           ...(userType !== 'client' ? [
-            { label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', value: `${displayDataMb} MB`, icon: Briefcase, color: 'bg-gradient-to-tr from-purple-500 to-purple-650', shadow: 'shadow-indigo-500/5' },
-            { label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', value: `${estimatedBillTaka} ৳`, icon: DollarSign, color: 'bg-gradient-to-tr from-amber-500 to-orange-600', shadow: 'shadow-amber-500/5' },
-            { label: t('upcoming_dates'), value: cases.filter(c => {
+            { 
+              label: language === 'bn' ? 'ডেটা ব্যবহার' : 'Data Usage', 
+              value: `${displayDataMb} MB`, 
+              icon: Briefcase, 
+              gradient: 'from-purple-600 via-fuchsia-600 to-purple-900', 
+              glow: 'shadow-[0_10px_25px_rgba(168,85,247,0.3)]',
+              border: 'border-purple-400/40'
+            },
+            { 
+              label: language === 'bn' ? 'বিল (টাকা)' : 'Bill (BDT)', 
+              value: `${estimatedBillTaka} ৳`, 
+              icon: DollarSign, 
+              gradient: 'from-amber-500 via-orange-600 to-amber-800', 
+              glow: 'shadow-[0_10px_25px_rgba(245,158,11,0.3)]',
+              border: 'border-amber-400/40'
+            },
+            { 
+              label: t('upcoming_dates'), 
+              value: cases.filter(c => {
                 if (!c.nextDate) return false;
                 const d = new Date(c.nextDate);
-                const today = new Date();
-                today.setHours(0,0,0,0);
-                return d >= today;
-              }).length, icon: Calendar, color: 'bg-gradient-to-tr from-emerald-500 to-teal-600', shadow: 'shadow-emerald-500/5' }
+                const td = new Date();
+                td.setHours(0,0,0,0);
+                return d >= td;
+              }).length, 
+              icon: Calendar, 
+              gradient: 'from-emerald-500 via-teal-600 to-emerald-900', 
+              glow: 'shadow-[0_10px_25px_rgba(16,185,129,0.3)]',
+              border: 'border-emerald-400/40'
+            }
           ] : []),
-          { label: t('today_cases'), value: cases.filter(c => {
+          { 
+            label: t('today_cases'), 
+            value: cases.filter(c => {
               if (!c.nextDate) return false;
               const d = new Date(c.nextDate);
-              const today = new Date();
-              return d.toDateString() === today.toDateString();
-            }).length, icon: Zap, color: 'bg-gradient-to-tr from-amber-500 to-yellow-600', shadow: 'shadow-amber-500/5' },
-          ...(userType !== 'client' ? [{ label: t('pending_tasks'), value: tasks.filter(t => t.status !== 'completed').length, icon: CheckCircle2, color: 'bg-gradient-to-tr from-rose-500 to-red-650', shadow: 'shadow-rose-500/5' }] : []),
+              const td = new Date();
+              return d.toDateString() === td.toDateString();
+            }).length, 
+            icon: Zap, 
+            gradient: 'from-amber-400 via-yellow-500 to-orange-600', 
+            glow: 'shadow-[0_10px_25px_rgba(234,179,8,0.3)]',
+            border: 'border-yellow-300/50'
+          },
+          ...(userType !== 'client' ? [
+            { 
+              label: t('pending_tasks'), 
+              value: tasks.filter(t => t.status !== 'completed').length, 
+              icon: CheckCircle2, 
+              gradient: 'from-rose-500 via-red-600 to-rose-900', 
+              glow: 'shadow-[0_10px_25px_rgba(244,63,94,0.3)]',
+              border: 'border-rose-400/40',
+              action: () => setActiveTab('tasks')
+            }
+          ] : [])
         ] as any[]).map((stat, idx) => (
           <motion.div
             key={idx}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 * idx }}
-            className="bg-white dark:bg-slate-900 p-6 rounded-[20px] border border-slate-100/80 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/5 hover:border-indigo-100/50 dark:hover:border-slate-700 transition-all group cursor-pointer"
+            transition={{ delay: 0.04 * idx }}
             onClick={stat.action}
+            className={`relative overflow-hidden p-5 sm:p-6 rounded-[1.8rem] bg-gradient-to-br ${stat.gradient} border ${stat.border} ${stat.glow} text-white cursor-pointer hover:-translate-y-1.5 hover:scale-[1.02] transition-all duration-300 group`}
           >
-            <div className={`w-12 h-12 ${stat.color} text-white rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/10 group-hover:rotate-6 transition-transform duration-300`}>
-              <stat.icon size={22} />
+            {/* Gloss reflection overlay */}
+            <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
+
+            <div className="relative z-10 flex items-center justify-between mb-3">
+              <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-inner group-hover:rotate-6 transition-transform">
+                <stat.icon size={22} />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-white/80 bg-black/20 px-2.5 py-0.5 rounded-full">
+                MDC STAT
+              </span>
             </div>
-            <p className="text-slate-400 dark:text-slate-500 font-extrabold text-[10px] uppercase tracking-wider mb-1.5">{stat.label}</p>
-            <h4 className="text-2.5xl font-black text-slate-800 dark:text-white tracking-tight">{stat.value}</h4>
-            {stat.subtitle && (
-              <p className="text-xs text-indigo-600 dark:text-indigo-400 font-extrabold mt-1.5">{stat.subtitle}</p>
-            )}
+
+            <div className="relative z-10">
+              <p className="text-white/80 font-bold text-xs uppercase tracking-wide mb-1">
+                {stat.label}
+              </p>
+              <h4 className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow">
+                {stat.value}
+              </h4>
+              {stat.subtitle && (
+                <p className="text-[11px] text-white/80 font-semibold mt-1">
+                  {stat.subtitle}
+                </p>
+              )}
+            </div>
           </motion.div>
         ))}
       </div>
 
-      {/* Active Referral Link Section */}
-      <div className="bg-gradient-to-br from-indigo-900 via-indigo-850 to-slate-900 text-white p-6 sm:p-8 rounded-[2rem] border border-indigo-500/20 shadow-xl shadow-indigo-950/20 relative overflow-hidden">
-        <div className="absolute -right-12 -top-12 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-12 -bottom-12 w-48 h-48 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+      {/* Active Referral Section - Updated with exact requested copy and 3D Sapphire Styling */}
+      <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#07133b] via-[#0b1d55] to-[#040a23] border border-cyan-400/30 shadow-[0_20px_50px_rgba(7,19,59,0.6)] text-white p-6 sm:p-8">
+        <div className="absolute -right-16 -top-16 w-64 h-64 bg-cyan-400/15 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-16 -bottom-16 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 shrink-0">
-                <Share2 className="text-white" size={24} />
+            <div className="flex items-center gap-3.5">
+              <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-cyan-400 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-400/30 text-slate-950 font-black shrink-0">
+                <Share2 size={24} />
               </div>
               <div>
                 <div className="flex items-center gap-2.5">
-                  <h3 className="text-xl font-bold text-white tracking-tight">
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
                     {language === 'bn' ? 'আপনার সক্রিয় রেফারেল লিংক' : 'Your Active Referral Link'}
                   </h3>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     {language === 'bn' ? 'সক্রিয় (Active)' : 'Active'}
                   </span>
                 </div>
-                <p className="text-xs sm:text-sm text-indigo-200/80 mt-1">
-                  {language === 'bn' 
-                    ? 'বন্ধুদের রেফার করুন: প্রতি সফল রেফারে ১০০ পয়েন্ট ও ২ টি সাদা বল জিতুন! ৫ জন রেফার করলেই ১ মাসের স্পেশাল ডায়মন্ড প্যাক সম্পূর্ণ ফ্রি!'
-                    : 'Refer friends: Earn 100 points & 2 White Balls per referral! Refer 5 members to get 1 Month Diamond Plan for free!'}
+                {/* User Requested Bengali Referral Copy */}
+                <p className="text-xs sm:text-sm text-cyan-100/90 mt-1.5 leading-relaxed max-w-3xl">
+                  <span className="font-bold text-amber-300">
+                    বন্ধুদের রেফার করুন: प्रति সফল রেফারে ১০০ পয়েন্ট ও ২ টি সাদা বল জিতুন!
+                  </span>{' '}
+                  <span className="text-white/90">
+                    জয়েন করার ৭ দিনের মধ্যে মাত্র ৫জন আইনজীবী কিংবা মুহুরীকে রেফার করে জয়েন করালেই পাবে ৩ মাসের ডায়মন্ড প্যাকেজ সাবস্ক্রপিশন ফ্রি। অন্য সময় করালে পাবে ১ মাস।
+                  </span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/10 text-xs">
-                <span className="text-indigo-200">{language === 'bn' ? 'মোট রেফারেল: ' : 'Referrals: '}</span>
-                <strong className="text-white font-bold">{referralCount}</strong>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="px-3.5 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-xs">
+                <span className="text-cyan-200">{language === 'bn' ? 'মোট রেফারেল: ' : 'Referrals: '}</span>
+                <strong className="text-white font-black text-sm">{referralCount} জন</strong>
               </div>
-              <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30 text-xs">
-                <span className="text-emerald-300">{language === 'bn' ? 'অর্জিত বোনাস: ' : 'Earned: '}</span>
-                <strong className="text-emerald-200 font-bold">{referralCount * 100} Pts</strong>
+              <div className="px-3.5 py-2 rounded-xl bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30 text-xs flex items-center gap-2">
+                <span className="text-emerald-300 font-semibold">{language === 'bn' ? 'অর্জিত বোনাস: ' : 'Earned: '}</span>
+                <strong className="text-emerald-200 font-black">{referralCount * 100} Pts</strong>
+                <span className="text-white/40">•</span>
+                <strong className="text-white font-black flex items-center gap-1">⚪ {referralCount * 2} বল</strong>
               </div>
             </div>
           </div>
 
           {/* Share Link Bar */}
-          <div className="flex flex-col sm:flex-row gap-2.5">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="flex-1 relative">
               <input
                 type="text"
                 readOnly
                 value={fullReferralLink}
-                className="w-full px-4 py-3.5 bg-white/5 border border-white/15 rounded-xl text-white font-mono text-xs sm:text-sm focus:outline-none select-all backdrop-blur-sm"
+                className="w-full px-4 py-3.5 bg-black/30 border border-cyan-400/30 rounded-xl text-cyan-200 font-mono text-xs sm:text-sm focus:outline-none select-all backdrop-blur-sm"
               />
               {effectiveReferralCode && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/30 text-indigo-200 border border-indigo-400/20">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold px-2 py-0.5 rounded bg-blue-500/30 text-cyan-200 border border-blue-400/30">
                   {effectiveReferralCode}
                 </span>
               )}
@@ -536,10 +886,10 @@ export const HomeView = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCopy}
-                className={`px-4 sm:px-5 py-3.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shrink-0 ${
+                className={`px-5 py-3.5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shrink-0 cursor-pointer ${
                   copiedLink
                     ? 'bg-emerald-500 text-white'
-                    : 'bg-white text-slate-900 hover:bg-slate-100 active:scale-95'
+                    : 'bg-white text-slate-950 hover:bg-slate-100 active:scale-95'
                 }`}
               >
                 {copiedLink ? (
@@ -556,7 +906,7 @@ export const HomeView = ({
               </button>
               <button
                 onClick={handleWhatsApp}
-                className="px-4 sm:px-5 py-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shrink-0"
+                className="px-5 py-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shrink-0 cursor-pointer"
               >
                 <MessageCircle size={16} />
                 <span>{language === 'bn' ? 'হোয়াটসঅ্যাপ' : 'WhatsApp'}</span>
@@ -564,7 +914,7 @@ export const HomeView = ({
               <button
                 onClick={handleTestOpen}
                 title={language === 'bn' ? 'লিংকটি নতুন ট্যাবে টেস্ট করুন' : 'Test / Open Link'}
-                className="px-3.5 py-3.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all border border-white/10 shrink-0"
+                className="px-4 py-3.5 bg-white/10 hover:bg-white/20 active:scale-95 text-white rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all border border-white/15 shrink-0 cursor-pointer"
               >
                 <ExternalLink size={16} />
                 <span className="hidden md:inline">{language === 'bn' ? 'টেস্ট করুন' : 'Open'}</span>
@@ -572,137 +922,44 @@ export const HomeView = ({
             </div>
           </div>
 
-          {/* Goal Progress Bar: 5 referrals for 1 month free pack */}
-          <div className="p-4 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5 text-indigo-200">
-                <Gift size={14} className="text-amber-400" />
-                <span className="font-semibold text-white">
-                  {language === 'bn' ? '৫ জন রেফারেল স্পেশাল অফার:' : '5 Referrals Special Offer:'}
+          {/* Special Diamond Pack Referral Goal (5 people) */}
+          <div className="p-4 sm:p-5 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-sm space-y-2.5">
+            <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-cyan-200">
+                <Gift size={16} className="text-amber-400" />
+                <span className="font-bold text-white">
+                  ৫ জন রেফারেল স্পেশাল অফার:
                 </span>
-                <span>{language === 'bn' ? '১ মাসের স্পেশাল ডায়মন্ড প্যাক ফ্রি' : '1 Month Special Diamond Pack'}</span>
+                <span className="text-cyan-100">৭ দিনের মধ্যে ৫ জন রেফার করলেই ৩ মাস ডায়মন্ড প্যাকেজ সম্পূর্ণ ফ্রি!</span>
               </div>
-              <span className="font-bold text-amber-300">
-                {referralCount} / 5 {language === 'bn' ? 'জন' : 'Referred'}
+              <span className="font-black text-amber-300">
+                {referralCount} / ৫ জন
               </span>
             </div>
-            <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
+            <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden border border-white/10">
               <div 
-                className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-teal-400 rounded-full transition-all duration-500"
+                className="h-full bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 rounded-full transition-all duration-500 shadow-[0_0_15px_rgba(52,211,153,0.5)]"
                 style={{ width: `${Math.min(100, (referralCount / 5) * 100)}%` }}
               />
             </div>
             {referralCount >= 5 && (
-              <div className="flex items-center gap-2 text-xs text-emerald-300 font-semibold pt-1">
-                <Sparkles size={14} />
-                <span>{language === 'bn' ? 'অভিনন্দন! আপনি ৫ জন সফলভাবে রেফার করেছেন। স্পেশাল ডায়মন্ড সুবিধা সক্রিয় হয়েছে!' : 'Congratulations! You reached 5 referrals! Special Diamond Pack unlocked!'}</span>
+              <div className="flex items-center gap-2 text-xs text-emerald-300 font-bold pt-1">
+                <Sparkles size={15} />
+                <span>অভিনন্দন! আপনি ৫ জন সফলভাবে রেফার করেছেন। ৩ মাসের ডায়মন্ড প্যাকেজ সাবস্ক্রিপশন সুবিধা সক্রিয় হয়েছে!</span>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Quick Update Section */}
-      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-xl font-bold text-slate-900">{t('today_cases')}</h3>
-            <p className="text-sm text-slate-500 font-medium">{language === 'bn' ? 'দ্রুত তারিখ আপডেট করুন' : t('update_dates_quickly' as any) || 'Update dates quickly'}</p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-50">
-                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'মামলা নম্বর' : 'Case No'}</th>
-                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পক্ষদ্বয়' : 'Parties'}</th>
-                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">{language === 'bn' ? 'পরবর্তী তারিখ' : 'Next Date'}</th>
-                <th className="pb-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">{language === 'bn' ? 'অ্যাকশন' : 'Action'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {cases.filter(c => {
-                  if (!c.nextDate) return false;
-                  const today = new Date().toISOString().split('T')[0];
-                  return c.nextDate <= today;
-                }).length > 0 ? (
-                cases.filter(c => {
-                  if (!c.nextDate) return false;
-                  const today = new Date().toISOString().split('T')[0];
-                  return c.nextDate <= today;
-                })
-                .sort((a, b) => (a.nextDate || '').localeCompare(b.nextDate || ''))
-                .map((c, idx) => {
-                  const today = new Date().toISOString().split('T')[0];
-                  const isOutdated = c.nextDate! < today;
-                  
-                  return (
-                    <tr key={`${c.id || 'outdated'}-${idx}`} className={`group hover:bg-slate-50/50 transition-colors ${isOutdated ? 'animate-blink' : ''}`}>
-                      <td className="py-4">
-                        <div className="flex items-center gap-2">
-                          {isOutdated && <span className="w-2 h-2 bg-rose-500 rounded-full"></span>}
-                          <p className="font-bold text-slate-800 text-sm">{c.caseNumber}</p>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <p className="text-xs font-medium text-slate-600">
-                          {c.petitioner} vs {c.respondentDetails && c.respondentDetails.length > 0 ? (
-                            `${c.respondentDetails[0].name}${c.respondentDetails.length > 1 ? ' গং' : ''}`
-                          ) : (
-                            c.respondent ? (
-                              c.respondent.split(',').map(s => s.trim()).filter(Boolean).length > 1 ? 
-                                `${c.respondent.split(',')[0].trim()} গং` : c.respondent
-                            ) : ''
-                          )}
-                        </p>
-                      </td>
-                      <td className="py-4">
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="date"
-                            defaultValue={c.nextDate}
-                            onChange={(e) => {
-                              const newDate = e.target.value;
-                              // Actual update logic is handled via cases view usually
-                            }}
-                            className={`bg-transparent border-none outline-none text-xs font-bold cursor-pointer ${isOutdated ? 'text-rose-600 font-black' : 'text-indigo-600'}`}
-                          />
-                          {isOutdated && <span className="text-[10px] font-black text-rose-500 uppercase tracking-tighter">{language === 'bn' ? 'তারিখ পার' : 'Outdated'}</span>}
-                        </div>
-                      </td>
-                      <td className="py-4 text-right">
-                        <button 
-                          onClick={() => setActiveTab('cases')}
-                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                        >
-                          <ChevronRight size={18} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={4} className="py-12 text-center">
-                    <p className="text-slate-400 font-bold text-sm">
-                      {language === 'bn' ? 'আজ কোন মামলার তারিখ নেই।' : 'No cases scheduled for today.'}
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
+      {/* Analytics Chart & Pro Tip Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Activity Chart */}
-        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-          <div className="flex items-center justify-between mb-8">
+        <div className="lg:col-span-2 bg-white dark:bg-slate-900/90 p-6 sm:p-8 rounded-[2.5rem] border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-200/30 dark:shadow-none">
+          <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
             <div>
-              <h3 className="text-xl font-bold text-slate-900">{t('case_stats')}</h3>
-              <p className="text-slate-500 text-sm font-medium">
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('case_stats')}</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-medium">
                 {selectedMonth === 'all' 
                   ? t('yearly_case_activity') 
                   : t('monthly_case_activity')}
@@ -712,7 +969,7 @@ export const HomeView = ({
               <select 
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-slate-50 border-none rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                className="bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 <option value="all">{t('all_months')}</option>
                 {monthsEn.map((m, i) => (
@@ -722,11 +979,11 @@ export const HomeView = ({
               <select 
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="bg-slate-50 border-none rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                className="bg-slate-100 dark:bg-slate-800 border-none rounded-xl px-3.5 py-2 text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
                 {[...Array(5)].map((_, i) => {
                   const year = new Date().getFullYear() - i;
-                  return <option key={year} value={year.toString()}>{language === 'bn' ? year.toString().replace(/\d/g, (d: any) => '০১২৩৪৫৬৭৮৯'[d]) : year}</option>
+                  return <option key={year} value={year.toString()}>{language === 'bn' ? year.toString().replace(/\d/g, (d: any) => '০১২৩৪৫৬৭৮৯'[d]) : year}</option>;
                 })}
               </select>
             </div>
@@ -734,104 +991,166 @@ export const HomeView = ({
           <div className="h-80 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#1e293b' : '#f1f5f9'} />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
+                  tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12, fontWeight: 600 }}
                   dy={10}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
+                  tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 12, fontWeight: 600 }}
                 />
                 <Tooltip 
-                  cursor={{ fill: '#f8fafc' }}
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
+                  cursor={{ fill: theme === 'dark' ? 'rgba(255,255,255,0.05)' : '#f8fafc' }}
+                  contentStyle={{ 
+                    borderRadius: '16px', 
+                    border: 'none', 
+                    boxShadow: '0 10px 25px -3px rgb(0 0 0 / 0.2)', 
+                    padding: '12px',
+                    backgroundColor: theme === 'dark' ? '#0f172a' : '#ffffff',
+                    color: theme === 'dark' ? '#ffffff' : '#000000'
+                  }}
                 />
                 <Legend wrapperStyle={{ paddingTop: '20px' }} />
                 <Bar 
                   dataKey="added" 
                   name={t('added')}
-                  fill="#4f46e5" 
+                  fill="#3b82f6" 
                   radius={[6, 6, 0, 0]} 
-                  barSize={selectedMonth === 'all' ? 12 : 30}
+                  barSize={selectedMonth === 'all' ? 12 : 28}
                 />
                 <Bar 
                   dataKey="resolved" 
                   name={t('resolved')}
                   fill="#10b981" 
                   radius={[6, 6, 0, 0]} 
-                  barSize={selectedMonth === 'all' ? 12 : 30}
+                  barSize={selectedMonth === 'all' ? 12 : 28}
                 />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Recent Cases List */}
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-xl font-bold text-slate-900">{t('recent_cases')}</h3>
-            <button onClick={() => setActiveTab('cases')} className="text-indigo-600 text-sm font-bold hover:underline">{t('view_all')}</button>
-          </div>
-          <div className="space-y-4 flex-1">
-            {cases.slice(0, 4).map((c, idx) => (
-              <div key={`${c.id || 'recent'}-${idx}`} className="group flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer border border-transparent hover:border-slate-100">
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${c.caseType === 'Civil' ? 'bg-blue-50 text-blue-600' : 'bg-rose-50 text-rose-600'}`}>
-                    {c.caseNumber.charAt(0)}
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{c.caseNumber}</h5>
-                    <p className="text-xs text-slate-400 font-medium">{c.courtName}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-700">{c.nextDate}</p>
-                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">{c.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-8 p-6 bg-indigo-50 rounded-3xl border border-indigo-100">
-            <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-2">{t('pro_tip')}</p>
-            <p className="text-sm text-indigo-900 font-medium leading-relaxed">
-              {t('pro_tip_desc')}
+        {/* Pro Tip & Fast Shortcuts Card */}
+        <div className="bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 p-6 sm:p-8 rounded-[2.5rem] border border-blue-500/30 shadow-xl text-white flex flex-col justify-between">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-cyan-300">
+              <Sparkles size={20} />
+              <span className="text-xs font-black uppercase tracking-widest">{t('pro_tip')}</span>
+            </div>
+            <h4 className="text-xl font-black text-white leading-snug">
+              স্মার্ট কোর্ট ডায়রি দিয়ে সময় বাঁচান
+            </h4>
+            <p className="text-xs sm:text-sm text-blue-100/90 leading-relaxed font-medium">
+              {t('pro_tip_desc') || 'প্রতিটি মামলার পরবর্তী ধার্য তারিখ আসার সাথে সাথে এলার্ট পান এবং আপনার মক্কেলদের এক ক্লিকে হোয়াটসঅ্যাপে স্বয়ংক্রিয় আপডেট পাঠান।'}
             </p>
+          </div>
+
+          <div className="space-y-3 pt-6">
+            <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Calendar size={18} className="text-cyan-300" />
+                <span className="text-xs font-bold">কোর্ট ক্যালেন্ডার দেখুন</span>
+              </div>
+              <button 
+                onClick={() => setActiveTab('calendar')}
+                className="text-xs font-bold text-cyan-300 hover:text-white"
+              >
+                খুলুন ➔
+              </button>
+            </div>
+
+            <button
+              onClick={() => setActiveTab('cases')}
+              className="w-full py-3 bg-gradient-to-r from-blue-500 to-cyan-400 hover:from-blue-400 hover:to-cyan-300 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg transition-all"
+            >
+              সব মামলা ব্যবস্থাপনা করুন
+            </button>
           </div>
         </div>
       </div>
 
+      {/* Footer matching reference design */}
+      <footer className="mt-10 pt-8 pb-4 border-t border-slate-200 dark:border-slate-800/80 text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 pb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+              <Scale size={20} />
+            </div>
+            <div>
+              <h4 className="font-black text-sm text-slate-800 dark:text-white">MDC Casebook</h4>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">ডিজিটাল কোর্ট ও মামলা ডায়েরি</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-xs font-semibold">
+            <button onClick={() => setActiveTab('home')} className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors cursor-pointer">হোম</button>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <button onClick={() => setActiveTab('cases')} className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors cursor-pointer">ফিচারসমূহ</button>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <button onClick={() => setActiveTab('library')} className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors cursor-pointer">আইন ও টিপস</button>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <a href="#privacy" className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors">গোপনীয়তা নীতি</a>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <a href="#terms" className="hover:text-blue-600 dark:hover:text-cyan-300 transition-colors">শর্তাবলী</a>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs font-medium">
+            <span className="flex items-center gap-1.5">
+              ✉ support@mdccasebook.com
+            </span>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <span className="flex items-center gap-1.5">
+              📞 +880 1234-567890
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/50 text-[11px] text-slate-400 gap-2">
+          <p>© {new Date().getFullYear()} MDC Casebook. সর্বস্বত্ব সংরক্ষিত।</p>
+          <div className="flex items-center gap-3 font-semibold text-slate-500 dark:text-slate-400">
+            <span>স্মার্ট প্রযুক্তি</span>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <span>সহজ মামলা ব্যবস্থাপনা</span>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <span>ডিজিটাল বাংলাদেশ</span>
+          </div>
+        </div>
+      </footer>
+
       {/* Score Details Modal */}
       <AnimatePresence>
         {showScoreModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md">
             <motion.div 
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className={`relative w-full max-w-lg p-8 rounded-[3rem] shadow-2xl border ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}
+              className={`relative w-full max-w-lg p-8 rounded-[3rem] shadow-2xl border ${
+                theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-100 text-slate-900'
+              }`}
             >
               <button 
                 onClick={() => setShowScoreModal(false)}
-                className="absolute top-6 right-6 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                className="absolute top-6 right-6 p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               >
                 <X size={24} />
               </button>
 
-                  <div className="flex items-center gap-4 mb-8">
-                <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-14 h-14 bg-gradient-to-tr from-emerald-400 to-teal-500 text-slate-950 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
                   <Award size={32} />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">
+                  <h3 className="text-2xl font-black leading-tight">
                     {t('score_details_title')}
                   </h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-lg">LIVE SCORE: 100</span>
+                    <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-black rounded-lg">LIVE SCORE: 100</span>
                     <span className="text-slate-400 text-xs font-bold">{t('target')}: 100</span>
                   </div>
                 </div>
@@ -844,21 +1163,21 @@ export const HomeView = ({
                   { label: t('score_criteria_ratings'), desc: t('score_rating_desc'), score: 25, max: 25, icon: Star, color: 'text-amber-500' },
                   { label: t('score_criteria_accuracy'), desc: t('score_accuracy_desc'), score: 15, max: 15, icon: CheckCircle2, color: 'text-emerald-500' },
                 ].map((item, idx) => (
-                  <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                  <div key={idx} className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-700/50">
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-3">
                         <item.icon size={18} className={item.color} />
-                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.label}</span>
+                        <span className="text-sm font-bold">{item.label}</span>
                       </div>
-                      <span className="text-sm font-black text-slate-900 dark:text-white">{item.score}/{item.max}</span>
+                      <span className="text-sm font-black">{item.score}/{item.max}</span>
                     </div>
                     <p className="text-[10px] text-slate-400 font-medium mb-3 ml-7">{item.desc}</p>
                     <div className="h-1.5 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}
                         animate={{ width: `${(item.score / item.max) * 100}%` }}
-                        transition={{ delay: 0.5 + (idx * 0.1), duration: 1 }}
-                        className={`h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full`}
+                        transition={{ delay: 0.3 + (idx * 0.1), duration: 0.8 }}
+                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full"
                       />
                     </div>
                   </div>
@@ -867,7 +1186,7 @@ export const HomeView = ({
 
               <button 
                 onClick={() => setShowScoreModal(false)}
-                className="w-full mt-8 py-4 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 uppercase tracking-widest text-sm"
+                className="w-full mt-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-black transition-all shadow-xl shadow-blue-500/25 uppercase tracking-widest text-sm cursor-pointer"
               >
                 {t('confirm')}
               </button>

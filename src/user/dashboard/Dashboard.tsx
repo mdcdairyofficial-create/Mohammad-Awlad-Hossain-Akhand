@@ -5524,18 +5524,19 @@ export default function Dashboard({
                                 const res = await fetchWithAuth('/api/user/claim-special-pack', { method: 'POST' });
                                 const data = await res.json();
                                 if (data.success) {
-                                  alert(language === 'bn' ? 'অভিনন্দন! আপনার ১ মাসের স্পেশাল প্যাক চালু হয়েছে।' : 'Congratulations! Your 1 month Special Pack is activated.');
+                                  const claimedMonths = data.months || 3;
+                                  alert(language === 'bn' ? `অভিনন্দন! আপনার ${claimedMonths} মাসের ডায়মন্ড প্যাকেজ সাবস্ক্রিপশন সফলভাবে চালু হয়েছে।` : `Congratulations! Your ${claimedMonths} months Diamond Package subscription is activated.`);
                                   window.location.reload();
                                 } else {
                                   alert(data.error || (language === 'bn' ? 'আপনি ইতিমধ্যে এটি ক্লেইম করেছেন বা কোনো সমস্যা হয়েছে।' : 'Already claimed or an error occurred.'));
                                 }
                               } catch (e) {
-                                alert('Error claiming special pack');
+                                alert('Error claiming diamond package');
                               }
                             }}
                             className="mt-2 text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-1.5 rounded-full hover:brightness-110 shadow-md"
                           >
-                            {language === 'bn' ? '১ মাসের স্পেশাল প্যাক দাবি করুন' : 'Claim 1 Month Special Pack'}
+                            {language === 'bn' ? 'ডায়মন্ড প্যাকেজ দাবি করুন' : 'Claim Diamond Package'}
                           </button>
                         )}
                       </div>

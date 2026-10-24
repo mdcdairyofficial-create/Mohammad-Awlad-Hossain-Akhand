@@ -3871,17 +3871,37 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const currentPoints = userData.points || 0;
 
       if (currentPoints >= requiredPoints) {
+        // Check if user joined within 7 days
+        const rawCreatedAt = userData.createdAt || userData.created_at;
+        let isWithin7Days = false;
+        if (rawCreatedAt) {
+          const createdTime = rawCreatedAt?.toDate ? rawCreatedAt.toDate().getTime() : new Date(rawCreatedAt).getTime();
+          const diffDays = (Date.now() - createdTime) / (1000 * 60 * 60 * 24);
+          if (diffDays <= 7) {
+            isWithin7Days = true;
+          }
+        } else {
+          // If no createdAt recorded, grant full 3 months welcome privilege
+          isWithin7Days = true;
+        }
+
+        const monthsToAdd = isWithin7Days ? 3 : 1;
         const newEndDate = new Date();
-        newEndDate.setMonth(newEndDate.getMonth() + 1);
+        newEndDate.setMonth(newEndDate.getMonth() + monthsToAdd);
 
         await userRef.update({
           points: FieldValue.increment(-requiredPoints),
-          subscription_package: 'special',
+          subscription_package: 'diamond',
           subscription_end_date: newEndDate.toISOString()
         });
-        res.json({ success: true, points: currentPoints - requiredPoints });
+        res.json({ 
+          success: true, 
+          points: currentPoints - requiredPoints,
+          months: monthsToAdd,
+          package: 'diamond'
+        });
       } else {
-        res.status(400).json({ error: `পর্যাপ্ত পয়েন্ট নেই। আপনার প্রয়োজন ৫০০ পয়েন্ট। বর্তমান পয়েন্ট: ${currentPoints}` });
+        res.status(400).json({ error: `পর্যাপ্ত পয়েন্ট নেই। আপনার প্রয়োজন ৫০০ পয়েন্ট (৫ জন রেফারেল)। বর্তমান পয়েন্ট: ${currentPoints}` });
       }
     } catch (e: any) {
       res.status(500).json({ error: e.message });
