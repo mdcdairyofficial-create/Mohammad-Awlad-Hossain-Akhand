@@ -55,6 +55,7 @@ import {
   Bar 
 } from 'recharts';
 import { getReferralUrl } from '../../../utils/urlHelper';
+import { safeGetJson, safeSetJson } from '../../../utils/safeStorage';
 
 interface HomeViewProps {
   userName: string;
@@ -82,6 +83,7 @@ interface HomeViewProps {
   allCasesCount?: number;
   ownCasesCount?: number;
   assignedCasesCount?: number;
+  signedUpRoles?: string[];
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -109,7 +111,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   redBallsCount = 0,
   allCasesCount = 0,
   ownCasesCount = 0,
-  assignedCasesCount = 0
+  assignedCasesCount = 0,
+  signedUpRoles
 }) => {
   const [selectedYear, setSelectedYear] = React.useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = React.useState<string>('all');
@@ -241,6 +244,50 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   const chartData = getChartData();
 
+  // State for adding extra dashboard roles directly from the Home Page
+  const [extraSignedUpRoles, setExtraSignedUpRoles] = React.useState<string[]>([]);
+  const [showRoleSignupModal, setShowRoleSignupModal] = React.useState(false);
+
+  // Compute all effective signed-up / registered dashboard roles for the user
+  const effectiveSignedUpRoles = React.useMemo(() => {
+    const rolesSet = new Set<string>();
+
+    // 1. Roles explicitly passed via props (e.g. from availableRoles in Dashboard)
+    if (signedUpRoles && Array.isArray(signedUpRoles)) {
+      signedUpRoles.forEach(r => {
+        if (r) rolesSet.add(r.toLowerCase());
+      });
+    }
+
+    // 2. User's primary active userType
+    if (userType) {
+      rolesSet.add(userType.toLowerCase());
+    }
+
+    // 3. Extra signed up roles added via interactive button
+    extraSignedUpRoles.forEach(r => rolesSet.add(r.toLowerCase()));
+
+    // 4. Cached signed-up roles from appUser / localStorage
+    try {
+      const savedUser = localStorage.getItem('appUser');
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed.userType) rolesSet.add(parsed.userType.toLowerCase());
+        if (parsed.mobile) {
+          let cleanPhone = String(parsed.mobile).replace(/[^0-9]/g, '');
+          if (cleanPhone.startsWith('880')) cleanPhone = '0' + cleanPhone.substring(3);
+          else if (cleanPhone.startsWith('88') && cleanPhone.length === 13) cleanPhone = '0' + cleanPhone.substring(2);
+          const cached = safeGetJson<string[]>('mdc_roles_' + cleanPhone, []);
+          if (Array.isArray(cached)) {
+            cached.forEach(r => rolesSet.add(r.toLowerCase()));
+          }
+        }
+      }
+    } catch (e) {}
+
+    return Array.from(rolesSet);
+  }, [signedUpRoles, userType, extraSignedUpRoles]);
+
   // 3D User Role Options for the Interactive Role Cards (matching reference design)
   const roleCards = [
     {
@@ -288,6 +335,42 @@ export const HomeView: React.FC<HomeViewProps> = ({
       action: () => setActiveTab('profile')
     }
   ];
+
+  // STRICT FILTERING: Only show cards for dashboards where the current user has explicitly registered/signed up
+  const visibleRoleCards = React.useMemo(() => {
+    const filtered = roleCards.filter(card => {
+      if (card.id === 'lawyer') {
+        return effectiveSignedUpRoles.includes('lawyer');
+      }
+      if (card.id === 'muhuri') {
+        return effectiveSignedUpRoles.includes('clerk') || effectiveSignedUpRoles.includes('muhuri');
+      }
+      if (card.id === 'client') {
+        return effectiveSignedUpRoles.includes('client');
+      }
+      if (card.id === 'admin') {
+        return effectiveSignedUpRoles.includes('admin') || 
+               effectiveSignedUpRoles.includes('super_admin') || 
+               effectiveSignedUpRoles.includes('country_manager') || 
+               effectiveSignedUpRoles.includes('bar_admin');
+      }
+      return false;
+    });
+
+    // Fallback: If no card matched, ensure user's active primary role card is displayed
+    if (filtered.length === 0) {
+      const activeCard = roleCards.find(c => {
+        if (userType === 'lawyer') return c.id === 'lawyer';
+        if (userType === 'clerk' || userType === 'muhuri') return c.id === 'muhuri';
+        if (userType === 'client') return c.id === 'client';
+        if (['admin', 'super_admin', 'country_manager', 'bar_admin'].includes(userType)) return c.id === 'admin';
+        return false;
+      });
+      return activeCard ? [activeCard] : [roleCards[0]];
+    }
+
+    return filtered;
+  }, [roleCards, effectiveSignedUpRoles, userType]);
 
   // Cases to display in Recent/Today Table (Fallback matches user reference design exactly)
   const referenceCases = [
@@ -474,29 +557,44 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </div>
 
-      {/* 3D User Type Role Selection Section ("আপনি কোন ধরনের ব্যবহারকারী?") */}
+      {/* 3D User Type Role Selection Section ("আপনার সাইন-আপকৃত ড্যাশবোর্ডসমূহ") */}
       <div className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2 px-1">
           <div className="flex items-center gap-2.5">
             <div className="p-2.5 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/30">
               <Scale size={20} />
             </div>
-            <h3 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-              আপনি কোন ধরনের ব্যবহারকারী?
-            </h3>
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
+                আপনার সাইন-আপকৃত ড্যাশবোর্ডসমূহ
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                শুধুমাত্র আপনার নিবন্ধিত ড্যাশবোর্ড প্রদর্শিত হচ্ছে ({visibleRoleCards.length} টি)
+              </p>
+            </div>
           </div>
-          <button 
-            onClick={() => setActiveTab('profile')}
-            className="text-xs sm:text-sm font-bold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1 group"
-          >
-            <span>আপনার ভূমিকা নির্বাচন করুন</span>
-            <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-          </button>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowRoleSignupModal(true)}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs sm:text-sm rounded-full shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Sparkles size={15} className="text-yellow-300 animate-pulse" />
+              <span>+ নতুন ড্যাশবোর্ডে সাইন-আপ করুন</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('profile')}
+              className="text-xs sm:text-sm font-bold text-blue-600 dark:text-cyan-400 hover:underline flex items-center gap-1 group"
+            >
+              <span>প্রোফাইল</span>
+              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
         </div>
 
-        {/* 4 Glowing 3D Role Cards matching user reference design */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {roleCards.map((role, idx) => (
+        {/* Dynamic 3D Role Cards for ONLY signed-up dashboards */}
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${visibleRoleCards.length >= 4 ? 'lg:grid-cols-4' : visibleRoleCards.length === 3 ? 'lg:grid-cols-3' : visibleRoleCards.length === 2 ? 'lg:grid-cols-2' : 'lg:grid-cols-1 max-w-md'} gap-5`}>
+          {visibleRoleCards.map((role, idx) => (
             <motion.div
               key={role.id}
               initial={{ opacity: 0, y: 20 }}
@@ -518,8 +616,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
                       className="w-full h-full object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.35)]"
                     />
                   </div>
-                  <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20">
-                    3D ROLE
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 shadow-sm">
+                    ✓ সাইন-আপকৃত
                   </span>
                 </div>
 
@@ -536,7 +634,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               {/* Card Action Pill Button */}
               <div className="relative z-10 pt-5 mt-auto">
                 <div className={`w-full py-2.5 px-4 rounded-full font-bold text-xs flex items-center justify-center gap-2 ${role.buttonBg} transition-all`}>
-                  <span>প্রবেশ করুন</span>
+                  <span>ড্যাশবোর্ডে প্রবেশ করুন</span>
                   <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
@@ -544,6 +642,105 @@ export const HomeView: React.FC<HomeViewProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Interactive Role Sign-up Modal */}
+      <AnimatePresence>
+        {showRoleSignupModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl text-white space-y-5"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-blue-600/20 text-blue-400 rounded-xl border border-blue-500/30">
+                    <Sparkles size={20} />
+                  </div>
+                  <h3 className="text-lg font-black text-white">নতুন ড্যাশবোর্ডে সাইন-আপ করুন</h3>
+                </div>
+                <button 
+                  onClick={() => setShowRoleSignupModal(false)}
+                  className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                আপনার বর্তমান মোবাইল নম্বরের অধীনে অতিরিক্ত ড্যাশবোর্ডে সাইন-আপ করতে নিচের সংশ্লিষ্ট ভূমিকা নির্বাচন করুন:
+              </p>
+
+              <div className="space-y-3">
+                {roleCards.map(role => {
+                  const isAlreadySignedUp = visibleRoleCards.some(c => c.id === role.id);
+                  const roleKeyToSave = role.id === 'muhuri' ? 'clerk' : role.id;
+
+                  return (
+                    <div 
+                      key={role.id}
+                      className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
+                        isAlreadySignedUp 
+                          ? 'bg-slate-800/40 border-slate-700/60 opacity-60' 
+                          : 'bg-slate-800/80 border-blue-500/30 hover:border-blue-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <img src={role.iconImg} alt={role.title} className="w-10 h-10 object-contain" />
+                        <div>
+                          <h4 className="font-bold text-sm text-white">{role.title} ড্যাশবোর্ড</h4>
+                          <p className="text-[11px] text-slate-400">{role.subtitle}</p>
+                        </div>
+                      </div>
+
+                      {isAlreadySignedUp ? (
+                        <span className="text-xs font-bold text-emerald-400 px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20 shrink-0">
+                          ✓ সাইন-আপকৃত
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setExtraSignedUpRoles(prev => [...prev, roleKeyToSave]);
+                            try {
+                              const savedUser = localStorage.getItem('appUser');
+                              if (savedUser) {
+                                const parsed = JSON.parse(savedUser);
+                                if (parsed.mobile) {
+                                  let cleanPhone = String(parsed.mobile).replace(/[^0-9]/g, '');
+                                  if (cleanPhone.startsWith('880')) cleanPhone = '0' + cleanPhone.substring(3);
+                                  else if (cleanPhone.startsWith('88') && cleanPhone.length === 13) cleanPhone = '0' + cleanPhone.substring(2);
+                                  const existing = safeGetJson<string[]>('mdc_roles_' + cleanPhone, []);
+                                  if (!existing.includes(roleKeyToSave)) {
+                                    safeSetJson('mdc_roles_' + cleanPhone, [...existing, roleKeyToSave]);
+                                  }
+                                }
+                              }
+                            } catch (e) {}
+                            alert(`সফলভাবে ${role.title} ড্যাশবোর্ডে সাইন-আপ সম্পন্ন হয়েছে!`);
+                          }}
+                          className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-full shadow-sm transition-all shrink-0 cursor-pointer"
+                        >
+                          সাইন-আপ করুন
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 text-right">
+                <button
+                  onClick={() => setShowRoleSignupModal(false)}
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                >
+                  বন্ধ করুন
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Recent Cases Section ("সাম্প্রতিক মামলা সমূহ") - Clean High-Contrast White Card Style from Reference */}
       <div className="rounded-[2.5rem] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-200/40 dark:shadow-none p-6 sm:p-8 space-y-5">

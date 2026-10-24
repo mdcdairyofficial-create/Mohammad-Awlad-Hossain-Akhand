@@ -23,7 +23,11 @@ import {
   Briefcase,
   Sparkles,
   MessageSquare,
-  Download
+  Download,
+  Pencil,
+  Save,
+  Edit,
+  Check
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case, ChamberAssociate } from '../../types';
@@ -115,10 +119,149 @@ export const CaseCardPro = ({
   const [clerkMobileInput, setClerkMobileInput] = useState('');
   const [isSavingLawyerClerk, setIsSavingLawyerClerk] = useState(false);
 
+  // Full Card Inline Edit Mode States & Handlers
+  const [isEditingAll, setIsEditingAll] = useState(false);
+  const [editCaseNumber, setEditCaseNumber] = useState('');
+  const [editCourtName, setEditCourtName] = useState('');
+  const [editCourtNumber, setEditCourtNumber] = useState('');
+  const [editCaseType, setEditCaseType] = useState('Civil');
+  const [editPoliceStation, setEditPoliceStation] = useState('');
+  const [editCaseSection, setEditCaseSection] = useState('');
+
+  const [editPetitioner, setEditPetitioner] = useState('');
+  const [editPetitionerMobile, setEditPetitionerMobile] = useState('');
+  const [editRespondent, setEditRespondent] = useState('');
+  const [editRespondentMobile, setEditRespondentMobile] = useState('');
+
+  const [editLastDate, setEditLastDate] = useState('');
+  const [editNextDate, setEditNextDate] = useState('');
+  const [editStatus, setEditStatus] = useState('হাজিরা');
+  const [editOrder, setEditOrder] = useState('');
+
+  const [editPetitionerLawyer, setEditPetitionerLawyer] = useState('');
+  const [editPetitionerLawyerMobile, setEditPetitionerLawyerMobile] = useState('');
+  const [editPetitionerClerk, setEditPetitionerClerk] = useState('');
+  const [editPetitionerClerkMobile, setEditPetitionerClerkMobile] = useState('');
+
+  const [editRespondentLawyer, setEditRespondentLawyer] = useState('');
+  const [editRespondentLawyerMobile, setEditRespondentLawyerMobile] = useState('');
+  const [editRespondentClerk, setEditRespondentClerk] = useState('');
+  const [editRespondentClerkMobile, setEditRespondentClerkMobile] = useState('');
+
   const formatMobile = (m?: string[] | string) => {
     if (!m) return '';
     if (Array.isArray(m)) return m.filter(Boolean).join(', ');
     return m;
+  };
+
+  const handleStartEditingAll = () => {
+    setEditCaseNumber(caseData.caseNumber || '');
+    setEditCourtName(caseData.courtName || '');
+    setEditCourtNumber(caseData.courtNumber || '');
+    setEditCaseType(caseData.caseType || 'Civil');
+    setEditPoliceStation(caseData.policeStation || '');
+    setEditCaseSection(caseData.caseSection || '');
+
+    setEditPetitioner(caseData.petitioner || '');
+    setEditPetitionerMobile(caseData.petitionerMobile || '');
+    setEditRespondent(caseData.respondent || '');
+    setEditRespondentMobile(caseData.respondentMobile || '');
+
+    setEditLastDate(caseData.lastDate || '');
+    setEditNextDate(caseData.nextDate || '');
+    setEditStatus(caseData.status || 'হাজিরা');
+    setEditOrder(caseData.order || '');
+
+    setEditPetitionerLawyer(caseData.petitionerLawyer || '');
+    setEditPetitionerLawyerMobile(formatMobile(caseData.petitionerLawyerMobile));
+    setEditPetitionerClerk(caseData.petitionerClerk || '');
+    setEditPetitionerClerkMobile(formatMobile(caseData.petitionerClerkMobile));
+
+    setEditRespondentLawyer(caseData.respondentLawyer || '');
+    setEditRespondentLawyerMobile(formatMobile(caseData.respondentLawyerMobile));
+    setEditRespondentClerk(caseData.respondentClerk || '');
+    setEditRespondentClerkMobile(formatMobile(caseData.respondentClerkMobile));
+
+    setIsEditingAll(true);
+  };
+
+  const handleSaveAllCardEdits = () => {
+    // Direct mutation of caseData for instant UI update
+    caseData.caseNumber = editCaseNumber;
+    caseData.courtName = editCourtName;
+    caseData.courtNumber = editCourtNumber;
+    caseData.caseType = editCaseType;
+    caseData.policeStation = editPoliceStation;
+    caseData.caseSection = editCaseSection;
+
+    caseData.petitioner = editPetitioner;
+    caseData.petitionerMobile = editPetitionerMobile;
+    caseData.respondent = editRespondent;
+    caseData.respondentMobile = editRespondentMobile;
+
+    caseData.lastDate = editLastDate;
+    caseData.nextDate = editNextDate;
+    caseData.status = editStatus;
+    caseData.order = editOrder;
+
+    caseData.petitionerLawyer = editPetitionerLawyer;
+    caseData.petitionerLawyerMobile = editPetitionerLawyerMobile;
+    caseData.petitionerClerk = editPetitionerClerk;
+    caseData.petitionerClerkMobile = editPetitionerClerkMobile;
+
+    caseData.respondentLawyer = editRespondentLawyer;
+    caseData.respondentLawyerMobile = editRespondentLawyerMobile;
+    caseData.respondentClerk = editRespondentClerk;
+    caseData.respondentClerkMobile = editRespondentClerkMobile;
+
+    // Update local states
+    setNextDate(editNextDate);
+    setLastDate(editLastDate);
+    setOrder(editOrder);
+    setStep(editStatus);
+
+    const extraData: Partial<Case> = {
+      caseNumber: editCaseNumber,
+      courtName: editCourtName,
+      courtNumber: editCourtNumber,
+      caseType: editCaseType,
+      policeStation: editPoliceStation,
+      caseSection: editCaseSection,
+      petitioner: editPetitioner,
+      petitionerMobile: editPetitionerMobile,
+      respondent: editRespondent,
+      respondentMobile: editRespondentMobile,
+      lastDate: editLastDate,
+      nextDate: editNextDate,
+      status: editStatus,
+      order: editOrder,
+      petitionerLawyer: editPetitionerLawyer,
+      petitionerLawyerMobile: editPetitionerLawyerMobile,
+      petitionerClerk: editPetitionerClerk,
+      petitionerClerkMobile: editPetitionerClerkMobile,
+      respondentLawyer: editRespondentLawyer,
+      respondentLawyerMobile: editRespondentLawyerMobile,
+      respondentClerk: editRespondentClerk,
+      respondentClerkMobile: editRespondentClerkMobile,
+    };
+
+    onUpdate(
+      caseData.id,
+      editNextDate,
+      editOrder,
+      side,
+      clerkCanCall,
+      lawyerCanCall,
+      visibility,
+      attachedDocs,
+      editLastDate,
+      extraData
+    );
+
+    setIsEditingAll(false);
+    setConfirmMsg('কেস কার্ডের সকল তথ্য সফলভাবে সেভ করা হয়েছে!');
+    setShowConfirm(true);
+    setTimeout(() => setShowConfirm(false), 3000);
   };
 
   const currentLawyerName = side === 'petitioner' 
@@ -514,6 +657,38 @@ export const CaseCardPro = ({
               <span>{language === 'bn' ? 'ইতিহাস PDF' : 'History PDF'}</span>
             </button>
 
+            {isEditingAll ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSaveAllCardEdits}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30 cursor-pointer active:scale-95"
+                  title="সকল পরিবর্তন সেভ করুন"
+                >
+                  <Save size={14} />
+                  <span>সেভ করুন (Save)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingAll(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  title="এডিট বাতিল করুন"
+                >
+                  ✕ বাতিল
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStartEditingAll}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 cursor-pointer active:scale-95"
+                title="কেস কার্ডের সব তথ্য এডিট ও আপডেট করুন"
+              >
+                <Pencil size={14} />
+                <span>এডিট করুন (Edit)</span>
+              </button>
+            )}
+
             {onDelete && (
               <button 
                 onClick={() => onDelete(caseData.id)}
@@ -540,7 +715,303 @@ export const CaseCardPro = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {isEditingAll ? (
+          <div className="bg-slate-900 text-white rounded-3xl p-6 border-2 border-indigo-500/50 shadow-2xl space-y-6 animate-in fade-in duration-300 my-2">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-indigo-600/30 text-indigo-400 rounded-2xl border border-indigo-500/40">
+                  <Pencil size={20} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">কেস কার্ডের সব তথ্য এডিট ও আপডেট করুন</h3>
+                  <p className="text-xs text-slate-400">প্রয়োজনীয় তথ্যসমূহ সংশোধন করে সেভ বাটনে চাপ দিন</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveAllCardEdits}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-500/30 flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                >
+                  <Save size={16} />
+                  <span>সেভ করুন (Save All)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingAll(false)}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  ✕ বাতিল
+                </button>
+              </div>
+            </div>
+
+            {/* Form Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 text-slate-100">
+              {/* 1. মামলার বিবরণী */}
+              <div className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80">
+                <h4 className="text-xs font-black uppercase text-cyan-300 tracking-wider flex items-center gap-1.5 border-b border-slate-700/60 pb-2">
+                  <FileText size={15} /> মামলার বিবরণী
+                </h4>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">মামলা নং (Case Number)</label>
+                  <input
+                    type="text"
+                    value={editCaseNumber}
+                    onChange={(e) => setEditCaseNumber(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">আদালতের নাম (Court Name)</label>
+                  <input
+                    type="text"
+                    value={editCourtName}
+                    onChange={(e) => setEditCourtName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">কক্ষ/আদালত নং</label>
+                    <input
+                      type="text"
+                      value={editCourtNumber}
+                      onChange={(e) => setEditCourtNumber(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                      placeholder="যেমন: ৩"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">মামলার ধরন</label>
+                    <select
+                      value={editCaseType}
+                      onChange={(e) => setEditCaseType(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    >
+                      <option value="Civil">Civil (দেওয়ানী)</option>
+                      <option value="Criminal">Criminal (ফোল্ডার/ফৌজদারী)</option>
+                      <option value="Other">অন্যান্য</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">থানা (Police Station)</label>
+                    <input
+                      type="text"
+                      value={editPoliceStation}
+                      onChange={(e) => setEditPoliceStation(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">আইনের ধারা</label>
+                    <input
+                      type="text"
+                      value={editCaseSection}
+                      onChange={(e) => setEditCaseSection(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. বাদী ও বিবাদীর তথ্য */}
+              <div className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80">
+                <h4 className="text-xs font-black uppercase text-amber-300 tracking-wider flex items-center gap-1.5 border-b border-slate-700/60 pb-2">
+                  <User size={15} /> পক্ষগণের তথ্য
+                </h4>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">বাদী/আবেদনকারীর নাম (Petitioner)</label>
+                  <input
+                    type="text"
+                    value={editPetitioner}
+                    onChange={(e) => setEditPetitioner(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">বাদীর মোবাইল (Petitioner Phone)</label>
+                  <input
+                    type="text"
+                    value={editPetitionerMobile}
+                    onChange={(e) => setEditPetitionerMobile(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">বিবাদী/আসামীর নাম (Respondent)</label>
+                  <input
+                    type="text"
+                    value={editRespondent}
+                    onChange={(e) => setEditRespondent(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">বিবাদীর মোবাইল (Respondent Phone)</label>
+                  <input
+                    type="text"
+                    value={editRespondentMobile}
+                    onChange={(e) => setEditRespondentMobile(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                  />
+                </div>
+              </div>
+
+              {/* 3. তারিখ, পদক্ষেপ ও আদেশের তথ্য */}
+              <div className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 md:col-span-2 lg:col-span-1">
+                <h4 className="text-xs font-black uppercase text-emerald-300 tracking-wider flex items-center gap-1.5 border-b border-slate-700/60 pb-2">
+                  <Calendar size={15} /> তারিখ, পদক্ষেপ ও নোট
+                </h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">গত তারিখ (Last Date)</label>
+                    <input
+                      type="date"
+                      value={editLastDate}
+                      onChange={(e) => setEditLastDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">আগামী তারিখ (Next Date)</label>
+                    <input
+                      type="date"
+                      value={editNextDate}
+                      onChange={(e) => setEditNextDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">বর্তমান পদক্ষেপ (Step/Status)</label>
+                  <input
+                    type="text"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    placeholder="যেমন: হাজিরা / দরখাস্ত পেশ / শুনানী"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">আদালতের আদেশ / বিবরণ</label>
+                  <textarea
+                    rows={2}
+                    value={editOrder}
+                    onChange={(e) => setEditOrder(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400 resize-none"
+                    placeholder="আদেশের বিবরণ..."
+                  />
+                </div>
+              </div>
+
+              {/* 4. আইনজীবী ও মুহুরীর তথ্য */}
+              <div className="space-y-3 bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 md:col-span-2 lg:col-span-3">
+                <h4 className="text-xs font-black uppercase text-purple-300 tracking-wider flex items-center gap-1.5 border-b border-slate-700/60 pb-2">
+                  <Briefcase size={15} /> আইনজীবী ও মুহুরীদের তথ্য
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বাদীর উকিলের নাম</label>
+                    <input
+                      type="text"
+                      value={editPetitionerLawyer}
+                      onChange={(e) => setEditPetitionerLawyer(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বাদীর উকিলের মোবাইল</label>
+                    <input
+                      type="text"
+                      value={editPetitionerLawyerMobile}
+                      onChange={(e) => setEditPetitionerLawyerMobile(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বাদীর মুহুরীর নাম</label>
+                    <input
+                      type="text"
+                      value={editPetitionerClerk}
+                      onChange={(e) => setEditPetitionerClerk(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বাদীর মুহুরীর মোবাইল</label>
+                    <input
+                      type="text"
+                      value={editPetitionerClerkMobile}
+                      onChange={(e) => setEditPetitionerClerkMobile(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বিবাদীর উকিলের নাম</label>
+                    <input
+                      type="text"
+                      value={editRespondentLawyer}
+                      onChange={(e) => setEditRespondentLawyer(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বিবাদীর উকিলের মোবাইল</label>
+                    <input
+                      type="text"
+                      value={editRespondentLawyerMobile}
+                      onChange={(e) => setEditRespondentLawyerMobile(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বিবাদীর মুহুরীর নাম</label>
+                    <input
+                      type="text"
+                      value={editRespondentClerk}
+                      onChange={(e) => setEditRespondentClerk(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-300 block mb-1">বিবাদীর মুহুরীর মোবাইল</label>
+                    <input
+                      type="text"
+                      value={editRespondentClerkMobile}
+                      onChange={(e) => setEditRespondentClerkMobile(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-bold text-white outline-none focus:border-indigo-400"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Save Action Bar */}
+            <div className="pt-2 flex flex-wrap items-center justify-end gap-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsEditingAll(false)}
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                ✕ বাতিল করুন
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAllCardEdits}
+                className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+              >
+                <Save size={16} />
+                <span>সেভ করুন (Save All Changes)</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 gap-4">
               <div className="flex items-center gap-3">
@@ -1451,6 +1922,8 @@ export const CaseCardPro = ({
             </button>
           </div>
         </div>
+      </>
+      )}
       </div>
 
       {showComplaintModal && (

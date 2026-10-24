@@ -4191,6 +4191,7 @@ export default function Dashboard({
                   <HomeView 
                     userName={userName}
                     userType={currentViewMode}
+                    signedUpRoles={availableRoles}
                     cases={visibleCases}
                     allCasesCount={cases.length}
                     ownCasesCount={ownCasesCount}
