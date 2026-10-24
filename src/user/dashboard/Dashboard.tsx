@@ -87,6 +87,7 @@ import { PWAInstallButton } from '../../pwa/PWAInstallButton';
 import Recharge from '../recharge/Recharge';
 import { safeSetJson, safeGetJson, safeSetItem, safeGetItem } from '../../utils/safeStorage';
 import { getReferralUrl } from '../../utils/urlHelper';
+import { downloadCaseHistoryPdf } from '../../utils/pdfGenerator';
 
 // Lazy-loaded secondary components (saves ~1.5MB from initial dashboard load)
 const MediGen = lazy(() => import('../ai/MediGen'));
@@ -379,13 +380,50 @@ const CaseHistoryModal = ({
                     </div>
 
                     {viewMode === 'sheet' && (
-                      <button 
-                        onClick={() => window.print()} 
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-                      >
-                        <Printer size={14} />
-                        {language === 'bn' ? 'প্রিন্ট' : 'Print'}
-                      </button>
+                      <>
+                        <button 
+                          onClick={() => window.print()} 
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        >
+                          <Printer size={14} />
+                          {language === 'bn' ? 'প্রিন্ট' : 'Print'}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+                            if (isMobile) {
+                              window.print();
+                            } else {
+                              window.print();
+                            }
+                          }} 
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                          title={language === 'bn' ? 'কম্পিউটারে প্রিন্ট এবং মোবাইলে সেভ করুন' : 'Print on computer, Save on mobile'}
+                        >
+                          <Download size={14} />
+                          {language === 'bn' ? 'প্রিন্ট/সেভ' : 'Print/Save'}
+                        </button>
+                        <button 
+                          onClick={async () => {
+                            try {
+                              const currentUser = safeGetJson<any>('appUser', {});
+                              await downloadCaseHistoryPdf(
+                                caseData, 
+                                currentUser?.fullName || (language === 'bn' ? 'বিজ্ঞ আইনজীবী' : 'Advocate'),
+                                currentUser?.chamberAddress || (language === 'bn' ? 'এমডিসি কেসবুক চেম্বার' : 'MDC Casebook Chamber')
+                              );
+                            } catch (err) {
+                              console.error('Download case history failed:', err);
+                              window.print();
+                            }
+                          }} 
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                          title={language === 'bn' ? 'মামলার সম্পূর্ণ ইতিহাস ও আদেশনামা PDF ফাইল হিসেবে ডাউনলোড করুন' : 'Download Complete Case History PDF'}
+                        >
+                          <Download size={14} className="text-blue-100" />
+                          <span>{language === 'bn' ? 'ইতিহাস PDF ডাউনলোড' : 'Download History PDF'}</span>
+                        </button>
+                      </>
                     )}
 
                     {caseData.history && caseData.history.length > 0 && (

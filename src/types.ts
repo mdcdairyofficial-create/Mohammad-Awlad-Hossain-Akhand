@@ -6,6 +6,9 @@ export interface CaseHistoryEntry {
   actionBy: UserRole | 'petitioner' | 'respondent' | 'court' | 'accused';
   description: string;
   order?: string;
+  step?: string;
+  status?: string;
+  nextDate?: string;
   accusedPhoto?: string;
   petitionerPhoto?: string;
   documents?: { name: string; type: string; url: string }[];

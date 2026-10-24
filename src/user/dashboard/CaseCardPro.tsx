@@ -22,7 +22,8 @@ import {
   Phone,
   Briefcase,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Download
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case, ChamberAssociate } from '../../types';
@@ -33,6 +34,7 @@ import { fetchWithAuth } from '../../lib/api';
 import { AdBanner } from './AdBanner';
 import { DocumentScannerModal } from '../../components/DocumentScannerModal';
 import { getMagicCaseTrackUrl } from '../cases/WhatsAppPhoneHelper';
+import { downloadCaseHistoryPdf } from '../../utils/pdfGenerator';
 
 interface CaseCardProProps {
   caseData: Case;
@@ -495,6 +497,22 @@ export const CaseCardPro = ({
                 <span>{language === 'bn' ? 'এআই-কে জিজ্ঞেস করুন' : 'Ask AI'}</span>
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await downloadCaseHistoryPdf(caseData);
+                } catch (err) {
+                  console.error('Download case history failed:', err);
+                }
+              }}
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-95"
+              title={language === 'bn' ? 'সম্পূর্ণ মামলার ইতিহাস PDF ফাইল ডাউনলোড করুন' : 'Download Complete Case History PDF'}
+            >
+              <Download size={14} className="text-blue-600" />
+              <span>{language === 'bn' ? 'ইতিহাস PDF' : 'History PDF'}</span>
+            </button>
 
             {onDelete && (
               <button 

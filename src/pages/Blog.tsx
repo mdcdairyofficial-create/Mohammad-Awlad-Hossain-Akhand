@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Search, 
@@ -12,9 +12,16 @@ import {
   Share2, 
   CheckCircle2, 
   Sparkles,
-  ChevronRight
+  ChevronLeft,
+  ChevronRight,
+  PlusCircle,
+  Plus,
+  Printer,
+  Download
 } from 'lucide-react';
 import { GoogleAdSense } from '../components/GoogleAdSense';
+import { db } from '../firebase';
+import { collection, addDoc, getDocs, serverTimestamp } from 'firebase/firestore';
 
 export interface BlogPost {
   id: string;
@@ -22,6 +29,7 @@ export interface BlogPost {
   slug: string;
   category: string;
   date: string;
+  time?: string;
   readTime: string;
   excerpt: string;
   author: string;
@@ -56,7 +64,7 @@ export const sampleArticles: BlogPost[] = [
     excerpt: 'আদালতে আনুষ্ঠানিক মোকদ্দমা দায়ের করার পূর্বে বিপক্ষকে আইনি নোটিশ প্রদান করার নিয়ম, সময়সীমা এবং এর গুরুত্ব সম্পর্কে বিস্তারিত।',
     content: [
       'আইনি নোটিশ হলো কোনো বিরোধ বা চুক্তি ভঙ্গের বিষয়ে বিজ্ঞ আইনজীবীর মাধ্যমে প্রতিপক্ষকে প্রদত্ত আনুষ্ঠানিক লিখিত সতর্কবার্তা। আদালতের শরণাপন্ন হওয়ার পূর্বে বিরোধটি নিষ্পত্তির সুযোগ দেওয়াই এর মূল উদ্দেশ্য।',
-      'কোন কোন ক্ষেত্রে লিগ্যাল নোটিশ বাধ্যতামূলক? যেমন—চেক ডিজঅনারের মামলা (এনআই অ্যাক্ট ১৩৮ ধারা), চুক্তি ভঙ্গ, বাড়ি ভাড়া উচ্ছেদ, মানহানি বা দেনা আদায়ের মতো বিষয়ে মামলা করার পূর্বে আইনি নোটিশ পাঠানো বাধ্যতামূলক বা অত্যন্ত কার্যকর একটি পদক্ষেপ।',
+      'কোন কোন ক্ষেত্রে লিগ্যাল নোটিশ বাধ্যতামূলক? যেমন—চেক ডিজঅনারের মামলা (এনআই অ্যাক্ট ১৩৮ ধারা), চুক্তি ভঙ্গ, বাড়ি ভাড়া উচ্ছেদ, মানহানি বা দেনা আদayasের মতো বিষয়ে মামলা করার পূর্বে আইনি নোটিশ পাঠানো বাধ্যতামূলক বা অত্যন্ত কার্যকর একটি পদক্ষেপ।',
       'নোটিশে সাধারণত ঘটনার বিবরণ, প্রতিপক্ষের ত্রুটি, দাবিকৃত প্রতিকার এবং দাবি পূরণের জন্য নির্দিষ্ট সময়সীমা (যেমন ১৫ দিন বা ৩০ দিন) উল্লেখ করা হয়। এই নোটিশটি রেজিস্ট্রি ডাকযোগে প্রাপ্তি স্বীকারপত্র (A/D) সহ পাঠাতে হয়, যাতে প্রতিপক্ষ নোটিশ পেয়েছে তার প্রমাণ আদালতে পেশ করা যায়।',
       'যদি নির্ধারিত সময়সীমার মধ্যে প্রতিপক্ষ নোটিশের জবাব না দেয় কিংবা দাবি পূরণ না করে, তবে নোটিশ প্রেরক সরাসরি সংশ্লিষ্ট বিজ্ঞ আদালতে মামলা দায়েরের আইনগত অধিকার লাভ করেন।'
     ]
@@ -104,7 +112,7 @@ export const sampleArticles: BlogPost[] = [
     excerpt: 'আদালতে মক্কেলের পক্ষে আইনজীবী নিয়োগের ক্ষমতাপত্র বা ওকালতনামা সম্পাদনের নিয়ম এবং ওকালতনামা ফি স্ট্যাম্প সংক্রান্ত বিধান।',
     content: [
       'ওকালতনামা হলো একটি লিখিত চুক্তিপত্র ও বিশেষ ক্ষমতাপত্র, যার মাধ্যমে একজন বিচারপ্রার্থী মক্কেল কোনো বিজ্ঞ আইনজীবীকে তার পক্ষে আদালতে কথা বলা, আবেদন দাখিল ও মামলা পরিচালনার পূর্ণ কর্তৃত্ব প্রদান করেন।',
-      'দেওয়ানী কার্যবিধির অর্ডার ৩, রুল ৪ অনুযায়ী, বিজ্ঞ আদালতে কোনো পক্ষের প্রতিনিধিত্ব করতে হলে বৈধভাবে সম্পাদিত ওকালতনামা দাখিল করা বাধ্যতামূলক। ওকালতনামায় মক্কেলের স্বাক্ষর বা টিপসহি থাকতে হয় এবং আইনজীবী তা গ্রহণ করে স্বাক্ষর করেন।',
+      'দেওয়ানী কার্যবিধির অর্ডার ৩, রুল ৪ অনুযায়ী, বিজ্ঞ আদালতে কোনো পক্ষের প্রতিনিধিত্ব করতে হলে বৈধভাবে সম্পাদিত ওকালতনামা দাখিল করা বাধ্যতামূলক। ওকালতনামায় মক্কেলের স্বাক্ষর বা টিপসহি থাকতে হবে এবং আইনজীবী তা গ্রহণ করে স্বাক্ষর করেন।',
       'ওকালতনামায় যথাযথ কোর্ট ফি স্ট্যাম্প এবং বাংলাদেশ বার কাউন্সিল ও সংশ্লিষ্ট জেলা বার অ্যাসোসিয়েশনের নির্ধারিত কল্যাণ তহবিল স্ট্যাম্প যুক্ত করা আবশ্যক। অন্যথায় আদালত ওকালতনামাটি গ্রহণ করেন না।',
       'এমডিসি কেসবুক প্ল্যাটফর্মে আইনজীবীরা সহজে ডিজিটালভাবে ওকালতনামার রেকর্ড রাখতে পারেন এবং কোন মামলায় কোন মক্কেল ওকালতনামা প্রদান করেছেন তা যেকোনো সময় যাচাই করতে পারেন।'
     ]
@@ -164,7 +172,7 @@ export const sampleArticles: BlogPost[] = [
     author: 'অ্যাডভোকেট প্যানেল, এমডিসি কেসবুক',
     excerpt: 'পারিবারিক আদালত অধ্যাদেশ ১৯৮৫ অনুযায়ী দেনমোহর, বিবাহ বিচ্ছেদ পরবর্তী খোরপোশ এবং সন্তানের ভরণপোষণ আদায়ের নিয়ম।',
     content: [
-      'পারিবারিক আদালত অধ্যাদেশ ১৯৮৫ (Family Courts Ordinance) অনুযায়ী সহকারী জজ আদালতকে পারিবারিক আদালত হিসেবে ক্ষমতা দেওয়া হয়েছে। বিবাহ বিচ্ছেদ, দেনমোহর, ভরণপোষণ (খোরপোশ), অভিভাবকত্ব ও দাম্পত্য অধিকার পুনরুদ্ধারের বিষয়গুলো এখানে নিষ্পত্তি হয়।',
+      'পারিবারিক আদালত অধ্যাদেশ ১৯৮৫ (Family Courts Ordinance) অনুযায়ী সহকারী জজ আদালতকে পারিবারিক আদালত হিসেবে ক্ষমতা দেওয়া হয়েছে। বিবাহ বিচ্ছেদ, দেনমোহর, ভরণপোষণ (খোরপোশ), অভিভাবকত্ব ও দাম্পত্য অধিকার পুনরুদ্ধارهای বিষয়গুলো এখানে নিষ্পত্তি হয়।',
       'দেনমোহর হলো বিয়ের সময় স্বামীর ওপর স্ত্রীর একটি অবশ্য প্রদেয় আইনি অধিকার। এটি কোনো দয়া নয়। তলবমাত্র দেনমোহর (Prompt Dower) স্ত্রী যেকোনো সময় দাবি করতে পারেন এবং বিলম্বিত দেনমোহর (Deferred Dower) বিবাহ বিচ্ছেদ বা স্বামীর মৃত্যুর পর দাবি করা যায়।',
       'বিবাহ বিচ্ছেদ হলেও ইদ্দতকালীন খোরপোশ এবং নাবালক সন্তানের সাবালক হওয়া পর্যন্ত পূর্ণ ভরণপোষণ দেওয়া পিতার আইনগত দায়িত্ব। পারিবারিক আদালতের রায় না মানলে দেওয়ানী জেল ও মালামাল ক্রোকের আদেশ হতে পারে।'
     ]
@@ -217,17 +225,194 @@ export const sampleArticles: BlogPost[] = [
 ];
 
 export const Blog: React.FC = () => {
+  const [articles, setArticles] = useState<BlogPost[]>(() => {
+    const saved = localStorage.getItem('mdc_custom_blog_posts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return [...parsed, ...sampleArticles];
+      } catch (e) {
+        return sampleArticles;
+      }
+    }
+    return sampleArticles;
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('সকল');
   const [activeArticle, setActiveArticle] = useState<BlogPost | null>(null);
+  const [showPostModal, setShowPostModal] = useState(false);
 
-  const categories = useMemo(() => {
-    const cats = Array.from(new Set(sampleArticles.map(a => a.category)));
-    return ['সকল', ...cats];
+  // Form states for creating a new post
+  const [newTitle, setNewTitle] = useState('');
+  const [newCategory, setNewCategory] = useState('আইনি সচেতনতা');
+  const [newAuthor, setNewAuthor] = useState('এমডিসি কেসবুক এডমিন');
+  const [newExcerpt, setNewExcerpt] = useState('');
+  const [newContent, setNewContent] = useState('');
+  
+  // Date & Time picker states
+  const getTodayIso = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  };
+  const getCurrentTimeIso = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const [newDate, setNewDate] = useState<string>(getTodayIso);
+  const [newTime, setNewTime] = useState<string>(getCurrentTimeIso);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => new Date());
+
+  const [submitting, setSubmitting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const formatBanglaDate = (dateStr: string, timeStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dateObj = new Date(y, m - 1, d);
+      if (isNaN(dateObj.getTime())) return dateStr;
+
+      const bnDate = dateObj.toLocaleDateString('bn-BD', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      if (timeStr) {
+        const [hours, minutes] = timeStr.split(':');
+        const h = parseInt(hours, 10);
+        const mStr = minutes || '00';
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        const bnNums = ['০','১','২','৩','৪','৫','৬','৭','৮','৯'];
+        const toBn = (num: number | string) => String(num).replace(/[0-9]/g, digit => bnNums[Number(digit)]);
+        return `${bnDate}, ${toBn(h12)}:${toBn(mStr)} ${ampm}`;
+      }
+
+      return bnDate;
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const handlePrintOrSave = (article?: BlogPost | null) => {
+    const target = article || activeArticle;
+    if (!target) return;
+
+    if (typeof window === 'undefined') return;
+
+    if (isMobile) {
+      // Mobile behavior: Download formatted document file & activate native PDF print/save
+      try {
+        const textContent = `${target.title}\nক্যাটাগরি: ${target.category}\nতারিখ: ${target.date} | লেখক: ${target.author}\nপাঠের সময়: ${target.readTime}\n\n${target.content.join('\n\n')}\n\n---------------------------------------\nএমডিসি কেসবুক (MDC Casebook) | www.mdccasebook.com\nডিজিটাল লিগ্যাল ম্যানেজমেন্ট প্ল্যাটফর্ম`;
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${target.title.replace(/[\s/\\:*?"<>|]/g, '_').substring(0, 50)}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.warn('Mobile save text fallback:', err);
+      }
+
+      // Also open the browser's native print/save dialog (on Android/iOS this defaults to Save as PDF)
+      try {
+        window.print();
+      } catch (e) {
+        console.warn('Mobile print/save trigger:', e);
+      }
+    } else {
+      // Computer / Desktop behavior: Clean iframe print without popup blocker or window.open errors
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(`
+            <!DOCTYPE html>
+            <html lang="bn">
+            <head>
+              <meta charset="UTF-8">
+              <title>${target.title} - MDC Casebook</title>
+              <style>
+                body { font-family: 'Hind Siliguri', 'Segoe UI', Tahoma, Arial, sans-serif; padding: 30px; color: #0f172a; line-height: 1.8; }
+                h1 { color: #1e1b4b; font-size: 24px; margin-bottom: 8px; border-bottom: 2px solid #6366f1; padding-bottom: 8px; }
+                .meta { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+                .content p { margin-bottom: 14px; font-size: 14px; text-align: justify; }
+                .footer { margin-top: 40px; padding-top: 15px; border-top: 1px solid #cbd5e1; font-size: 11px; color: #64748b; text-align: center; }
+              </style>
+            </head>
+            <body>
+              <h1>${target.title}</h1>
+              <div class="meta"><strong>ক্যাটাগরি:</strong> ${target.category} &nbsp;|&nbsp; <strong>তারিখ:</strong> ${target.date} &nbsp;|&nbsp; <strong>লেখক:</strong> ${target.author}</div>
+              <div class="content">
+                ${target.content.map((p: string) => `<p>${p}</p>`).join('')}
+              </div>
+              <div class="footer">
+                MDC Casebook (এমডিসি কেসবুক) | www.mdccasebook.com | সর্বস্বত্ব সংরক্ষিত
+              </div>
+            </body>
+            </html>
+          `);
+          doc.close();
+
+          setTimeout(() => {
+            try {
+              iframe.contentWindow?.focus();
+              iframe.contentWindow?.print();
+            } catch (err) {
+              window.print();
+            } finally {
+              setTimeout(() => {
+                try {
+                  document.body.removeChild(iframe);
+                } catch (_) {}
+              }, 3000);
+            }
+          }, 350);
+        } else {
+          window.print();
+        }
+      } catch (e) {
+        window.print();
+      }
+    }
+  };
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(articles.map(a => a.category)));
+    return ['সকল', ...cats];
+  }, [articles]);
+
   const filteredArticles = useMemo(() => {
-    return sampleArticles.filter(article => {
+    return articles.filter(article => {
       const matchesSearch = 
         article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         article.excerpt.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -237,7 +422,65 @@ export const Blog: React.FC = () => {
 
       return matchesSearch && matchesCategory;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [articles, searchQuery, selectedCategory]);
+
+  const handleCreatePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newExcerpt.trim() || !newContent.trim()) {
+      alert('দয়া করে শিরোনাম, সংক্ষিপ্ত বিবরণ এবং মূল কনটেন্ট লিখুন।');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const contentParagraphs = newContent.split('\n\n').filter(Boolean);
+      const publishDateFormatted = formatBanglaDate(newDate, newTime);
+      const newPost: BlogPost = {
+        id: 'post_' + Date.now(),
+        title: newTitle.trim(),
+        slug: newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        category: newCategory,
+        date: publishDateFormatted,
+        time: newTime,
+        readTime: '৪ মিনিট',
+        excerpt: newExcerpt.trim(),
+        author: newAuthor.trim() || 'এমডিসি কেসবুক ইউজার',
+        content: contentParagraphs.length > 0 ? contentParagraphs : [newContent]
+      };
+
+      const updated = [newPost, ...articles];
+      setArticles(updated);
+
+      // Save custom posts to localStorage
+      const customOnly = updated.filter(p => !sampleArticles.find(s => s.id === p.id));
+      localStorage.setItem('mdc_custom_blog_posts', JSON.stringify(customOnly));
+
+      // Also try saving to Firestore if connected
+      try {
+        await addDoc(collection(db, "blog_posts"), {
+          ...newPost,
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn("Firestore sync optional error:", err);
+      }
+
+      setSuccessMessage('আপনার ব্লগ/ফিচার পোস্টটি সফলভাবে প্রকাশিত হয়েছে!');
+      setNewTitle('');
+      setNewExcerpt('');
+      setNewContent('');
+      setNewDate(getTodayIso());
+      setNewTime(getCurrentTimeIso());
+      setTimeout(() => {
+        setSuccessMessage('');
+        setShowPostModal(false);
+        setSubmitting(false);
+      }, 1500);
+    } catch (err: any) {
+      alert('পোস্ট প্রকাশে সমস্যা হয়েছে: ' + err.message);
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-10 sm:py-16">
@@ -250,9 +493,20 @@ export const Blog: React.FC = () => {
             <span>আইনি সচেতনতা ও পরামর্শ কেন্দ্র</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-            এমডিসি কেসবুক লিগ্যাল ব্লগ
-          </h1>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
+              এমডিসি কেসবুক লিগ্যাল ব্লগ
+            </h1>
+            <button
+              type="button"
+              onClick={() => setShowPostModal(true)}
+              className="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-emerald-500/20 flex items-center gap-2 active:scale-95 transition-all cursor-pointer shrink-0"
+            >
+              <PlusCircle size={18} />
+              <span>নতুন পোস্ট বা ফিচার লিখুন</span>
+            </button>
+          </div>
+
           <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
             বাংলাদেশের প্রচলিত দেওয়ানী, ফৌজদারী, ভূমি ও পারিবারিক আইন সম্পর্কিত প্রামাণ্য বিশ্লেষণ ও সচেতনতামূলক প্রবন্ধ।
           </p>
@@ -269,6 +523,7 @@ export const Blog: React.FC = () => {
             />
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => setSearchQuery('')}
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
               >
@@ -342,14 +597,32 @@ export const Blog: React.FC = () => {
                     {article.date}
                   </span>
 
-                  <button
-                    type="button"
-                    onClick={() => setActiveArticle(article)}
-                    className="flex items-center gap-1 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer group-hover:translate-x-0.5"
-                  >
-                    <span>সম্পূর্ণ পড়ুন</span>
-                    <ChevronRight size={14} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrintOrSave(article);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
+                      title={isMobile ? "মোবাইলে সেভ করুন" : "কম্পিউটারে প্রিন্ট করুন"}
+                    >
+                      {isMobile ? <Download size={13} className="text-emerald-300" /> : <Printer size={13} className="text-emerald-300" />}
+                      <span className="font-bold">প্রিন্ট/সেভ</span>
+                      <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-950/80 text-emerald-300 font-semibold border border-emerald-500/30">
+                        {isMobile ? 'সেভ' : 'প্রিন্ট'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveArticle(article)}
+                      className="flex items-center gap-1 text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer group-hover:translate-x-0.5"
+                    >
+                      <span>সম্পূর্ণ পড়ুন</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -362,6 +635,341 @@ export const Blog: React.FC = () => {
         </div>
 
       </div>
+
+      {/* CREATE NEW POST MODAL */}
+      {showPostModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-xl bg-slate-900 rounded-3xl border border-slate-800 p-6 sm:p-8 shadow-2xl text-slate-100 max-h-[90vh] overflow-y-auto space-y-6">
+            
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <PlusCircle className="text-emerald-400" size={24} />
+                <span>নতুন ব্লগ বা ফিচার পোস্ট প্রকাশ করুন</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowPostModal(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {successMessage ? (
+              <div className="py-12 text-center space-y-3">
+                <CheckCircle2 size={48} className="mx-auto text-emerald-400 animate-bounce" />
+                <p className="text-lg font-bold text-white">{successMessage}</p>
+              </div>
+            ) : (
+              <form onSubmit={handleCreatePost} className="space-y-4 text-xs sm:text-sm">
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">পোস্টের শিরোনাম (Title)*</label>
+                  <input
+                    type="text"
+                    required
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="যেমন: নতুন ডিজিটাল আদালত আইন ও আইনজীবী করণীয়"
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1.5">ক্যাটাগরি</label>
+                    <select
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="আইনি সচেতনতা">আইনি সচেতনতা</option>
+                      <option value="ভূমি ও সম্পত্তি আইন">ভূমি ও সম্পত্তি আইন</option>
+                      <option value="মামলা পরিচালনা">মামলা পরিচালনা</option>
+                      <option value="ফৌজদারী ও বাণিজ্যিক আইন">ফৌজদারী ও বাণিজ্যিক আইন</option>
+                      <option value="পারিবারিক ও সম্পত্তি আইন">পারিবারিক ও সম্পত্তি আইন</option>
+                      <option value="প্রযুক্তি ও আইন পেশা">প্রযুক্তি ও আইন পেশা</option>
+                      <option value="ফিচার ও আপডেট">ফিচার ও আপডেট</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-300 mb-1.5">লেখক / প্রকাশক</label>
+                    <input
+                      type="text"
+                      value={newAuthor}
+                      onChange={(e) => setNewAuthor(e.target.value)}
+                      placeholder="যেমন: অ্যাডভোকেট রাশেদুল ইসলাম"
+                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* আপলোড তারিখ ও সময় এন্ট্রি সেকশন */}
+                <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-slate-200 text-xs sm:text-sm flex items-center gap-1.5">
+                      <Calendar size={16} className="text-emerald-400" />
+                      <span>ব্লগ আপলোড করার তারিখ ও সময় নির্ধারণ</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          const [y, m, d] = newDate.split('-').map(Number);
+                          if (y && m) setCalendarViewDate(new Date(y, m - 1, d || 1));
+                        } catch (_) {}
+                        setShowCalendarModal(true);
+                      }}
+                      className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white border border-indigo-500/50 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                    >
+                      <Calendar size={13} />
+                      <span>📅 ক্যালেন্ডার পেজ খুলুন</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Date Picker Input */}
+                    <div>
+                      <label className="block font-medium text-slate-300 text-xs mb-1">
+                        আপলোডের তারিখ (Date)*
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="date"
+                          required
+                          value={newDate}
+                          onChange={(e) => setNewDate(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Time Picker Input */}
+                    <div>
+                      <label className="block font-medium text-slate-300 text-xs mb-1">
+                        আপলোডের সময় (Time)*
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="time"
+                          required
+                          value={newTime}
+                          onChange={(e) => setNewTime(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-white text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 [color-scheme:dark]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Time Presets & Live Bangla Date Preview */}
+                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                      <Clock size={13} />
+                      <span>নির্ধারিত সময়:</span>
+                      <span className="text-white font-bold bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                        {formatBanglaDate(newDate, newTime)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewDate(getTodayIso());
+                          setNewTime(getCurrentTimeIso());
+                        }}
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                      >
+                        এখনকার সময়
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewTime('10:00')}
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                      >
+                        ১০:০০ AM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewTime('15:00')}
+                        className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                      >
+                        ০৩:০০ PM
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">সংক্ষিপ্ত বিবরণ / সারসংক্ষেপ (Excerpt)*</label>
+                  <textarea
+                    required
+                    rows={2}
+                    value={newExcerpt}
+                    onChange={(e) => setNewExcerpt(e.target.value)}
+                    placeholder="ব্লগ বা ফিচারের সংক্ষিপ্ত বিবরণ যা কার্ডে প্রদর্শিত হবে..."
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1.5">মূল কনটেন্ট (Content Paragraphs)*</label>
+                  <textarea
+                    required
+                    rows={6}
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    placeholder="বিস্তারিত আর্টিকেল বা ফিচার বিবরণ লিখুন। প্যারাগ্রাফ আলাদা করতে নতুন প্যারাগ্রাফ ব্যবহার করুন..."
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowPostModal(false)}
+                    className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition-all cursor-pointer"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-black rounded-xl shadow-lg transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    {submitting ? 'প্রকাশ হচ্ছে...' : 'পোস্ট প্রকাশ করুন'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* INTERACTIVE CALENDAR PAGE MODAL (ক্যালেন্ডার পেজ) */}
+      {showCalendarModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto">
+          <div className="w-full max-w-sm bg-slate-900 rounded-3xl border border-slate-700 p-6 shadow-2xl text-slate-100 space-y-4 animate-in fade-in zoom-in-95">
+            
+            {/* Calendar Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="text-emerald-400" size={20} />
+                <h3 className="font-black text-white text-base">ক্যালেন্ডার পেজ (তারিখ নির্বাচন)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCalendarModal(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Month & Year Navigation */}
+            <div className="flex items-center justify-between px-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() - 1, 1));
+                }}
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition-all cursor-pointer active:scale-95"
+                title="পূর্ববর্তী মাস"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              <div className="text-center">
+                <span className="font-black text-sm text-indigo-300 block">
+                  {calendarViewDate.toLocaleDateString('bn-BD', { month: 'long', year: 'numeric' })}
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {calendarViewDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1));
+                }}
+                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition-all cursor-pointer active:scale-95"
+                title="পরবর্তী মাস"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            {/* Days of Week Header */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400 border-b border-slate-800/80 pb-2">
+              <span className="text-rose-400">রবি</span>
+              <span>সোম</span>
+              <span>মঙ্গল</span>
+              <span>বুধ</span>
+              <span>বৃহঃ</span>
+              <span className="text-emerald-400">শুক্র</span>
+              <span>শনি</span>
+            </div>
+
+            {/* Calendar Days Grid */}
+            <div className="grid grid-cols-7 gap-1 text-xs">
+              {Array.from({ length: new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth(), 1).getDay() }).map((_, i) => (
+                <div key={`empty-${i}`} className="p-2" />
+              ))}
+              {Array.from({ length: new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 0).getDate() }).map((_, idx) => {
+                const day = idx + 1;
+                const dateIso = `${calendarViewDate.getFullYear()}-${String(calendarViewDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isSelected = newDate === dateIso;
+                const isToday = getTodayIso() === dateIso;
+
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => {
+                      setNewDate(dateIso);
+                      setShowCalendarModal(false);
+                    }}
+                    className={`py-2 rounded-xl font-bold transition-all cursor-pointer text-center ${
+                      isSelected
+                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 font-black scale-105 ring-2 ring-emerald-400/40'
+                        : isToday
+                        ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600 hover:text-white'
+                        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quick Actions Footer */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  const today = getTodayIso();
+                  setNewDate(today);
+                  setCalendarViewDate(new Date());
+                  setShowCalendarModal(false);
+                }}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-all cursor-pointer"
+              >
+                আজকের তারিখ
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCalendarModal(false)}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all cursor-pointer"
+              >
+                সম্পন্ন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* READ FULL ARTICLE MODAL */}
       {activeArticle && (
@@ -376,21 +984,45 @@ export const Blog: React.FC = () => {
                 <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">
                   {activeArticle.title}
                 </h2>
-                <div className="flex items-center gap-4 text-xs text-slate-400 mt-2">
+                <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-400 mt-2">
                   <span>{activeArticle.date}</span>
                   <span>•</span>
                   <span>{activeArticle.author}</span>
                   <span>•</span>
                   <span>{activeArticle.readTime} পাঠ</span>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintOrSave(activeArticle)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-950/50 cursor-pointer active:scale-95 border border-emerald-400/40"
+                    title={isMobile ? "মোবাইলে সরাসরি সেভ করুন" : "কম্পিউটারে প্রিন্ট করুন"}
+                  >
+                    {isMobile ? <Download size={14} className="text-emerald-100" /> : <Printer size={14} className="text-emerald-100" />}
+                    <span className="font-extrabold tracking-wide">প্রিন্ট/সেভ</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-200 font-bold border border-emerald-400/30">
+                      {isMobile ? 'সেভ একটিভ' : 'প্রিন্ট একটিভ'}
+                    </span>
+                  </button>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveArticle(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handlePrintOrSave(activeArticle)}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-xl text-xs font-bold transition-all border border-emerald-500/40 cursor-pointer active:scale-95"
+                  title={isMobile ? "মোবাইলে সেভ করুন" : "কম্পিউটারে প্রিন্ট করুন"}
+                >
+                  {isMobile ? <Download size={14} /> : <Printer size={14} />}
+                  <span>প্রিন্ট/সেভ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveArticle(null)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4 text-sm sm:text-base text-slate-300 leading-relaxed font-normal">
@@ -408,14 +1040,29 @@ export const Blog: React.FC = () => {
               </p>
             </div>
 
-            <div className="pt-2 flex items-center justify-between border-t border-slate-800">
-              <Link
-                to="/login"
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
-              >
-                <span>কেসবুক পোর্টালে যান</span>
-                <ArrowRight size={14} />
-              </Link>
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800">
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/login"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <span>কেসবুক পোর্টালে যান</span>
+                  <ArrowRight size={14} />
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => handlePrintOrSave(activeArticle)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 border border-emerald-400/30"
+                  title={isMobile ? "মোবাইলে সেভ করুন" : "কম্পিউটারে প্রিন্ট করুন"}
+                >
+                  {isMobile ? <Download size={14} /> : <Printer size={14} />}
+                  <span className="font-bold">প্রিন্ট/সেভ</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-200 font-bold border border-emerald-400/30">
+                    {isMobile ? 'সেভ' : 'প্রিন্ট'}
+                  </span>
+                </button>
+              </div>
 
               <button
                 type="button"

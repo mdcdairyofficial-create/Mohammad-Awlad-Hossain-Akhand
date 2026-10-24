@@ -18,11 +18,13 @@ import {
   History,
   CreditCard,
   Briefcase,
-  MessageSquare
+  MessageSquare,
+  X
 } from 'lucide-react';
 import { Case, ChamberAssociate } from '../../../types';
 import { formatCourtNameWithNo } from '../../../constants';
 import { AdBanner } from '../AdBanner';
+import { downloadMonthlyDiaryPdf } from '../../../utils/pdfGenerator';
 
 interface CasesViewProps {
   cases: Case[];
@@ -84,6 +86,10 @@ export const CasesView = ({
   setAssociateFilter
 }: CasesViewProps) => {
   const [selectedDistrict, setSelectedDistrict] = React.useState('all');
+  const [showMonthDownloadModal, setShowMonthDownloadModal] = React.useState(false);
+  const [downloadYear, setDownloadYear] = React.useState(() => new Date().getFullYear());
+  const [downloadMonth, setDownloadMonth] = React.useState(() => new Date().getMonth());
+  const [isDownloadingDiary, setIsDownloadingDiary] = React.useState(false);
   const isClient = userType === 'client';
   const filteredCases = cases.filter(c => {
     const matchesSearch = 
@@ -271,8 +277,14 @@ export const CasesView = ({
               ))}
             </select>
           </div>
-          <button className="ml-auto px-4 py-2 text-indigo-600 text-sm font-bold hover:bg-indigo-50 rounded-xl transition-all flex items-center gap-2">
-            <Download size={16} /> {t('download_report')}
+          <button 
+            type="button"
+            onClick={() => setShowMonthDownloadModal(true)}
+            className="ml-auto px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
+            title={language === 'bn' ? 'নির্দিষ্ট মাসের কোর্ট ডায়েরি সামারি PDF ডাউনলোড করুন' : 'Download Monthly Court Diary PDF'}
+          >
+            <Download size={16} />
+            <span>{language === 'bn' ? 'মাসের ডায়েরি PDF' : t('download_report')}</span>
           </button>
         </div>
       </div>
@@ -558,6 +570,102 @@ export const CasesView = ({
               {t('reset_filters')}
             </button>
           )}
+        </div>
+      )}
+      {/* Month Selection Modal for Court Diary PDF Download */}
+      {showMonthDownloadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl space-y-4 text-slate-800">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📅</span>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  {language === 'bn' ? 'মাসিক কোর্ট ডায়েরি ডাউনলোড' : 'Download Monthly Court Diary'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMonthDownloadModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {language === 'bn' 
+                ? 'যে মাসের কোর্ট ডায়েরি ও শুনানীর বিবরণী PDF ফরম্যাটে ডাউনলোড করতে চান তা নির্বাচন করুন:' 
+                : 'Select the month and year to download your complete court diary report in PDF format:'}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  {language === 'bn' ? 'মাস' : 'Month'}
+                </label>
+                <select
+                  value={downloadMonth}
+                  onChange={(e) => setDownloadMonth(parseInt(e.target.value, 10))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'].map((mName, idx) => (
+                    <option key={idx} value={idx}>{mName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                  {language === 'bn' ? 'বছর' : 'Year'}
+                </label>
+                <select
+                  value={downloadYear}
+                  onChange={(e) => setDownloadYear(parseInt(e.target.value, 10))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {[2024, 2025, 2026, 2027, 2028].map((y) => (
+                    <option key={y} value={y}>{language === 'bn' ? String(y).replace(/[0-9]/g, d => ['০','১','২','৩','৪','৫','৬','৭','৮','৯'][parseInt(d)]) : y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowMonthDownloadModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                disabled={isDownloadingDiary}
+                onClick={async () => {
+                  setIsDownloadingDiary(true);
+                  try {
+                    const currentUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('appUser') || '{}') : {};
+                    await downloadMonthlyDiaryPdf(
+                      cases,
+                      downloadYear,
+                      downloadMonth,
+                      currentUser?.fullName || (language === 'bn' ? 'বিজ্ঞ আইনজীবী' : 'Advocate'),
+                      currentUser?.chamberAddress || (language === 'bn' ? 'এমডিসি কেসবুক চেম্বার' : 'MDC Casebook Chamber')
+                    );
+                    setShowMonthDownloadModal(false);
+                  } catch (e) {
+                    console.error('Download failed:', e);
+                  } finally {
+                    setIsDownloadingDiary(false);
+                  }
+                }}
+                className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+              >
+                <Download size={14} />
+                <span>{isDownloadingDiary ? (language === 'bn' ? 'ডাউনলোড হচ্ছে...' : 'Downloading...') : (language === 'bn' ? 'PDF ডাউনলোড' : 'Download PDF')}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

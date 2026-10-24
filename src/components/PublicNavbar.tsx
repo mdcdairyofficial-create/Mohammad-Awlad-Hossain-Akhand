@@ -38,23 +38,23 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 text-white transition-all">
+    <header className="sticky top-0 z-50 bg-[#060c1d]/95 backdrop-blur-xl border-b border-indigo-950/80 text-white transition-all shadow-xl shadow-black/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="p-1.5 bg-indigo-600/20 border border-indigo-500/30 rounded-xl group-hover:scale-105 transition-transform">
-              <Scale className="text-indigo-400" size={24} />
+            <div className="p-2 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 rounded-2xl shadow-md shadow-indigo-600/30 border border-indigo-400/40 group-hover:scale-105 transition-transform flex items-center justify-center">
+              <Scale className="text-white" size={22} />
             </div>
             <div className="flex flex-col">
               <span className="text-lg sm:text-xl font-black tracking-tight text-white flex items-center gap-1.5">
                 MDC Casebook
-                <span className="text-[10px] uppercase font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 px-1.5 py-0.5 rounded-full">
+                <span className="text-[10px] uppercase font-bold bg-indigo-500/20 text-cyan-300 border border-indigo-400/30 px-1.5 py-0.5 rounded-full">
                   BD
                 </span>
               </span>
-              <span className="text-[10px] text-slate-400 font-semibold tracking-wider">
+              <span className="text-[10px] text-cyan-200/90 font-medium tracking-wide">
                 ডিজিটাল কোর্ট ও মামলার ডায়েরি
               </span>
             </div>
@@ -69,13 +69,13 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
                   key={item.href}
                   to={item.href}
                   onClick={() => handleNavClick(item.href)}
-                  className={`px-3 py-2 rounded-xl text-xs lg:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs lg:text-sm font-bold transition-all flex items-center gap-1.5 ${
                     isActive 
-                      ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-xs' 
+                      ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-md shadow-blue-500/25 border border-indigo-400/30' 
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
                   }`}
                 >
-                  <item.icon size={15} className="opacity-70" />
+                  <item.icon size={15} className={isActive ? 'text-white' : 'text-slate-400'} />
                   {item.label}
                 </Link>
               );
@@ -90,7 +90,7 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               <Link
                 to="/dashboard"
                 onClick={onGoToPortal}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs sm:text-sm font-black shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-full text-xs sm:text-sm font-black shadow-lg shadow-purple-600/30 active:scale-95 transition-all border border-purple-400/30"
               >
                 <span>{language === 'bn' ? 'আমার ড্যাশবোর্ড' : 'My Dashboard'}</span>
                 <ArrowRight size={16} />
@@ -99,9 +99,9 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
               <Link
                 to="/login"
                 onClick={onGoToPortal}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs sm:text-sm font-black shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
+                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white rounded-full text-xs sm:text-sm font-black shadow-lg shadow-purple-600/30 active:scale-95 transition-all border border-purple-400/30"
               >
-                <span>{language === 'bn' ? 'লগইন / পোর্টাল' : 'Login / Portal'}</span>
+                <span>{language === 'bn' ? 'আমার অ্যাকাউন্ট' : 'My Account'}</span>
                 <ArrowRight size={16} />
               </Link>
             )}

@@ -20,7 +20,8 @@ import {
   BookOpen,
   Lock,
   Zap,
-  Globe2
+  Globe2,
+  Rocket
 } from 'lucide-react';
 import { GoogleAdSense } from '../components/GoogleAdSense';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
@@ -31,61 +32,77 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ isLoggedIn = false }) => {
   return (
-    <div className="min-h-screen bg-[#070b19] text-slate-100 selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-[#050a18] text-slate-100 selection:bg-indigo-500 selection:text-white">
       
-      {/* 1. HERO SECTION */}
-      <section className="relative overflow-hidden pt-16 pb-24 sm:pt-28 sm:pb-36 bg-[#070b19] border-b border-slate-800/80">
-        {/* Subtle background glow */}
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] bg-indigo-600/15 rounded-full blur-[150px] pointer-events-none" />
+      {/* 1. HERO SECTION (Custom Designed to Match User Visual) */}
+      <section className="relative overflow-hidden pt-12 pb-20 sm:pt-20 sm:pb-28 bg-[#050a18] border-b border-indigo-950/80">
+        
+        {/* Full Hero Background Theme Design (User Custom Visual Integrated as Section Theme) */}
+        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none">
+          <img
+            src="/hero_theme_bg.jpg"
+            alt="MDC Casebook Hero Theme Background"
+            className="w-full h-full object-cover object-right sm:object-center opacity-75 lg:opacity-85 filter brightness-105 contrast-110"
+          />
+          {/* Multidirectional atmospheric gradient overlays for rich depth and crisp text readability */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#050a18] via-[#050a18]/80 lg:via-[#050a18]/55 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#050a18] via-transparent to-[#050a18]/80" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#050a18]/60 via-transparent to-[#050a18]" />
+        </div>
+
+        {/* Dynamic Curved Aurora Rays Backdrop */}
+        <div className="absolute -top-32 left-1/4 w-[600px] h-[500px] bg-gradient-to-tr from-cyan-500/20 via-blue-600/15 to-purple-600/20 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute top-1/2 right-0 w-[500px] h-[400px] bg-gradient-to-bl from-teal-500/15 via-emerald-500/15 to-transparent rounded-full blur-[120px] pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center min-h-[440px]">
             
-            {/* Left Column: Text & CTAs */}
-            <div className="lg:col-span-7 space-y-8 text-center lg:text-left">
+            {/* Left Column: Text & Action CTAs */}
+            <div className="lg:col-span-8 space-y-7 text-center lg:text-left">
               
-              {/* Pill Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-950/90 border border-indigo-500/40 text-indigo-300 text-xs sm:text-sm font-bold shadow-lg">
-                <Sparkles size={16} className="text-indigo-400 animate-pulse" />
+              {/* Top Pill Badge */}
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0b1733]/90 border border-cyan-400/50 text-cyan-300 text-xs sm:text-sm font-bold shadow-lg shadow-cyan-500/10 backdrop-blur-md">
+                <Sparkles size={16} className="text-cyan-400 animate-pulse" />
                 <span>বাংলাদেশের ডিজিটাল কোর্ট ও মামলার ডায়েরির সবচেয়ে আধুনিক প্ল্যাটফর্ম</span>
               </div>
 
-              {/* Main Headline */}
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black text-white tracking-tight leading-[1.15]">
-                MDC Casebook <br />
-                <span className="bg-gradient-to-r from-[#818cf8] via-[#2dd4bf] to-[#34d399] bg-clip-text text-transparent">
-                  ডিজিটাল কেস ও লিগ্যাল ডায়েরি প্ল্যাটফর্ম
-                </span>
-              </h1>
+              {/* Main Headline - Exact 3-line layout */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-center lg:justify-start gap-3">
+                  <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight bg-gradient-to-r from-[#00f0ff] via-[#38bdf8] to-[#60a5fa] bg-clip-text text-transparent drop-shadow-[0_2px_15px_rgba(0,240,255,0.4)]">
+                    MDC Casebook
+                  </h1>
+                  <span className="text-3xl sm:text-5xl lg:text-6xl select-none">⚖️</span>
+                </div>
+                
+                <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white drop-shadow-md">
+                  ডিজিটাল কেস ও লিগ্যাল
+                </h2>
+                
+                <h2 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight bg-gradient-to-r from-[#10b981] via-[#84cc16] to-[#f59e0b] bg-clip-text text-transparent drop-shadow-[0_2px_15px_rgba(16,185,129,0.35)]">
+                  ডায়েরি প্ল্যাটফর্ম
+                </h2>
+              </div>
 
               {/* Subtitle */}
-              <p className="text-slate-300 text-sm sm:text-base lg:text-lg leading-relaxed font-normal max-w-2xl mx-auto lg:mx-0">
+              <p className="text-slate-200 text-sm sm:text-base lg:text-lg leading-relaxed font-normal max-w-2xl mx-auto lg:mx-0 drop-shadow-sm">
                 বিচার প্রক্রিয়াকে আরও সহজ, স্বচ্ছ এবং ডিজিটাল করার লক্ষ্যে MDC Casebook — যেখানে উকিল, মুহুরী ও ক্লায়েন্ট এক প্ল্যাটফর্ম পান সম্পূর্ণ কেস ম্যানেজমেন্ট এবং ডায়েরি সুবিধা।
               </p>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-2">
-                {isLoggedIn ? (
-                  <Link
-                    to="/dashboard"
-                    className="px-8 py-4 bg-gradient-to-r from-[#a855f7] via-[#ec4899] to-[#3b82f6] hover:opacity-95 text-white font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-pink-500/25 active:scale-95 transition-all flex items-center gap-2"
-                  >
-                    <span>আমার ড্যাশবোর্ডে প্রবেশ করুন</span>
-                    <ArrowRight size={18} />
-                  </Link>
-                ) : (
-                  <Link
-                    to="/login"
-                    className="px-8 py-4 bg-gradient-to-r from-[#9333ea] via-[#c084fc] to-[#3b82f6] hover:opacity-95 text-white font-black text-sm sm:text-base rounded-2xl shadow-xl shadow-purple-600/30 active:scale-95 transition-all flex items-center gap-2"
-                  >
-                    <span>আমার ড্যাশবোর্ডে প্রবেশ করুন</span>
-                    <ArrowRight size={18} />
-                  </Link>
-                )}
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3.5 pt-2">
+                <Link
+                  to={isLoggedIn ? "/dashboard" : "/login"}
+                  className="px-7 py-3.5 bg-gradient-to-r from-[#00d2ff] via-[#3a7bd5] to-[#9333ea] hover:brightness-110 text-white font-black text-sm sm:text-base rounded-full shadow-xl shadow-cyan-500/25 active:scale-95 transition-all flex items-center gap-2.5 border border-cyan-300/40"
+                >
+                  <Rocket size={18} className="text-white" />
+                  <span>{isLoggedIn ? "আমার ড্যাশবোর্ডে প্রবেশ করুন" : "আমার ড্যাশবোর্ডে প্রবেশ করুন"}</span>
+                  <ArrowRight size={18} />
+                </Link>
 
                 <Link
                   to="/track"
-                  className="px-8 py-4 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-bold text-sm sm:text-base rounded-2xl border border-slate-700/80 shadow-md active:scale-95 transition-all flex items-center gap-2"
+                  className="px-6 py-3.5 bg-[#09152b]/90 hover:bg-[#0f2246] text-cyan-200 font-bold text-sm sm:text-base rounded-full border border-sky-500/60 shadow-lg shadow-sky-500/10 active:scale-95 transition-all flex items-center gap-2"
                 >
                   <Search size={18} className="text-sky-400" />
                   <span>মামলা খুঁজুন</span>
@@ -93,69 +110,36 @@ export const LandingPage: React.FC<LandingPageProps> = ({ isLoggedIn = false }) 
 
                 <Link
                   to="/blog"
-                  className="px-8 py-4 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-bold text-sm sm:text-base rounded-2xl border border-slate-700/80 shadow-md active:scale-95 transition-all flex items-center gap-2"
+                  className="px-6 py-3.5 bg-[#09152b]/90 hover:bg-[#0f2246] text-teal-200 font-bold text-sm sm:text-base rounded-full border border-teal-500/60 shadow-lg shadow-teal-500/10 active:scale-95 transition-all flex items-center gap-2"
                 >
-                  <BookOpen size={18} className="text-emerald-400" />
+                  <BookOpen size={18} className="text-teal-400" />
                   <span>আইনি ব্লগ ও টিপস</span>
                 </Link>
               </div>
 
             </div>
 
-            {/* Right Column: 3D Visual Mockup */}
-            <div className="lg:col-span-5 relative flex items-center justify-center">
-              {/* Glowing backdrop */}
-              <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 via-purple-500/20 to-teal-500/25 rounded-3xl blur-2xl -z-10" />
-
-              <div className="relative p-4 rounded-3xl bg-slate-900/80 border border-slate-700/80 shadow-2xl backdrop-blur-xl w-full max-w-lg space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-rose-500 inline-block" />
-                    <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
+            {/* Right Column: Theme Showcase Area (Unboxed, letting the 3D Law & Justice Background Theme shine through seamlessly) */}
+            <div className="hidden lg:flex lg:col-span-4 flex-col items-end justify-center pointer-events-none select-none">
+              <div className="space-y-3 max-w-xs">
+                {/* Subtle Glass Floating Feature Chips */}
+                <div className="p-3.5 rounded-2xl bg-[#09142b]/75 border border-cyan-400/30 backdrop-blur-md shadow-xl shadow-cyan-500/10 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white shadow-md shrink-0">
+                    <Sparkles size={20} />
                   </div>
-                  <span className="text-xs font-mono text-slate-400">mdccasebook.com/dashboard</span>
-                </div>
-
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-indigo-400">মামলার তালিকা (Active Cases)</span>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">লাইভ সিঙ্ক</span>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Scale size={14} className="text-indigo-400" />
-                        <span className="text-slate-200 font-semibold">সি.আর. মামলা - ১০০/২০২৬ (ফৌজদারী)</span>
-                      </div>
-                      <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">তারিখ: কাল</span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Briefcase size={14} className="text-blue-400" />
-                        <span className="text-slate-200 font-semibold">সাধারন মামলা - ৬৮/২০২৬ (দিল্লী)</span>
-                      </div>
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">শুনানি প্রস্তুত</span>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Users size={14} className="text-emerald-400" />
-                        <span className="text-slate-200 font-semibold">দেওয়ানী মামলা - ১২/২০২৬ (ঢাকা)</span>
-                      </div>
-                      <span className="text-[10px] bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full font-bold">রায় প্রাপ্ত</span>
-                    </div>
+                  <div>
+                    <div className="text-xs font-bold text-cyan-300">স্মার্ট কেসবুক সিস্টেম</div>
+                    <div className="text-[11px] text-slate-300 leading-tight">ডিজিটাল কজলিস্ট ও কোর্ট ডায়েরি</div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-center">
-                  <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/20">
-                    <div className="text-lg font-black text-indigo-400">৬৪ জেলা</div>
-                    <div className="text-[11px] text-slate-400">কোর্ট অন্তর্ভুক্ত</div>
+                <div className="p-3.5 rounded-2xl bg-[#09142b]/75 border border-emerald-400/30 backdrop-blur-md shadow-xl shadow-emerald-500/10 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white shadow-md shrink-0">
+                    <ShieldCheck size={20} />
                   </div>
-                  <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/20">
-                    <div className="text-lg font-black text-emerald-400">২৪/৭</div>
-                    <div className="text-[11px] text-slate-400">ক্লাউড সিকিউরিটি</div>
+                  <div>
+                    <div className="text-xs font-bold text-emerald-300">নিরাপদ ক্লাউড ব্যাকআপ</div>
+                    <div className="text-[11px] text-slate-300 leading-tight">মামলার যাবতীয় নথিপত্রের সুরক্ষা</div>
                   </div>
                 </div>
               </div>
@@ -163,23 +147,61 @@ export const LandingPage: React.FC<LandingPageProps> = ({ isLoggedIn = false }) 
 
           </div>
 
-          {/* Trust Badges Bar */}
-          <div className="mt-16 pt-8 border-t border-slate-800/80 grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
-            <div className="flex items-center justify-center gap-2.5 p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
-              <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-              <span className="text-xs sm:text-sm text-slate-200 font-bold">নিরাপদ ও নির্ভরযোগ্য ক্লাউড সিস্টেম</span>
+          {/* Bottom 4 Feature Bar (Exact layout from image bottom container) */}
+          <div className="mt-14 p-4 sm:p-6 rounded-[2rem] bg-[#09142b]/85 border border-indigo-900/60 backdrop-blur-xl shadow-2xl shadow-black/40">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+              
+              {/* Feature 1 */}
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-[#0e1c3b]/60 border border-slate-800/80 hover:border-emerald-500/40 transition-colors">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-green-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-500/20">
+                  <ShieldCheck size={24} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">নিরাপদ ও নির্ভরযোগ্য</h4>
+                  <p className="text-xs text-slate-400">ক্লাউড সিস্টেম (সুপ্রাবেস/ফায়ারবেস)</p>
+                </div>
+              </div>
+
+              {/* Feature 2 */}
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-[#0e1c3b]/60 border border-slate-800/80 hover:border-purple-500/40 transition-colors">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-purple-500/20">
+                  <Zap size={24} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">দ্রুত ও সহজ ব্যবহার</h4>
+                  <p className="text-xs text-slate-400">স্মার্ট ইন্টারফেস, মোবাইল-ফ্রেন্ডলি</p>
+                </div>
+              </div>
+
+              {/* Feature 3 */}
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-[#0e1c3b]/60 border border-slate-800/80 hover:border-cyan-500/40 transition-colors">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-500/20">
+                  <Users size={24} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">উকিল, মুহুরী ও ক্লায়েন্ট</h4>
+                  <p className="text-xs text-slate-400">একই প্ল্যাটফর্মে একসাথে</p>
+                </div>
+              </div>
+
+              {/* Feature 4 */}
+              <div className="flex items-center gap-3.5 p-3 rounded-2xl bg-[#0e1c3b]/60 border border-slate-800/80 hover:border-amber-500/40 transition-colors">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-amber-500/20">
+                  <FileText size={24} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">ডিজিটাল ডকুমেন্ট ম্যানেজমেন্ট</h4>
+                  <p className="text-xs text-slate-400">ছবি আপলোড ➔ PDF ➔ ক্লাউড সংরক্ষণ</p>
+                </div>
+              </div>
+
             </div>
-            <div className="flex items-center justify-center gap-2.5 p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
-              <Zap size={20} className="text-indigo-400 shrink-0" />
-              <span className="text-xs sm:text-sm text-slate-200 font-bold">দ্রুত ও সহজ ব্যবহার (মোবাইল-ফ্রেন্ডলি)</span>
-            </div>
-            <div className="flex items-center justify-center gap-2.5 p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
-              <Users size={20} className="text-sky-400 shrink-0" />
-              <span className="text-xs sm:text-sm text-slate-200 font-bold">উকিল, মুহুরী ও ক্লায়েন্ট এক প্ল্যাটফর্মে</span>
-            </div>
-            <div className="flex items-center justify-center gap-2.5 p-3 rounded-2xl bg-slate-900/60 border border-slate-800">
-              <FileText size={20} className="text-amber-400 shrink-0" />
-              <span className="text-xs sm:text-sm text-slate-200 font-bold">ডিজিটাল ডকুমেন্ট ও ক্লাউড সংরক্ষণ</span>
+
+            {/* Smart Bangladesh Strip */}
+            <div className="mt-5 pt-4 border-t border-indigo-950/80 text-center flex items-center justify-center gap-3 text-xs sm:text-sm font-bold text-cyan-300/80">
+              <span className="w-12 h-[1px] bg-gradient-to-r from-transparent to-cyan-400/50" />
+              <span>স্মার্ট আইন সেবা &nbsp;|&nbsp; ডিজিটাল বাংলাদেশ</span>
+              <span className="w-12 h-[1px] bg-gradient-to-l from-transparent to-cyan-400/50" />
             </div>
           </div>
 

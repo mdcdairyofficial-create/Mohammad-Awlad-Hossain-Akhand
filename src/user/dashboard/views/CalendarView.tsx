@@ -50,6 +50,7 @@ import { Case, CaseHistoryEntry, isCaseOnDate } from '../../../types';
 import { updateCase } from '../../../services/user/featureService';
 import { uploadFile, getPublicUrl } from '../../../lib/storage';
 import { getMagicCaseTrackUrl } from '../../cases/WhatsAppPhoneHelper';
+import { downloadMonthlyDiaryPdf } from '../../../utils/pdfGenerator';
 
 // Helper to auto-crop, resize and compress images for minimal data usage
 export const processAndCompressImage = (
@@ -4924,6 +4925,28 @@ export const CalendarView = ({
               className="p-1.5 hover:bg-white rounded-lg transition-all border border-transparent hover:border-slate-200 text-slate-400 hover:text-indigo-600"
             >
               <ChevronRight size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const currentUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('appUser') || '{}') : {};
+                  await downloadMonthlyDiaryPdf(
+                    cases,
+                    currentMonth.getFullYear(),
+                    currentMonth.getMonth(),
+                    currentUser?.fullName || (language === 'bn' ? 'বিজ্ঞ আইনজীবী' : 'Advocate'),
+                    currentUser?.chamberAddress || (language === 'bn' ? 'এমডিসি কেসবুক চেম্বার' : 'MDC Casebook Chamber')
+                  );
+                } catch (e) {
+                  console.error('Monthly diary download failed:', e);
+                }
+              }}
+              className="px-2.5 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg text-[9.5px] sm:text-[11px] font-black transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer ml-1.5"
+              title={language === 'bn' ? 'এই চলতি মাসের কোর্ট ডায়েরির পূর্ণাঙ্গ সামারি PDF ডাউনলোড করুন' : 'Download Monthly Court Diary Summary PDF'}
+            >
+              <Download size={13} />
+              <span>{language === 'bn' ? 'মাসের ডায়েরি PDF' : 'Month Diary PDF'}</span>
             </button>
           </div>
         </div>
