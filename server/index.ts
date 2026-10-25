@@ -2831,14 +2831,160 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
     }
   });
 
+  // User Profile Update Endpoint
+  app.put("/api/users/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body || {};
+      const usersRef = db.collection("users");
+
+      let userDoc: any = null;
+      try {
+        const directDoc = await usersRef.doc(id).get();
+        if (directDoc.exists) userDoc = directDoc;
+      } catch (_) {}
+
+      if (!userDoc) {
+        const s = await usersRef.where("firebase_uid", "==", id).limit(1).get();
+        if (!s.empty) userDoc = s.docs[0];
+      }
+
+      const payload: any = {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      };
+
+      if (userDoc && userDoc.exists) {
+        await userDoc.ref.set(payload, { merge: true });
+        
+        // If authorized clerks are provided, sync to authorized_clerks collection
+        const lawyerName = updates.fullName || updates.name || userDoc.data()?.fullName || userDoc.data()?.name || '';
+        const lawyerMobile = updates.mobile || userDoc.data()?.mobile || '';
+        const lawyerDistrict = updates.district || userDoc.data()?.district || '';
+
+        if (updates.authorizedClerk1Mobile) {
+          const raw1 = String(updates.authorizedClerk1Mobile).replace(/[^0-9]/g, '');
+          const std1 = raw1.length === 10 && !raw1.startsWith('0') ? '0' + raw1 : (raw1.startsWith('880') ? raw1.substring(2) : raw1);
+          if (std1) {
+            await db.collection("authorized_clerks").doc(std1).set({
+              clerkMobile: updates.authorizedClerk1Mobile,
+              clerkName: updates.authorizedClerk1Name || '',
+              lawyerUid: userDoc.id,
+              lawyerName,
+              lawyerMobile,
+              lawyerDistrict,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        }
+
+        if (updates.authorizedClerk2Mobile) {
+          const raw2 = String(updates.authorizedClerk2Mobile).replace(/[^0-9]/g, '');
+          const std2 = raw2.length === 10 && !raw2.startsWith('0') ? '0' + raw2 : (raw2.startsWith('880') ? raw2.substring(2) : raw2);
+          if (std2) {
+            await db.collection("authorized_clerks").doc(std2).set({
+              clerkMobile: updates.authorizedClerk2Mobile,
+              clerkName: updates.authorizedClerk2Name || '',
+              lawyerUid: userDoc.id,
+              lawyerName,
+              lawyerMobile,
+              lawyerDistrict,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        }
+
+        return res.json({ success: true, message: "Profile updated successfully" });
+      }
+
+      await usersRef.doc(id).set({
+        ...payload,
+        created_at: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      res.json({ success: true, message: "Profile created and saved" });
+    } catch (err: any) {
+      console.error("Error updating user profile:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Lookup authorized lawyer for a clerk
+  app.get("/api/clerk/authorized-lawyer", async (req, res) => {
+    try {
+      const { mobile } = req.query;
+      if (!mobile) return res.status(400).json({ error: "Mobile number is required" });
+
+      const raw = String(mobile).replace(/[^0-9]/g, '');
+      const clean = raw.startsWith('880') ? raw.substring(2) : (raw.startsWith('88') ? raw.substring(2) : raw);
+      const std11 = clean.length === 10 && !clean.startsWith('0') ? '0' + clean : clean;
+      const std10 = std11.startsWith('0') ? std11.substring(1) : std11;
+
+      // 1. Check authorized_clerks direct document
+      const authClerksRef = db.collection("authorized_clerks");
+      const docSnap = await authClerksRef.doc(std11).get();
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        if (data && data.lawyerName) {
+          return res.json({
+            found: true,
+            lawyer: {
+              name: data.lawyerName,
+              mobile: data.lawyerMobile,
+              district: data.lawyerDistrict || '',
+              uid: data.lawyerUid || ''
+            }
+          });
+        }
+      }
+
+      // 2. Query users collection for lawyer who specified this clerk mobile
+      const usersRef = db.collection("users");
+      const queries = [
+        usersRef.where("authorizedClerk1Mobile", "==", std11).limit(1).get(),
+        usersRef.where("authorizedClerk2Mobile", "==", std11).limit(1).get(),
+        usersRef.where("authorizedClerk1Mobile", "==", std10).limit(1).get(),
+        usersRef.where("authorizedClerk2Mobile", "==", std10).limit(1).get()
+      ];
+      const results = await Promise.all(queries);
+      for (const snap of results) {
+        if (!snap.empty) {
+          const lDoc = snap.docs[0];
+          const lData = lDoc.data();
+          return res.json({
+            found: true,
+            lawyer: {
+              name: lData.fullName || lData.name || '',
+              mobile: lData.mobile || '',
+              district: lData.district || '',
+              uid: lDoc.id
+            }
+          });
+        }
+      }
+
+      res.json({ found: false });
+    } catch (err: any) {
+      console.error("Error looking up authorized lawyer for clerk:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Search users / lawyers by phone or query
   app.get("/api/users/search", async (req, res) => {
     try {
       const { mobile, type, district } = req.query;
       const usersRef = db.collection("users");
       let query: any = usersRef;
 
+      let cleanMob = mobile ? String(mobile).replace(/[^0-9]/g, '') : '';
+      if (cleanMob.startsWith('880')) cleanMob = cleanMob.substring(2);
+      else if (cleanMob.startsWith('88')) cleanMob = cleanMob.substring(2);
+      const std11 = cleanMob.length === 10 && !cleanMob.startsWith('0') ? '0' + cleanMob : cleanMob;
+      const std10 = std11.startsWith('0') ? std11.substring(1) : std11;
+
       if (mobile) {
-        query = query.where("mobile", "==", mobile);
+        query = query.where("mobile", "in", [mobile, std11, std10, `+88${std11}`, `88${std11}`].filter(Boolean));
       }
       if (type) {
         query = query.where("user_type", "==", type);
@@ -2847,17 +2993,46 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
         query = query.where("district", "==", district);
       }
 
-      const snapshot = await query.limit(50).get();
-      const users = snapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        name: doc.data().name,
-        mobile: doc.data().mobile,
-        user_type: doc.data().user_type,
-        district: doc.data().district,
-        profile_picture: doc.data().profile_picture
-      }));
+      let snapshot = await query.limit(50).get();
 
-      res.json({ success: true, users });
+      // If no docs and type was passed, retry with userType field
+      if (snapshot.empty && type) {
+        let fallbackQuery: any = usersRef;
+        if (mobile) {
+          fallbackQuery = fallbackQuery.where("mobile", "in", [mobile, std11, std10, `+88${std11}`, `88${std11}`].filter(Boolean));
+        }
+        fallbackQuery = fallbackQuery.where("userType", "==", type);
+        snapshot = await fallbackQuery.limit(50).get();
+      }
+
+      // If still empty and mobile was passed, try exact match without type filter
+      if (snapshot.empty && mobile) {
+        snapshot = await usersRef.where("mobile", "==", mobile).limit(10).get();
+      }
+      if (snapshot.empty && std11) {
+        snapshot = await usersRef.where("mobile", "==", std11).limit(10).get();
+      }
+
+      const users = snapshot.docs.map((doc: any) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          name: d.fullName || d.name || '',
+          mobile: d.mobile || '',
+          user_type: d.user_type || d.userType || '',
+          district: d.district || '',
+          profile_picture: d.profile_picture || null
+        };
+      });
+
+      const first = users[0];
+      res.json({
+        success: true,
+        users,
+        user: first || null,
+        name: first ? first.name : undefined,
+        mobile: first ? first.mobile : undefined
+      });
     } catch (error: any) {
       res.status(500).json({ error: "সার্ভার এরর: " + error.message });
     }
@@ -2984,65 +3159,104 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       const user = req.profile;
       if (!user) return res.status(401).json({ error: "Unauthorized" });
       const userId = user.id;
+      const firebaseUid = user.firebase_uid || user.firebaseUid;
 
-      // 1. Fetch cases created by this user
-      const casesSnapshot = await db.collection("cases")
-        .where("user_id", "==", userId)
-        .get();
+      // 1. Fetch cases created by this user (check both userId and firebaseUid)
+      const casesMap = new Map<string, any>();
 
-      let cases = casesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (userId) {
+        const snap1 = await db.collection("cases").where("user_id", "==", userId).get();
+        snap1.docs.forEach(doc => casesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+      }
+
+      if (firebaseUid && firebaseUid !== userId) {
+        const snap2 = await db.collection("cases").where("user_id", "==", firebaseUid).get();
+        snap2.docs.forEach(doc => casesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+
+        const snap3 = await db.collection("cases").where("creator_uid", "==", firebaseUid).get();
+        snap3.docs.forEach(doc => casesMap.set(doc.id, { id: doc.id, ...doc.data() }));
+      }
+
+      let cases = Array.from(casesMap.values());
 
       // 2. Fetch cases synced to user's wallet/screen
       try {
-        const syncedSnapshot = await db.collection("cases")
-          .where("synced_by_users", "array-contains", userId)
-          .get();
-        
-        syncedSnapshot.docs.forEach(doc => {
-          const syncedData = { id: doc.id, ...doc.data() };
-          if (!cases.some(existing => existing.id === syncedData.id)) {
-            cases.push(syncedData);
-          }
-        });
+        if (userId) {
+          const syncedSnapshot = await db.collection("cases")
+            .where("synced_by_users", "array-contains", userId)
+            .get();
+          
+          syncedSnapshot.docs.forEach(doc => {
+            const syncedData = { id: doc.id, ...doc.data() };
+            if (!cases.some(existing => existing.id === syncedData.id)) {
+              cases.push(syncedData);
+            }
+          });
+        }
+        if (firebaseUid && firebaseUid !== userId) {
+          const syncedSnapshot2 = await db.collection("cases")
+            .where("synced_by_users", "array-contains", firebaseUid)
+            .get();
+          
+          syncedSnapshot2.docs.forEach(doc => {
+            const syncedData = { id: doc.id, ...doc.data() };
+            if (!cases.some(existing => existing.id === syncedData.id)) {
+              cases.push(syncedData);
+            }
+          });
+        }
       } catch (err) {
         console.warn("[Cases Sync Query Warning]", err);
       }
 
-      if (user.user_type === 'client') {
-        if (user.mobile) {
-          const cleanMobile = String(user.mobile).replace(/[^0-9]/g, '');
-          const bdMobile = cleanMobile.startsWith('880') ? '0' + cleanMobile.substring(3) : (cleanMobile.startsWith('88') && cleanMobile.length === 13 ? '0' + cleanMobile.substring(2) : cleanMobile);
-          try {
-            const allCasesSnap = await db.collection("cases").limit(100).get();
-            allCasesSnap.docs.forEach(docSnap => {
-              const c = { id: docSnap.id, ...docSnap.data() } as any;
-              if (!cases.some(existing => existing.id === c.id)) {
-                const petMob = String(c.petitionerMobile || '').replace(/[^0-9]/g, '');
-                const resMob = String(c.respondentMobile || '').replace(/[^0-9]/g, '');
-                const inPetDetails = Array.isArray(c.petitionerDetails) && c.petitionerDetails.some((p: any) => p && p.phone && String(p.phone).replace(/[^0-9]/g, '').includes(bdMobile));
-                const inResDetails = Array.isArray(c.respondentDetails) && c.respondentDetails.some((r: any) => r && r.phone && String(r.phone).replace(/[^0-9]/g, '').includes(bdMobile));
-                if ((petMob && petMob.includes(bdMobile)) || (resMob && resMob.includes(bdMobile)) || inPetDetails || inResDetails) {
-                  cases.push(c);
-                }
+      if (user.mobile) {
+        const cleanMobile = String(user.mobile).replace(/[^0-9]/g, '');
+        const bdMobile = cleanMobile.startsWith('880') ? '0' + cleanMobile.substring(3) : (cleanMobile.startsWith('88') && cleanMobile.length === 13 ? '0' + cleanMobile.substring(2) : cleanMobile);
+        try {
+          const allCasesSnap = await db.collection("cases").limit(200).get();
+          allCasesSnap.docs.forEach(docSnap => {
+            const c = { id: docSnap.id, ...docSnap.data() } as any;
+            if (!cases.some(existing => existing.id === c.id)) {
+              const petMob = String(c.petitionerMobile || '').replace(/[^0-9]/g, '');
+              const resMob = String(c.respondentMobile || '').replace(/[^0-9]/g, '');
+              const creatorMob = String(c.creator_mobile || c.user_mobile || '').replace(/[^0-9]/g, '');
+              const petLawyerMob = String(c.petitionerLawyerMobile || '').replace(/[^0-9]/g, '');
+              const resLawyerMob = String(c.respondentLawyerMobile || '').replace(/[^0-9]/g, '');
+              const petClerkMob = String(c.petitionerClerkMobile || '').replace(/[^0-9]/g, '');
+              const resClerkMob = String(c.respondentClerkMobile || '').replace(/[^0-9]/g, '');
+              const inPetDetails = Array.isArray(c.petitionerDetails) && c.petitionerDetails.some((p: any) => p && p.phone && String(p.phone).replace(/[^0-9]/g, '').includes(bdMobile));
+              const inResDetails = Array.isArray(c.respondentDetails) && c.respondentDetails.some((r: any) => r && r.phone && String(r.phone).replace(/[^0-9]/g, '').includes(bdMobile));
+              if (
+                (petMob && petMob.includes(bdMobile)) || 
+                (resMob && resMob.includes(bdMobile)) || 
+                (creatorMob && creatorMob.includes(bdMobile)) ||
+                (petLawyerMob && petLawyerMob.includes(bdMobile)) ||
+                (resLawyerMob && resLawyerMob.includes(bdMobile)) ||
+                (petClerkMob && petClerkMob.includes(bdMobile)) ||
+                (resClerkMob && resClerkMob.includes(bdMobile)) ||
+                inPetDetails || 
+                inResDetails
+              ) {
+                cases.push(c);
               }
-            });
-          } catch (mobQueryErr) {
-            console.warn("[Client Cases Query Error]", mobQueryErr);
-          }
+            }
+          });
+        } catch (mobQueryErr) {
+          console.warn("[Cases Mobile Query Error]", mobQueryErr);
         }
+      }
 
-        if (user.district) {
-          const publicCasesSnapshot = await db.collection("cases")
-            .where("visibility", "==", "public")
-            .where("district", "==", user.district)
-            .get();
+      if (user.district) {
+        const publicCasesSnapshot = await db.collection("cases")
+          .where("visibility", "==", "public")
+          .where("district", "==", user.district)
+          .get();
 
-          const publicCases = publicCasesSnapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(c => !cases.find(existing => existing.id === c.id));
+        const publicCases = publicCasesSnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(c => !cases.find(existing => existing.id === c.id));
 
-          cases = [...cases, ...publicCases];
-        }
+        cases = [...cases, ...publicCases];
       }
 
       res.json(cases);

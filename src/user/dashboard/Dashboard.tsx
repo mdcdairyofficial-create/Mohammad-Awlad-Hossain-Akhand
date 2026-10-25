@@ -72,7 +72,9 @@ import {
   Printer,
   Unlock,
   Upload,
-  UserCheck
+  UserCheck,
+  Save,
+  Check
 } from 'lucide-react';
 import { auth, db } from '../../firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
@@ -1724,12 +1726,39 @@ export default function Dashboard({
   const normalizedUserMobile = normalizeMobile(userMobile);
 
   const isUserAssociatedWithCase = (c: Case) => {
-    // 1. Created by current user -> always visible
-    const isCreatedByUser = (c.user_id !== undefined && c.user_id !== null && c.user_id !== '') && (
-      (userId !== undefined && userId !== null && String(userId) !== '' && String(c.user_id) === String(userId)) || 
-      (firebaseUid !== undefined && firebaseUid !== null && firebaseUid !== '' && String(c.user_id) === String(firebaseUid))
+    // 1. Created by current user -> always visible across devices & accounts
+    const caseUidStr = c.user_id !== undefined && c.user_id !== null ? String(c.user_id) : '';
+    const creatorUidStr = (c as any).creator_uid ? String((c as any).creator_uid) : '';
+    const creatorUserIdStr = (c as any).creator_user_id ? String((c as any).creator_user_id) : '';
+    const caseUserMobile = (c as any).user_mobile ? normalizeMobile((c as any).user_mobile) : '';
+    const caseCreatorMobile = (c as any).creator_mobile ? normalizeMobile((c as any).creator_mobile) : '';
+    const caseEmail = (c as any).creator_email || (c as any).user_email;
+
+    const isCreatedByUser = (
+      (caseUidStr && (
+        (userId !== undefined && userId !== null && String(userId) !== '' && caseUidStr === String(userId)) || 
+        (firebaseUid !== undefined && firebaseUid !== null && firebaseUid !== '' && caseUidStr === String(firebaseUid))
+      )) ||
+      (creatorUidStr && firebaseUid && creatorUidStr === String(firebaseUid)) ||
+      (creatorUserIdStr && userId && creatorUserIdStr === String(userId)) ||
+      (normalizedUserMobile && ((caseUserMobile && caseUserMobile === normalizedUserMobile) || (caseCreatorMobile && caseCreatorMobile === normalizedUserMobile))) ||
+      (userEmail && caseEmail && String(caseEmail).toLowerCase() === userEmail.toLowerCase())
     );
     if (isCreatedByUser) return true;
+
+    // Check all accounts associated with this same phone number
+    if (myAccounts && myAccounts.length > 0) {
+      const matchInAccounts = myAccounts.some(acc => {
+        if (!acc) return false;
+        const accId = acc.id ? String(acc.id) : '';
+        const accUid = acc.firebaseUid ? String(acc.firebaseUid) : '';
+        return (
+          (accId && (caseUidStr === accId || creatorUserIdStr === accId)) ||
+          (accUid && (caseUidStr === accUid || creatorUidStr === accUid))
+        );
+      });
+      if (matchInAccounts) return true;
+    }
 
     // Helper to check mobile array or string field
     const checkMobileMatch = (field?: string | string[] | null) => {
@@ -1763,6 +1792,15 @@ export default function Dashboard({
       if (c.respondentDetails && Array.isArray(c.respondentDetails)) {
         if (c.respondentDetails.some(r => r && r.phone && normalizeMobile(r.phone) === normalizedUserMobile)) return true;
       }
+    }
+
+    // Check lawyer / clerk name match
+    if (userName && (currentViewMode === 'lawyer' || currentViewMode === 'clerk')) {
+      const cleanName = userName.trim().toLowerCase();
+      if (c.petitionerLawyer && c.petitionerLawyer.trim().toLowerCase() === cleanName) return true;
+      if (c.respondentLawyer && c.respondentLawyer.trim().toLowerCase() === cleanName) return true;
+      if (c.petitionerClerk && c.petitionerClerk.trim().toLowerCase() === cleanName) return true;
+      if (c.respondentClerk && c.respondentClerk.trim().toLowerCase() === cleanName) return true;
     }
 
     // 3. Check synced_by_users list
@@ -1812,7 +1850,14 @@ export default function Dashboard({
     }
     _setSelectedCaseForCard(c);
   };
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(() => {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  });
+
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
   const [calendarSearchQuery, setCalendarSearchQuery] = useState('');
@@ -1888,6 +1933,30 @@ export default function Dashboard({
             setChamberAddress(data.chamberAddress);
             safeSetItem(`chamber_address_${firebaseUid}`, data.chamberAddress);
           }
+          if (data.authorizedClerk1Name !== undefined) {
+            setAuthorizedClerk1Name(data.authorizedClerk1Name);
+            safeSetItem(`auth_clerk1_name_${firebaseUid}`, data.authorizedClerk1Name);
+          }
+          if (data.authorizedClerk1Mobile !== undefined) {
+            setAuthorizedClerk1Mobile(data.authorizedClerk1Mobile);
+            safeSetItem(`auth_clerk1_mobile_${firebaseUid}`, data.authorizedClerk1Mobile);
+          }
+          if (data.authorizedClerk2Name !== undefined) {
+            setAuthorizedClerk2Name(data.authorizedClerk2Name);
+            safeSetItem(`auth_clerk2_name_${firebaseUid}`, data.authorizedClerk2Name);
+          }
+          if (data.authorizedClerk2Mobile !== undefined) {
+            setAuthorizedClerk2Mobile(data.authorizedClerk2Mobile);
+            safeSetItem(`auth_clerk2_mobile_${firebaseUid}`, data.authorizedClerk2Mobile);
+          }
+          if (data.sponsorName !== undefined) {
+            setSponsorName(data.sponsorName);
+            safeSetItem(`sponsor_name_${firebaseUid}`, data.sponsorName);
+          }
+          if (data.sponsorMobile !== undefined) {
+            setSponsorMobile(data.sponsorMobile);
+            safeSetItem(`sponsor_mobile_${firebaseUid}`, data.sponsorMobile);
+          }
         }
       } catch (e: any) {
         // Fallback to local storage
@@ -1900,6 +1969,18 @@ export default function Dashboard({
           if (cachedName) setChamberName(cachedName);
           const cachedAddr = safeGetItem(`chamber_address_${firebaseUid}`);
           if (cachedAddr) setChamberAddress(cachedAddr);
+          const c1n = safeGetItem(`auth_clerk1_name_${firebaseUid}`);
+          if (c1n) setAuthorizedClerk1Name(c1n);
+          const c1m = safeGetItem(`auth_clerk1_mobile_${firebaseUid}`);
+          if (c1m) setAuthorizedClerk1Mobile(c1m);
+          const c2n = safeGetItem(`auth_clerk2_name_${firebaseUid}`);
+          if (c2n) setAuthorizedClerk2Name(c2n);
+          const c2m = safeGetItem(`auth_clerk2_mobile_${firebaseUid}`);
+          if (c2m) setAuthorizedClerk2Mobile(c2m);
+          const sName = safeGetItem(`sponsor_name_${firebaseUid}`);
+          if (sName) setSponsorName(sName);
+          const sMob = safeGetItem(`sponsor_mobile_${firebaseUid}`);
+          if (sMob) setSponsorMobile(sMob);
         } catch {}
 
         if (e?.message?.includes('Quota exceeded') || e?.code === 'resource-exhausted') {
@@ -2073,6 +2154,38 @@ export default function Dashboard({
     twitter: ''
   });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // Authorized Clerks (Two clerks authorized by Lawyer)
+  const [authorizedClerk1Name, setAuthorizedClerk1Name] = useState(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) return localStorage.getItem(`auth_clerk1_name_${uid}`) || '';
+    } catch (e) {}
+    return '';
+  });
+  const [authorizedClerk1Mobile, setAuthorizedClerk1Mobile] = useState(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) return localStorage.getItem(`auth_clerk1_mobile_${uid}`) || '';
+    } catch (e) {}
+    return '';
+  });
+  const [authorizedClerk2Name, setAuthorizedClerk2Name] = useState(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) return localStorage.getItem(`auth_clerk2_name_${uid}`) || '';
+    } catch (e) {}
+    return '';
+  });
+  const [authorizedClerk2Mobile, setAuthorizedClerk2Mobile] = useState(() => {
+    try {
+      const uid = initialFirebaseUid || auth.currentUser?.uid || null;
+      if (uid) return localStorage.getItem(`auth_clerk2_mobile_${uid}`) || '';
+    } catch (e) {}
+    return '';
+  });
+  const [isSavingAuthorizedClerks, setIsSavingAuthorizedClerks] = useState(false);
+  const [authorizedClerksSavedMsg, setAuthorizedClerksSavedMsg] = useState(false);
   
   // Password Change state
   const [newPassword, setNewPassword] = useState('');
@@ -2418,7 +2531,7 @@ export default function Dashboard({
     const d = String(today.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   };
-  const casesForDisplay = showAllCases ? visibleCases : visibleCases.filter(c => c && c.nextDate === getRenderTodayStr());
+  const casesForDisplay = showAllCases ? visibleCases : visibleCases.filter(c => c && isCaseOnDate(c, getRenderTodayStr()));
 
   const [lastDeletedCase, setLastDeletedCase] = useState<Case | null>(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -3088,7 +3201,15 @@ export default function Dashboard({
     const isRespondent = isUserRespondent(caseData as Case);
     const currentSide = isPetitioner ? 'petitioner' : isRespondent ? 'respondent' : undefined;
 
-    let finalCaseData = { ...caseData, user_id: firebaseUid || String(userId) };
+    let finalCaseData = { 
+      ...caseData, 
+      user_id: firebaseUid || String(userId),
+      user_mobile: userMobile || (caseData as any).user_mobile || '',
+      creator_mobile: userMobile || (caseData as any).creator_mobile || '',
+      creator_email: userEmail || (caseData as any).creator_email || '',
+      creator_uid: firebaseUid || (caseData as any).creator_uid || '',
+      creator_user_id: String(userId || (caseData as any).creator_user_id || '')
+    };
 
     try {
       if (editingCase && editingCase.id) {
@@ -5215,6 +5336,198 @@ export default function Dashboard({
                                   </div>
                                 </div>
                               )}
+
+                              {currentViewMode === 'lawyer' && (
+                                <div className="pt-5 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Briefcase size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                        <span>{language === 'bn' ? 'অনুমোদিত মুহুরী (সর্বোচ্চ ২ জন)' : 'Authorized Clerks (Max 2)'}</span>
+                                      </p>
+                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                        {language === 'bn'
+                                          ? 'এখানে যাদের নাম ও মোবাইল নম্বর এন্ট্রি করা থাকবে, তারা যেকোনো মামলা এন্ট্রি করার সময় আপনার নাম ও নম্বর যুক্ত করার স্বয়ংক্রিয় অনুমতি পাবেন।'
+                                          : 'Clerks entered here will receive automatic prompt to link your name & number when entering any case.'}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                                      {authorizedClerksSavedMsg && (
+                                        <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 animate-in fade-in">
+                                          <CheckCircle2 size={12} /> {language === 'bn' ? 'সংরক্ষিত হয়েছে' : 'Saved'}
+                                        </span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          setIsSavingAuthorizedClerks(true);
+                                          try {
+                                            const docId = firebaseUid || String(userId);
+                                            await setDoc(doc(db, 'users', docId), {
+                                              authorizedClerk1Name,
+                                              authorizedClerk1Mobile,
+                                              authorizedClerk2Name,
+                                              authorizedClerk2Mobile,
+                                              authorizedClerks: [
+                                                ...(authorizedClerk1Mobile ? [{ name: authorizedClerk1Name, mobile: authorizedClerk1Mobile }] : []),
+                                                ...(authorizedClerk2Mobile ? [{ name: authorizedClerk2Name, mobile: authorizedClerk2Mobile }] : [])
+                                              ],
+                                              updatedAt: new Date().toISOString()
+                                            }, { merge: true });
+
+                                            // Sync clerk 1 to authorized_clerks
+                                            if (authorizedClerk1Mobile) {
+                                              const raw1 = authorizedClerk1Mobile.replace(/[^0-9]/g, '');
+                                              const std1 = raw1.length === 10 && !raw1.startsWith('0') ? '0' + raw1 : (raw1.startsWith('880') ? raw1.substring(2) : raw1);
+                                              if (std1) {
+                                                await setDoc(doc(db, 'authorized_clerks', std1), {
+                                                  clerkMobile: authorizedClerk1Mobile,
+                                                  clerkName: authorizedClerk1Name,
+                                                  lawyerUid: docId,
+                                                  lawyerName: editName || userName,
+                                                  lawyerMobile: editMobile || userMobile,
+                                                  lawyerDistrict: editDistrict || userDistrict,
+                                                  updatedAt: new Date().toISOString()
+                                                }, { merge: true });
+                                              }
+                                            }
+
+                                            // Sync clerk 2 to authorized_clerks
+                                            if (authorizedClerk2Mobile) {
+                                              const raw2 = authorizedClerk2Mobile.replace(/[^0-9]/g, '');
+                                              const std2 = raw2.length === 10 && !raw2.startsWith('0') ? '0' + raw2 : (raw2.startsWith('880') ? raw2.substring(2) : raw2);
+                                              if (std2) {
+                                                await setDoc(doc(db, 'authorized_clerks', std2), {
+                                                  clerkMobile: authorizedClerk2Mobile,
+                                                  clerkName: authorizedClerk2Name,
+                                                  lawyerUid: docId,
+                                                  lawyerName: editName || userName,
+                                                  lawyerMobile: editMobile || userMobile,
+                                                  lawyerDistrict: editDistrict || userDistrict,
+                                                  updatedAt: new Date().toISOString()
+                                                }, { merge: true });
+                                              }
+                                            }
+
+                                            safeSetItem(`auth_clerk1_name_${docId}`, authorizedClerk1Name);
+                                            safeSetItem(`auth_clerk1_mobile_${docId}`, authorizedClerk1Mobile);
+                                            safeSetItem(`auth_clerk2_name_${docId}`, authorizedClerk2Name);
+                                            safeSetItem(`auth_clerk2_mobile_${docId}`, authorizedClerk2Mobile);
+
+                                            try {
+                                              await fetchWithAuth(`/api/users/${userId}`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                  authorizedClerk1Name,
+                                                  authorizedClerk1Mobile,
+                                                  authorizedClerk2Name,
+                                                  authorizedClerk2Mobile
+                                                })
+                                              });
+                                            } catch (_) {}
+
+                                            setAuthorizedClerksSavedMsg(true);
+                                            setTimeout(() => setAuthorizedClerksSavedMsg(false), 3000);
+                                          } catch (e) {
+                                            console.error("Error saving authorized clerks:", e);
+                                            alert(language === 'bn' ? 'মুহুরীর তথ্য সেভ করতে সমস্যা হয়েছে।' : 'Failed to save clerk info.');
+                                          } finally {
+                                            setIsSavingAuthorizedClerks(false);
+                                          }
+                                        }}
+                                        disabled={isSavingAuthorizedClerks}
+                                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                      >
+                                        <Save size={13} />
+                                        <span>{isSavingAuthorizedClerks ? (language === 'bn' ? 'সংরক্ষণ হচ্ছে...' : 'Saving...') : (language === 'bn' ? 'মুহুরী সেভ করুন' : 'Save Clerks')}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Clerk 1 Input Box */}
+                                  <div className="p-3.5 rounded-xl border border-indigo-100 dark:border-slate-700 bg-white dark:bg-slate-900/60 shadow-xs space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[11px] font-black">১</span>
+                                        {language === 'bn' ? '১ম মুহুরী' : '1st Clerk'}
+                                      </span>
+                                      {authorizedClerk1Mobile && (
+                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                                          <Check size={11} /> {language === 'bn' ? 'অনুমোদিত' : 'Authorized'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                                          {language === 'bn' ? '১ম মুহুরীর নাম' : '1st Clerk Name'}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          placeholder={language === 'bn' ? 'মুহুরীর পুরো নাম লিখুন' : 'Enter Clerk Name'}
+                                          value={authorizedClerk1Name}
+                                          onChange={(e) => setAuthorizedClerk1Name(e.target.value)}
+                                          className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                                          {language === 'bn' ? '১ম মুহুরীর মোবাইল নম্বর' : '1st Clerk Mobile'}
+                                        </label>
+                                        <input
+                                          type="tel"
+                                          placeholder={language === 'bn' ? '০১XXXXXXXXX (১১ ডিজিট)' : '01XXXXXXXXX'}
+                                          value={authorizedClerk1Mobile}
+                                          onChange={(e) => setAuthorizedClerk1Mobile(e.target.value)}
+                                          className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Clerk 2 Input Box */}
+                                  <div className="p-3.5 rounded-xl border border-indigo-100 dark:border-slate-700 bg-white dark:bg-slate-900/60 shadow-xs space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                                        <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-[11px] font-black">২</span>
+                                        {language === 'bn' ? '২য় মুহুরী' : '2nd Clerk'}
+                                      </span>
+                                      {authorizedClerk2Mobile && (
+                                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                                          <Check size={11} /> {language === 'bn' ? 'অনুমোদিত' : 'Authorized'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                                          {language === 'bn' ? '২য় মুহুরীর নাম' : '2nd Clerk Name'}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          placeholder={language === 'bn' ? 'মুহুরীর পুরো নাম লিখুন' : 'Enter Clerk Name'}
+                                          value={authorizedClerk2Name}
+                                          onChange={(e) => setAuthorizedClerk2Name(e.target.value)}
+                                          className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                                          {language === 'bn' ? '২য় মুহুরীর মোবাইল নম্বর' : '2nd Clerk Mobile'}
+                                        </label>
+                                        <input
+                                          type="tel"
+                                          placeholder={language === 'bn' ? '০১XXXXXXXXX (১১ ডিজিট)' : '01XXXXXXXXX'}
+                                          value={authorizedClerk2Mobile}
+                                          onChange={(e) => setAuthorizedClerk2Mobile(e.target.value)}
+                                          className="w-full p-2.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -5328,7 +5641,13 @@ export default function Dashboard({
                                     officeHours,
                                     barAssociation,
                                     membershipId,
-                                    socialLinks
+                                    socialLinks,
+                                    sponsorName,
+                                    sponsorMobile,
+                                    authorizedClerk1Name,
+                                    authorizedClerk1Mobile,
+                                    authorizedClerk2Name,
+                                    authorizedClerk2Mobile
                                   })
                                 });
                                 if (!res.ok) {
@@ -5347,8 +5666,59 @@ export default function Dashboard({
                                     mobile: editMobile,
                                     district: editDistrict,
                                     policeStation: editThana,
+                                    chamberAddress,
+                                    officeHours,
+                                    barAssociation,
+                                    membershipId,
+                                    authorizedClerk1Name,
+                                    authorizedClerk1Mobile,
+                                    authorizedClerk2Name,
+                                    authorizedClerk2Mobile,
+                                    authorizedClerks: [
+                                      ...(authorizedClerk1Mobile ? [{ name: authorizedClerk1Name, mobile: authorizedClerk1Mobile }] : []),
+                                      ...(authorizedClerk2Mobile ? [{ name: authorizedClerk2Name, mobile: authorizedClerk2Mobile }] : [])
+                                    ],
                                     updatedAt: new Date().toISOString()
                                   }, { merge: true });
+
+                                  // Sync clerk 1 to authorized_clerks
+                                  if (authorizedClerk1Mobile) {
+                                    const raw1 = authorizedClerk1Mobile.replace(/[^0-9]/g, '');
+                                    const std1 = raw1.length === 10 && !raw1.startsWith('0') ? '0' + raw1 : (raw1.startsWith('880') ? raw1.substring(2) : raw1);
+                                    if (std1) {
+                                      await setDoc(doc(db, 'authorized_clerks', std1), {
+                                        clerkMobile: authorizedClerk1Mobile,
+                                        clerkName: authorizedClerk1Name,
+                                        lawyerUid: docId,
+                                        lawyerName: editName || userName,
+                                        lawyerMobile: editMobile || userMobile,
+                                        lawyerDistrict: editDistrict || userDistrict,
+                                        updatedAt: new Date().toISOString()
+                                      }, { merge: true });
+                                    }
+                                  }
+
+                                  // Sync clerk 2 to authorized_clerks
+                                  if (authorizedClerk2Mobile) {
+                                    const raw2 = authorizedClerk2Mobile.replace(/[^0-9]/g, '');
+                                    const std2 = raw2.length === 10 && !raw2.startsWith('0') ? '0' + raw2 : (raw2.startsWith('880') ? raw2.substring(2) : raw2);
+                                    if (std2) {
+                                      await setDoc(doc(db, 'authorized_clerks', std2), {
+                                        clerkMobile: authorizedClerk2Mobile,
+                                        clerkName: authorizedClerk2Name,
+                                        lawyerUid: docId,
+                                        lawyerName: editName || userName,
+                                        lawyerMobile: editMobile || userMobile,
+                                        lawyerDistrict: editDistrict || userDistrict,
+                                        updatedAt: new Date().toISOString()
+                                      }, { merge: true });
+                                    }
+                                  }
+
+                                  safeSetItem(`auth_clerk1_name_${docId}`, authorizedClerk1Name);
+                                  safeSetItem(`auth_clerk1_mobile_${docId}`, authorizedClerk1Mobile);
+                                  safeSetItem(`auth_clerk2_name_${docId}`, authorizedClerk2Name);
+                                  safeSetItem(`auth_clerk2_mobile_${docId}`, authorizedClerk2Mobile);
                                 }
                               } catch (e) {
                                 console.error("Error updating profile", e);
@@ -6796,6 +7166,8 @@ export default function Dashboard({
             userType={currentViewMode}
             userName={userName}
             userMobile={userMobile}
+            sponsorName={sponsorName}
+            sponsorMobile={sponsorMobile}
             chamberAssociates={chamberAssociates}
             isSubscribed={isSubscribed || userType === 'admin' || userType === 'super_admin'}
             referralCode={activeRefCode || referralCode}

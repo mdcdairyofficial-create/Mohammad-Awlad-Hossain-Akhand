@@ -191,11 +191,61 @@ export interface ChatMessage {
   text: string;
 }
 
+export const normalizeDateString = (d?: string | null): string => {
+  if (!d) return '';
+  const bnNums = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  let str = String(d).trim().replace(/[০-৯]/g, (char) => String(bnNums.indexOf(char)));
+
+  if (str.includes('T')) {
+    str = str.split('T')[0];
+  }
+
+  // YYYY-MM-DD
+  const ymdMatch = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // DD/MM/YYYY or DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${day}`;
+  }
+
+  return str;
+};
+
+export const getBangladeshTodayStr = (): string => {
+  const now = new Date();
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  } catch (e) {
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+};
+
 export const isCaseOnDate = (c: Case, dateStr: string | null | undefined): boolean => {
   if (!dateStr || !c) return false;
-  if (c.nextDate === dateStr) return true;
-  if (c.lastDate === dateStr) return true;
-  if (c.pastDates && Array.isArray(c.pastDates) && c.pastDates.includes(dateStr)) return true;
-  if (c.history && Array.isArray(c.history) && c.history.some(h => h && h.date === dateStr)) return true;
+  const target = normalizeDateString(dateStr);
+  if (!target) return false;
+
+  if (c.nextDate && normalizeDateString(c.nextDate) === target) return true;
+  if (c.lastDate && normalizeDateString(c.lastDate) === target) return true;
+  if (c.pastDates && Array.isArray(c.pastDates)) {
+    if (c.pastDates.some(pd => pd && normalizeDateString(pd) === target)) return true;
+  }
+  if (c.history && Array.isArray(c.history)) {
+    if (c.history.some(h => h && h.date && normalizeDateString(h.date) === target)) return true;
+  }
   return false;
 };
+

@@ -4606,12 +4606,19 @@ export const CalendarView = ({
     ? ["রবি", "সোম", "মংগল", "বুধ", "বৃহঃ", "শুক্র", "শনি"]
     : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+  const todayFormatted = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const activeDiaryDate = selectedDate || todayFormatted;
+
   const getCasesForDate = (day: number) => {
     const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     return cases.filter(c => isCaseOnDate(c, dateStr));
   };
 
-  const selectedDateCases = selectedDate ? cases.filter(c => isCaseOnDate(c, selectedDate)) : [];
+  const selectedDateCases = cases.filter(c => isCaseOnDate(c, activeDiaryDate));
 
   const groupedAndCategorizedCases = (() => {
     const groups: {

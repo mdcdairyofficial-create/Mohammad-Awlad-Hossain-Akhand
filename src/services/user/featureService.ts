@@ -87,16 +87,19 @@ const clearCache = (key: string) => {
   }
 };
 
+import { offlineSyncService } from '../offlineSyncService';
+
 // Cases
 export const subscribeToCases = (userId: string, callback: (cases: Case[]) => void, dateFilter?: string) => {
   const cacheKey = `cases_cache_${userId}`;
   const cached = loadFromCache<Case[]>(cacheKey);
 
-  // Serve from cache if fresh
-  if (cached && Array.isArray(cached.data) && (Date.now() - cached.timestamp < CACHE_EXPIRY_MS)) {
-    console.log(`[Cache Hit] Serving cases from cache for user: ${userId}`);
+  // Serve from local offline store immediately for zero-latency initial UI render if available
+  const offlineLocalCases = offlineSyncService.getLocalOfflineCases(userId);
+  if (offlineLocalCases && offlineLocalCases.length > 0) {
+    callback(offlineLocalCases);
+  } else if (cached && Array.isArray(cached.data) && cached.data.length > 0) {
     callback(cached.data);
-    return () => {}; // Dummy unsubscribe
   }
 
   let q = query(
@@ -126,58 +129,79 @@ export const subscribeToCases = (userId: string, callback: (cases: Case[]) => vo
     });
     
     saveToCache(cacheKey, cases);
+    offlineSyncService.saveLocalOfflineCases(cases);
     callback(cases);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Cases] Firestore quota exceeded. Serving from cache or local storage.');
-      if (cached && Array.isArray(cached.data)) {
-        callback(cached.data);
-        return;
-      }
-      const local = localStorage.getItem(`cases_cache_${userId}`) || localStorage.getItem('appCases');
-      if (local) {
-        try {
-          const parsed = JSON.parse(local);
-          const casesList = Array.isArray(parsed) ? parsed : (parsed?.data && Array.isArray(parsed.data) ? parsed.data : []);
-          callback(casesList);
-          return;
-        } catch {}
-      }
-      callback([]);
+    console.warn('[Cases] Firestore snapshot notice (offline/network):', error?.message || error);
+    const fallbackCases = offlineSyncService.getLocalOfflineCases(userId);
+    if (fallbackCases && fallbackCases.length > 0) {
+      callback(fallbackCases);
       return;
     }
-    handleFirestoreError(error, OperationType.GET, 'cases');
+    if (cached && Array.isArray(cached.data)) {
+      callback(cached.data);
+      return;
+    }
+    const local = localStorage.getItem(`cases_cache_${userId}`) || localStorage.getItem('appCases');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        const casesList = Array.isArray(parsed) ? parsed : (parsed?.data && Array.isArray(parsed.data) ? parsed.data : []);
+        callback(casesList);
+        return;
+      } catch {}
+    }
+    callback([]);
   });
 };
 
 export const createCase = async (caseData: Omit<Case, 'id' | 'created_at'>) => {
-  recordClientWrite(1, 'cases');
-  const caseRef = await addDoc(collection(db, 'cases'), {
-    ...caseData,
-    created_at: serverTimestamp()
-  });
+  // If offline, queue for sync and return local temp document
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.log('[Cases] Creating case in OFFLINE mode...');
+    const res = await offlineSyncService.queueCaseChange('create', caseData as Partial<Case>);
+    return { id: res.resultId || `offline_${Date.now()}` };
+  }
 
-  if (caseData.user_id) {
-    try {
-      const userRef = doc(db, 'users', caseData.user_id.toString());
-      await setDoc(userRef, {
-        points: increment(10)
-      }, { merge: true });
-    } catch (e) {
-      console.warn('Could not update user points:', e);
+  try {
+    recordClientWrite(1, 'cases');
+    const caseRef = await addDoc(collection(db, 'cases'), {
+      ...caseData,
+      created_at: serverTimestamp()
+    });
+
+    if (caseData.user_id) {
+      try {
+        const userRef = doc(db, 'users', caseData.user_id.toString());
+        await setDoc(userRef, {
+          points: increment(10)
+        }, { merge: true });
+      } catch (e) {
+        console.warn('Could not update user points:', e);
+      }
+      
+      clearCache(`cases_cache_${caseData.user_id}`);
     }
-    
-    clearCache(`cases_cache_${caseData.user_id}`);
-  }
 
-  if (auth.currentUser) {
-    clearCache(`cases_cache_${auth.currentUser.uid}`);
-  }
+    if (auth.currentUser) {
+      clearCache(`cases_cache_${auth.currentUser.uid}`);
+    }
 
-  return caseRef;
+    return caseRef;
+  } catch (err: any) {
+    console.warn('[Cases] Online createCase failed, falling back to offline queue:', err);
+    const res = await offlineSyncService.queueCaseChange('create', caseData as Partial<Case>);
+    return { id: res.resultId || `offline_${Date.now()}` };
+  }
 };
 
 export const updateCase = async (caseId: string, caseData: Partial<Case>) => {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.log('[Cases] Updating case in OFFLINE mode ID:', caseId);
+    await offlineSyncService.queueCaseChange('update', caseData, caseId);
+    return;
+  }
+
   const ref = doc(db, 'cases', caseId);
   try {
     recordClientWrite(1, 'cases');
@@ -192,12 +216,19 @@ export const updateCase = async (caseId: string, caseData: Partial<Case>) => {
     if (auth.currentUser) {
       clearCache(`cases_cache_${auth.currentUser.uid}`);
     }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `cases/${caseId}`);
+  } catch (error: any) {
+    console.warn('[Cases] Online updateCase failed, queuing offline:', error);
+    await offlineSyncService.queueCaseChange('update', caseData, caseId);
   }
 };
 
 export const deleteCase = async (caseId: string) => {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.log('[Cases] Deleting case in OFFLINE mode ID:', caseId);
+    await offlineSyncService.queueCaseChange('delete', {}, caseId);
+    return;
+  }
+
   const ref = doc(db, 'cases', caseId);
   try {
     recordClientDelete(1, 'cases');
@@ -206,7 +237,8 @@ export const deleteCase = async (caseId: string) => {
       clearCache(`cases_cache_${auth.currentUser.uid}`);
     }
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `cases/${caseId}`);
+    console.warn('[Cases] Online deleteCase failed, queuing offline:', error);
+    await offlineSyncService.queueCaseChange('delete', {}, caseId);
   }
 };
 

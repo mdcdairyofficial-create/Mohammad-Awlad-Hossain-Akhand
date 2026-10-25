@@ -53,6 +53,8 @@ interface CaseFormProps {
   chamberAssociates?: ChamberAssociate[];
   isSubscribed?: boolean;
   referralCode?: string;
+  sponsorName?: string;
+  sponsorMobile?: string;
 }
 
 interface PartyRow {
@@ -82,7 +84,9 @@ export default function CaseForm({
   initialMode = 'diary',
   chamberAssociates = [],
   isSubscribed = false,
-  referralCode = ''
+  referralCode = '',
+  sponsorName = '',
+  sponsorMobile = ''
 }: CaseFormProps) {
   const t = (key: keyof typeof translations['bn']) => translations[language]?.[key] || translations['bn'][key] || key;
   const [mode, setMode] = useState<'diary' | 'detailed' | 'quick' | 'join'>(initialMode);
@@ -299,9 +303,12 @@ export default function CaseForm({
         setLawyers([{ name: userName || '', phone: userMobile || '' }]);
       } else if (userType === 'clerk') {
         setClerks([{ name: userName || '', phone: userMobile || '' }]);
+        if (sponsorName || sponsorMobile) {
+          setLawyers([{ name: sponsorName, phone: sponsorMobile }]);
+        }
       }
     }
-  }, [initialData, userType, userName, userMobile]);
+  }, [initialData, userType, userName, userMobile, sponsorName, sponsorMobile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

@@ -4,7 +4,8 @@ import {
   getFirestore,
   doc,
   getDocFromServer,
-  setLogLevel
+  setLogLevel,
+  enableIndexedDbPersistence
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -36,8 +37,22 @@ try {
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore per skill specification
+// Initialize Firestore per skill specification with IndexedDB Offline Persistence
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+if (typeof window !== 'undefined') {
+  enableIndexedDbPersistence(db).then(() => {
+    console.log('[Firebase] IndexedDB offline persistence enabled successfully.');
+  }).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('[Firebase] Persistence multi-tab limitation (failed-precondition).');
+    } else if (err.code === 'unimplemented') {
+      console.warn('[Firebase] IndexedDB persistence unimplemented in this browser context.');
+    } else {
+      console.warn('[Firebase] Could not enable offline persistence:', err);
+    }
+  });
+}
 
 export const auth = getAuth(app);
 export const storage = getStorage(app, firebaseConfig.storageBucket);

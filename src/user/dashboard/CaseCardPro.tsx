@@ -27,7 +27,8 @@ import {
   Pencil,
   Save,
   Edit,
-  Check
+  Check,
+  Send
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { Case, ChamberAssociate } from '../../types';
@@ -504,6 +505,26 @@ export const CaseCardPro = ({
       return;
     }
     handleAction('সকল পক্ষের ক্যালেন্ডারে তথ্য আপডেট করা হয়েছে।', true);
+  };
+
+  const handleResendMessage = () => {
+    const trackUrl = getMagicCaseTrackUrl({
+      caseId: caseData.id,
+      caseNumber: caseData.caseNumber
+    });
+    const currentNextDate = nextDate || caseData.nextDate || 'নির্ধারিত নয়';
+    const currentOrder = order || caseData.order || step || caseData.status || 'আদেশ';
+    const courtFull = formatCourtNameWithNo(caseData.courtName, caseData.courtNumber);
+    const clientMobile = caseData.petitionerMobile || caseData.respondentMobile || userMobile || '';
+    const cleanDigits = clientMobile.replace(/[^0-9]/g, '');
+    const intl = cleanDigits.startsWith('88') ? cleanDigits : (cleanDigits ? `88${cleanDigits}` : '');
+    
+    const msg = `📢 মামলার আপডেট মেসেজ:\nশ্রদ্ধেয় মক্কেল, আপনার মামলা নং ${caseData.caseNumber} (${courtFull}) এর সাম্প্রতিক আপডেট:\n• পরবর্তী তারিখ: ${currentNextDate}\n• আদালতের পদক্ষেপ/আদেশ: ${currentOrder}\n\nসরাসরি কেস ট্র্যাকিং ও অটো নোটিফিকেশনের লিংক:\n${trackUrl}`;
+    
+    const waUrl = intl ? `https://wa.me/${intl}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, '_blank');
+
+    handleAction('পুনরায় সকল পক্ষকে মেসেজ পাঠানো হয়েছে!', true);
   };
 
   const onAdClose = () => {
@@ -1005,7 +1026,18 @@ export const CaseCardPro = ({
                 className="px-6 py-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
               >
                 <Save size={16} />
-                <span>সেভ করুন (Save All Changes)</span>
+                <span>সেভ করুন (Save All)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleSaveAllCardEdits();
+                  setTimeout(() => handleResendMessage(), 200);
+                }}
+                className="px-6 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white font-black text-xs rounded-xl shadow-lg shadow-teal-500/30 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+              >
+                <Send size={16} />
+                <span>সেভ ও পুনরায় মেসেজ পাঠান</span>
               </button>
             </div>
           </div>
@@ -1706,6 +1738,15 @@ export const CaseCardPro = ({
                   >
                     সকল পক্ষকে জানান
                   </button>
+                  <button 
+                    type="button"
+                    onClick={handleResendMessage}
+                    className="flex-1 py-3 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-2xl text-sm font-bold hover:brightness-110 transition-all shadow-lg shadow-teal-100 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    title="নতুন করে আবার পুনরায় মেসেজ পাঠান"
+                  >
+                    <Send size={16} />
+                    <span>পুনরায় মেসেজ পাঠান</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1872,6 +1913,14 @@ export const CaseCardPro = ({
                 })()}
               </div>
             )}
+            <button
+              onClick={handleResendMessage}
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/20 cursor-pointer active:scale-95"
+              title="নতুন করে আবার পুনরায় মেসেজ পাঠান"
+            >
+              <Send size={15} />
+              <span>পুনরায় মেসেজ পাঠান</span>
+            </button>
             <button
               onClick={() => {
                 const trackUrl = getMagicCaseTrackUrl({
