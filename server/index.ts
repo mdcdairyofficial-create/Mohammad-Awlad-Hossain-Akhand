@@ -59,14 +59,18 @@ function initializeFirebase() {
     let firebaseConfig: any = {};
     
     if (fs.existsSync(firebaseConfigPath)) {
-      const raw = fs.readFileSync(firebaseConfigPath, "utf8");
-      firebaseConfig = JSON.parse(raw);
-      console.log(`[Firebase] Config loaded. Project: ${firebaseConfig.projectId}`);
+      try {
+        const raw = fs.readFileSync(firebaseConfigPath, "utf8");
+        firebaseConfig = JSON.parse(raw);
+        console.log(`[Firebase] Config loaded. Project: ${firebaseConfig.projectId}`);
+      } catch (e) {
+        console.warn("[Firebase] Could not read/parse firebase-applet-config.json", e);
+      }
     } else {
       console.warn("[Firebase] Config file NOT found!");
     }
 
-    const projectId = firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+    const projectId = firebaseConfig.projectId || process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || "ai-studio-b68ab48d-678f-40d2-8599-d689643a1dea";
     _databaseId = firebaseConfig.firestoreDatabaseId;
     
     console.log(`[Firebase] Initializing Admin SDK. Project: ${projectId}, Database: ${_databaseId}`);
@@ -84,20 +88,38 @@ function initializeFirebase() {
         console.warn("[Firebase] Could not load application default credentials, falling back to basic initialization.");
       }
 
-      admin.initializeApp(adminConfig);
+      try {
+        admin.initializeApp(adminConfig);
+      } catch (adminErr) {
+        console.warn("[Firebase] Admin initializeApp warning:", adminErr);
+      }
     }
 
     // Initialize Client SDK as primary Firestore driver due to IAM issues with Admin SDK
-    if (firebaseConfig.apiKey) {
+    const clientConfig = {
+      apiKey: firebaseConfig.apiKey || process.env.VITE_FIREBASE_API_KEY || "AIzaSyDummyKeyForBuildFallback",
+      authDomain: firebaseConfig.authDomain || process.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+      projectId: projectId,
+      storageBucket: firebaseConfig.storageBucket || process.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+      messagingSenderId: firebaseConfig.messagingSenderId || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+      appId: firebaseConfig.appId || process.env.VITE_FIREBASE_APPID || "",
+      measurementId: firebaseConfig.measurementId || process.env.VITE_FIREBASE_MEASUREMENT_ID || ""
+    };
+
+    if (clientConfig.projectId) {
       console.log("[Firebase] Initializing Client SDK for Firestore Workaround");
-      const clientApp = initializeClientApp(firebaseConfig);
       try {
-        _clientDb = initializeFirestore(clientApp, {
-          experimentalForceLongPolling: true,
-        }, firebaseConfig.firestoreDatabaseId);
-      } catch (e) {
-        console.warn("[Firebase] Could not initialize with long polling, falling back to default.", e);
-        _clientDb = getClientFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+        const clientApp = initializeClientApp(clientConfig);
+        try {
+          _clientDb = initializeFirestore(clientApp, {
+            experimentalForceLongPolling: true,
+          }, firebaseConfig.firestoreDatabaseId);
+        } catch (e) {
+          console.warn("[Firebase] Could not initialize with long polling, falling back to default.", e);
+          _clientDb = getClientFirestore(clientApp, firebaseConfig.firestoreDatabaseId);
+        }
+      } catch (clientErr) {
+        console.warn("[Firebase] Client SDK initialization warning:", clientErr);
       }
     }
   } catch (err) {
@@ -283,6 +305,23 @@ interface FirestoreErrorInfo {
   }
 }
 
+function isRateOrQuotaError(err: any): boolean {
+  if (!err) return false;
+  const msg = (err?.message || String(err)).toLowerCase();
+  const code = err?.code;
+  return (
+    msg.includes('rate exceeded') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('too many requests') ||
+    code === 8 ||
+    code === '8' ||
+    code === 'resource-exhausted' ||
+    code === 429
+  );
+}
+
 function handleFirestoreError(error: any, operationType: OperationType, path: string | null, req?: any) {
   const errInfo: FirestoreErrorInfo = {
     error: error?.message || String(error),
@@ -295,6 +334,11 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
     }
   };
   
+  if (isRateOrQuotaError(error)) {
+    console.warn(`[Firestore Rate/Quota Notice] (${operationType} on ${path}):`, error?.message || error);
+    return errInfo;
+  }
+  
   if (errInfo.error.includes("PERMISSION_DENIED")) {
     console.error("!!! CRITICAL PERMISSION ERROR !!!");
     console.error("This usually means the Service Account lacks Cloud Datastore User role.");
@@ -306,12 +350,12 @@ function handleFirestoreError(error: any, operationType: OperationType, path: st
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Authentication Middleware
+// Authentication Middleware with 10-minute cache & write throttling
 const serverUserProfileCache = new Map<string, { profile: any; timestamp: number }>();
+const lastUserTrackMap = new Map<string, number>();
 
 const authenticate = async (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
-  console.log("[DEBUG] Auth header:", authHeader ? "Present" : "Missing");
   if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized: No token provided" });
   }
@@ -321,7 +365,6 @@ const authenticate = async (req: any, res: any, next: any) => {
   // Custom support for mock/bypass tokens in developer mode/local environments
   if (idToken.startsWith("mock_user_")) {
     const mockUid = idToken.substring("mock_user_".length);
-    console.log(`[DEBUG] Authenticating via bypass/mock token for UID: ${mockUid}`);
     req.user = { uid: mockUid, email: `${mockUid}@mock.local` };
     
     try {
@@ -330,8 +373,6 @@ const authenticate = async (req: any, res: any, next: any) => {
         const userDoc = snapshot.docs[0];
         req.profile = { id: userDoc.id, ...userDoc.data() };
       } else {
-        // If snapshot is empty, auto-create a mock user in Firestore so database queries of points or sub packages succeed beautifully!
-        console.log(`[DEBUG] Creating new mock profile for UID: ${mockUid}`);
         const docRef = await db.collection("users").add({
           firebase_uid: mockUid,
           name: "ব্যবহারকারী (Mock)",
@@ -350,7 +391,6 @@ const authenticate = async (req: any, res: any, next: any) => {
         req.profile = { id: userDoc.id, ...userDoc.data() };
       }
     } catch (e: any) {
-      console.error("[DEBUG] Error finding/creating mock user in Firestore:", e);
       req.profile = {
         id: "mock-id",
         firebase_uid: mockUid,
@@ -363,22 +403,20 @@ const authenticate = async (req: any, res: any, next: any) => {
   }
 
   try {
-    console.log("[DEBUG] Verifying token...");
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
 
-    // Fast check in memory cache (reduces Firestore reads drastically)
+    // Fast check in memory cache (reduces Firestore reads drastically - 10 min TTL)
     const cached = serverUserProfileCache.get(decodedToken.uid);
-    if (cached && (Date.now() - cached.timestamp < 120000)) {
+    if (cached && (Date.now() - cached.timestamp < 600000)) {
       req.profile = cached.profile;
       return next();
     }
     
     // Fetch profile from Firestore with retry
-    let retries = 3;
+    let retries = 2;
     while (retries > 0) {
       try {
-        console.log(`[DEBUG] Querying users where firebase_uid == ${decodedToken.uid} (attempt ${4 - retries})`);
         firebaseUsageTracker.recordRead(1, 'auth');
         const snapshot = await db.collection("users").where("firebase_uid", "==", decodedToken.uid).limit(1).get();
         if (!snapshot.empty) {
@@ -400,10 +438,10 @@ const authenticate = async (req: any, res: any, next: any) => {
             req.profile = { id: userDoc.id, ...userData };
           }
 
-          // Cache profile in memory
+          // Cache profile in memory (10 minutes)
           serverUserProfileCache.set(decodedToken.uid, { profile: req.profile, timestamp: Date.now() });
           
-          // Track operations for billing (only for writes/mutations to prevent exhausting free-tier write quotas on read requests)
+          // Throttle operations tracking: max once every 30s per user to prevent 1-write-per-second Firestore rate limit
           const userId = userDoc.id;
           let opType = '';
           if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
@@ -412,7 +450,9 @@ const authenticate = async (req: any, res: any, next: any) => {
             opType = 'delete_count';
           }
           
-          if (opType) {
+          const lastTracked = lastUserTrackMap.get(userId) || 0;
+          if (opType && Date.now() - lastTracked > 30000) {
+            lastUserTrackMap.set(userId, Date.now());
             const trackOperation = async (dbId?: string) => {
               try {
                 const adminDb = getAdminDb(dbId);
@@ -437,9 +477,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           const displayMb = parseFloat(req.profile?.display_data_mb || "0");
           const isSubscribed = req.profile?.subscription_status === 'active' || (req.profile?.subscription_end_date && new Date(req.profile.subscription_end_date) > new Date());
           
-          // Prevent all non-GET requests if limit exceeded and not subscribed
           if (displayMb >= 500 && !isSubscribed && req.method !== 'GET') {
-            // Allow exceptions for subscription and recharge related endpoints
             const isPaymentRoute = req.originalUrl.includes('/api/subscription') || req.originalUrl.includes('/api/recharge');
             if (!isPaymentRoute) {
               return res.status(403).json({ error: "Data limit (500MB) exceeded. Please purchase a premium subscription to continue saving data." });
@@ -451,18 +489,16 @@ const authenticate = async (req: any, res: any, next: any) => {
         }
         break; // Doesn't exist, don't retry
       } catch (err: any) {
-        const isQuota = err?.message?.includes('Quota exceeded') || err?.code === 8;
-        if (isQuota) {
-          console.warn(`[Firebase] Quota exceeded while fetching profile for ${decodedToken.uid}. Using token fallback.`);
-          break; // Do not waste retries when Firestore quota is exceeded
+        if (isRateOrQuotaError(err)) {
+          console.warn(`[Firebase] Quota/Rate exceeded while fetching profile for ${decodedToken.uid}. Using token fallback.`);
+          break; // Do not waste retries when Firestore quota/rate is exceeded
         }
-        console.error(`Error fetching user profile (attempt ${4 - retries}):`, err);
+        console.error(`Error fetching user profile (attempt ${3 - retries}):`, err);
         retries--;
         if (retries === 0) {
-            // Log final error
             console.error("Failed to fetch user profile after retries.");
         } else {
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 800));
         }
       }
     }
@@ -500,21 +536,37 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Create public/uploads directory if it doesn't exist
+  // Create public/uploads directory if it doesn't exist (with /tmp fallback for Cloud Run)
   const localUploadsDir = path.join(process.cwd(), "public", "uploads");
-  if (!fs.existsSync(localUploadsDir)) {
-    fs.mkdirSync(localUploadsDir, { recursive: true });
+  try {
+    if (!fs.existsSync(localUploadsDir)) {
+      fs.mkdirSync(localUploadsDir, { recursive: true });
+    }
+  } catch (e) {
+    console.warn("Could not create public/uploads (read-only FS):", e);
   }
+  const tmpUploadsDir = path.join('/tmp', 'uploads');
+  try {
+    if (!fs.existsSync(tmpUploadsDir)) {
+      fs.mkdirSync(tmpUploadsDir, { recursive: true });
+    }
+  } catch (e) { /* ignore */ }
+
   app.use("/uploads", express.static(localUploadsDir));
+  app.use("/uploads", express.static(tmpUploadsDir));
 
   // Health check for Cloud Run
   app.get("/health", (req, res) => res.status(200).send("OK"));
   
-app.use(express.text({type: "*/*"}));
-app.post('/api/dump', (req, res) => {
-  fs.writeFileSync('dump.txt', req.body);
-  res.send('ok');
-});
+  app.use(express.text({type: "*/*"}));
+  app.post('/api/dump', (req, res) => {
+    try {
+      fs.writeFileSync('/tmp/dump.txt', req.body);
+      res.send('ok');
+    } catch (e) {
+      res.status(500).send('error');
+    }
+  });
 
   app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
@@ -530,8 +582,8 @@ app.post('/api/dump', (req, res) => {
       try {
         userDoc = await db.doc("users/" + userId).get();
       } catch (dbErr: any) {
-        if (dbErr?.message?.includes('Quota exceeded') || dbErr?.code === 8) {
-          console.warn(`[Users API] Firestore quota exceeded for user ${userId}. Returning available profile.`);
+        if (isRateOrQuotaError(dbErr)) {
+          console.warn(`[Users API] Firestore quota/rate exceeded for user ${userId}. Returning available profile.`);
           return res.json({
             id: req.profile?.id || userId,
             firebaseUid: req.profile?.firebase_uid || firebaseUid,
@@ -622,7 +674,7 @@ app.post('/api/dump', (req, res) => {
         pendingYellowFine: userData.pending_yellow_fine || 0
       });
     } catch (error: any) {
-      if (error?.message?.includes('Quota exceeded') || error?.code === 8) {
+      if (isRateOrQuotaError(error)) {
         return res.json({
           id: req.params.id,
           firebaseUid: req.user?.uid,
@@ -706,7 +758,7 @@ app.post('/api/dump', (req, res) => {
 
       try {
         const result = await genAI.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-3.8-flash",
           contents: prompt,
           config: {
             systemInstruction: `You are the official AI assistant for MDC Casebook (এমডিসি কেসবুক), a digital court case management platform in Bangladesh.
@@ -732,10 +784,13 @@ Always respond politely and professionally in Bengali when asked in Bengali.`
         }
       } catch (aiErr: any) {
         console.error("[MediGen AI Error]", aiErr);
-        // If it's a safety block or something similar, provide a friendly fallback
-        responseText = "I'm sorry, I cannot provide a recommendation for this specific condition. Please consult a qualified healthcare professional in person.";
-        if (req.profile?.district) {
-           responseText += `\nYou may want to visit the nearest hospital in ${req.profile.district} district.`;
+        if (isRateOrQuotaError(aiErr)) {
+          responseText = "সার্ভার ট্রাফিকের কারণে এআই সাময়িকভাবে ব্যস্ত আছে। অনুগ্রহ করে কয়েক সেকেন্ড পর আবার প্রশ্ন করুন।";
+        } else {
+          responseText = "I'm sorry, I cannot provide a recommendation for this specific condition. Please consult a qualified healthcare professional in person.";
+          if (req.profile?.district) {
+             responseText += `\nYou may want to visit the nearest hospital in ${req.profile.district} district.`;
+          }
         }
       }
 
@@ -776,7 +831,7 @@ Always respond politely and professionally in Bengali when asked in Bengali.`
       });
 
       const response = await genAI.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.8-flash",
         contents: contents,
         config: {
           systemInstruction: systemInstruction,
@@ -786,7 +841,10 @@ Always respond politely and professionally in Bengali when asked in Bengali.`
       res.json({ success: true, text: response.text || '' });
     } catch (error: any) {
       console.error("[AI Chat Error]", error);
-      res.status(500).json({ error: "AI Chat Server Error: " + error.message });
+      if (isRateOrQuotaError(error)) {
+        return res.json({ success: true, text: "এআই সার্ভার ট্রাফিকের কারণে সাময়িক বিলম্ব হচ্ছে। অনুগ্রহ করে কয়েক সেকেন্ড পর আবার চেষ্টা করুন।" });
+      }
+      res.status(500).json({ error: "এআই সার্ভার সাময়িকভাবে ব্যস্ত। আবার চেষ্টা করুন।" });
     }
   });
 
@@ -828,7 +886,7 @@ Always respond politely and professionally in Bengali when asked in Bengali.`
       `;
 
       const result = await genAI.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.8-flash",
         contents: prompt,
         config: {
           systemInstruction: `You are the official AI assistant for MDC Casebook (এমডিসি কেসবুক), a digital court case management platform in Bangladesh.
@@ -843,7 +901,10 @@ Always respond politely and professionally in Bengali when asked in Bengali.`
       res.json({ success: true, text: result.text || '' });
     } catch (error: any) {
       console.error("[Memory AI Error]", error);
-      res.status(500).json({ error: "Memory AI Server Error: " + error.message });
+      if (isRateOrQuotaError(error)) {
+        return res.json({ success: true, text: "মেমোরি এআই সার্ভার সাময়িকভাবে ব্যস্ত। কয়েক সেকেন্ড পর আবার চেষ্টা করুন।" });
+      }
+      res.status(500).json({ error: "মেমোরি এআই সার্ভার সাময়িকভাবে ব্যস্ত।" });
     }
   });
 
@@ -1950,6 +2011,25 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       });
     } catch (error: any) {
       console.error("[Auth Sync Error]", error);
+      if (isRateOrQuotaError(error)) {
+        console.warn("[Auth Sync] Rate/Quota limit encountered in sync. Returning active fallback user profile.");
+        const { firebaseUid, email, mobile, fullName, userType } = req.body || {};
+        return res.json({
+          success: true,
+          user: {
+            id: firebaseUid || 'temp-id',
+            firebaseUid: firebaseUid || 'temp-id',
+            firebase_uid: firebaseUid || 'temp-id',
+            fullName: fullName || (email ? email.split('@')[0] : 'ব্যবহারকারী'),
+            email: email || '',
+            mobile: mobile || '',
+            userType: userType || 'lawyer',
+            subscriptionPackage: 'premium',
+            subscription_package: 'premium',
+            isRateFallback: true
+          }
+        });
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -4182,17 +4262,24 @@ app.post('/api/admin/subscription-requests/:id/reject', async (req, res) => {
       } catch (adminErr: any) {
         console.warn("[Upload Proxy] Firebase Admin Storage upload failed, falling back to local file storage:", adminErr.message || adminErr);
         
-        // Save to local file system
-        const localUploadsDir = path.join(process.cwd(), "public", "uploads");
-        if (!fs.existsSync(localUploadsDir)) {
-          fs.mkdirSync(localUploadsDir, { recursive: true });
-        }
-
-        // Keep a unique file name to avoid collisions
+        // Save to local file system with /tmp fallback for Cloud Run read-only file systems
+        let uploadDir = path.join(process.cwd(), "public", "uploads");
         const safeFileName = fullPath.replace(/[\/\\?#%*:|"<>\s]/g, "_");
-        const localFilePath = path.join(localUploadsDir, safeFileName);
-        
-        fs.writeFileSync(localFilePath, buffer);
+        let localFilePath = "";
+        try {
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          localFilePath = path.join(uploadDir, safeFileName);
+          fs.writeFileSync(localFilePath, buffer);
+        } catch (err) {
+          uploadDir = path.join('/tmp', 'uploads');
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          localFilePath = path.join(uploadDir, safeFileName);
+          fs.writeFileSync(localFilePath, buffer);
+        }
         
         const hostHeader = req.get("host") || "localhost:3000";
         const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";

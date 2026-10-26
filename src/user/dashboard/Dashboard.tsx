@@ -3927,7 +3927,7 @@ export default function Dashboard({
   };
 
   return (
-    <div ref={containerRef} className={`h-screen flex overflow-hidden transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+    <div ref={containerRef} className={`w-full h-full min-h-screen flex overflow-hidden transition-colors duration-300 ${theme === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -4110,14 +4110,21 @@ export default function Dashboard({
           <div className="flex items-center gap-3 sm:gap-6">
 
             {/* Top Dropdown List for Accounts and Dashboards (Lawyer, Clerk, Client, Advertiser) - Only displays dashboards signed up with this mobile number */}
-            <div className="flex items-center gap-1 sm:gap-2 bg-indigo-50/90 dark:bg-slate-800/90 hover:bg-indigo-100/70 dark:hover:bg-slate-700/60 transition-all p-1 sm:p-1.5 rounded-xl border border-indigo-200/90 dark:border-slate-700 shadow-sm max-w-[190px] xs:max-w-[230px] sm:max-w-xs md:max-w-sm lg:max-w-md">
+            <div 
+              style={{
+                paddingTop: '350px'
+              }}
+              className="flex items-center gap-1.5 sm:gap-2 bg-indigo-50/90 dark:bg-slate-800/90 hover:bg-indigo-100/70 dark:hover:bg-slate-700/60 transition-all rounded-xl border border-indigo-200/90 dark:border-slate-700 shadow-sm"
+            >
               <Users size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0 ml-1 hidden xs:block" />
-              <select
-                value={selectedAccountId}
-                onChange={(e) => handleAccountSwitch(e.target.value)}
-                className="text-xs sm:text-sm font-bold bg-transparent text-indigo-950 dark:text-indigo-100 border-none outline-none focus:outline-none focus:ring-0 cursor-pointer py-1 pr-1 truncate w-full appearance-auto"
-                title={userMobile ? `মোবাইল (${userMobile}) নম্বরে সাইন-আপ করা ড্যাশবোর্ডসমূহ` : "ড্যাশবোর্ড সিলেক্টর"}
-              >
+              <div style={{ width: '250px', height: '35px', fontWeight: 'bold', fontSize: '19px', lineHeight: '30px' }} className="flex items-center">
+                <select
+                  value={selectedAccountId}
+                  onChange={(e) => handleAccountSwitch(e.target.value)}
+                  style={{ width: '250px', height: '35px', fontWeight: 'bold', fontSize: '19px', lineHeight: '30px' }}
+                  className="bg-transparent text-indigo-950 dark:text-indigo-100 border-none outline-none focus:outline-none focus:ring-0 cursor-pointer pr-1 truncate appearance-auto"
+                  title={userMobile ? `মোবাইল (${userMobile}) নম্বরে সাইন-আপ করা ড্যাশবোর্ডসমূহ` : "ড্যাশবোর্ড সিলেক্টর"}
+                >
                 {/* ০. প্রশাসনিক ড্যাশবোর্ড (যদি এডমিন ইউজার হয়) */}
                 {(isAdminUser || userType === 'bar_admin' || userType === 'admin' || userType === 'super_admin' || currentViewMode === 'bar_admin' || currentViewMode === 'admin') && (
                   <optgroup label="👑 প্রশাসনিক ড্যাশবোর্ড" className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-bold">
@@ -4163,6 +4170,7 @@ export default function Dashboard({
                   </optgroup>
                 )}
               </select>
+              </div>
             </div>
 
             {currentViewMode !== 'client' && currentViewMode !== 'advertiser' && (

@@ -378,24 +378,52 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
         // 2. Server Sync
         console.log(`[Auth] Syncing login session for UID: ${fbUser.uid}`);
-        const response = await fetchWithAuth('/api/auth/firebase-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        let userProfile = null;
+        try {
+          const response = await fetchWithAuth('/api/auth/firebase-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              firebaseUid: fbUser.uid,
+              email: fbUser.email,
+              mobile: fullMobile,
+              userType: userType,
+              fullName: fbUser.displayName,
+              profilePicture: fbUser.photoURL
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            userProfile = data.user;
+          } else {
+            const errData = await response.json().catch(() => ({}));
+            console.warn('[Auth] Server sync returned non-ok status, falling back to local session:', errData);
+          }
+        } catch (syncErr) {
+          console.warn('[Auth] Server sync network/rate issue:', syncErr);
+        }
+
+        // Resilient fallback: If server sync was rate limited or unreachable, build session from Firebase Auth
+        if (!userProfile) {
+          userProfile = {
+            id: fbUser.uid,
             firebaseUid: fbUser.uid,
-            email: fbUser.email,
+            firebase_uid: fbUser.uid,
+            fullName: fbUser.displayName || formData.fullName || 'ব্যবহারকারী',
+            name: fbUser.displayName || formData.fullName || 'ব্যবহারকারী',
+            email: fbUser.email || (formData.mobile.includes('@') ? formData.mobile : null),
             mobile: fullMobile,
             userType: userType,
-            fullName: fbUser.displayName,
-            profilePicture: fbUser.photoURL
-          })
-        });
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
+            user_type: userType,
+            district: formData.district || 'ঢাকা',
+            thana: formData.thana || '',
+            country: formData.country || 'Bangladesh'
+          };
+        }
 
         setLoading(false);
-        onAuthSuccess(data.user);
+        onAuthSuccess(userProfile);
       }
     } catch (err: any) {
       console.warn("Auth Error:", err.message);
@@ -404,8 +432,17 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
       setFormData(prev => ({ ...prev, password: '', confirmPassword: '' }));
 
       const errorCode = err.code || '';
+      const rawMsg = (err?.message || '').toLowerCase();
       
-      if (errorCode === 'auth/email-already-in-use') {
+      if (
+        rawMsg.includes('rate exceeded') ||
+        rawMsg.includes('quota exceeded') ||
+        rawMsg.includes('resource_exhausted') ||
+        rawMsg.includes('resource-exhausted') ||
+        errorCode === 'auth/too-many-requests'
+      ) {
+        setError('সার্ভারে অতিরিক্ত ট্রাফিকের কারণে সাময়িক বিলম্ব হচ্ছে। কয়েক সেকেন্ড পর আবার চেষ্টা করুন।');
+      } else if (errorCode === 'auth/email-already-in-use') {
         setError('এই ইমেইল বা নম্বরটি দিয়ে আগে থেকেই অ্যাকাউন্ট আছে। অনুগ্রহ করে লগইন করুন।');
         setTimeout(() => setIsLogin(true), 3000);
       } else if (errorCode === 'auth/weak-password') {
@@ -418,8 +455,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
         } else {
            setError('মোবাইল নম্বর বা পাসওয়ার্ড সঠিক নয়। দয়া করে আবার যাচাই করুন।');
         }
-      } else if (errorCode === 'auth/too-many-requests') {
-        setError('অতিরিক্ত বার চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।');
       } else {
         setError(err.message || 'সাইন আপ বা লগইন করতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।');
       }

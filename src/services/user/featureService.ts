@@ -18,6 +18,23 @@ import { deleteDoc, increment } from 'firebase/firestore';
 import { recordClientRead, recordClientWrite, recordClientDelete } from '../../utils/firebaseUsageTracker';
 
 
+export const isRateOrQuotaExceeded = (error: any): boolean => {
+  if (!error) return false;
+  const msg = (error?.message || String(error)).toLowerCase();
+  const code = (error?.code || '').toLowerCase();
+  return (
+    msg.includes('rate exceeded') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('too many requests') ||
+    code === 'resource-exhausted' ||
+    code === '8' ||
+    error?.code === 8 ||
+    error?.code === 429
+  );
+};
+
 // User Profile
 export const subscribeToUser = (userId: string, callback: (userData: any) => void) => {
   return onSnapshot(doc(db, 'users', userId), (snapshot) => {
@@ -26,8 +43,8 @@ export const subscribeToUser = (userId: string, callback: (userData: any) => voi
       callback({ id: snapshot.id, ...snapshot.data() });
     }
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn(`[User] Quota exceeded for user subscription (${userId}), using current state.`);
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn(`[User] Quota/Rate exceeded for user subscription (${userId}), using current state.`);
       return;
     }
     handleFirestoreError(error, OperationType.GET, `users/${userId}`);
@@ -277,8 +294,8 @@ export const subscribeToNotifications = (userId: string, callback: (notification
     saveToCache(cacheKey, notifications);
     callback(notifications);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Notifications] Firestore quota exceeded. Serving from cache or empty list.');
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn('[Notifications] Firestore quota/rate exceeded. Serving from cache or empty list.');
       if (cached && Array.isArray(cached.data)) {
         callback(cached.data);
         return;
@@ -318,8 +335,8 @@ export const subscribeToGlobalNotifications = (callback: (notifications: Notific
     saveToCache(cacheKey, notifications);
     callback(notifications);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Global Notifications] Firestore quota exceeded. Serving from cache or empty list.');
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn('[Global Notifications] Firestore quota/rate exceeded. Serving from cache or empty list.');
       if (cached && Array.isArray(cached.data)) {
         callback(cached.data);
         return;
@@ -401,8 +418,8 @@ export const subscribeToTasks = (userId: string, callback: (tasks: Task[]) => vo
     saveToCache(cacheKey, tasks);
     callback(tasks);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Tasks] Firestore quota exceeded. Serving from cache or local storage.');
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn('[Tasks] Firestore quota/rate exceeded. Serving from cache or local storage.');
       if (cached && Array.isArray(cached.data)) {
         callback(cached.data);
         return;
@@ -487,8 +504,8 @@ export const subscribeToChatSessions = (userId: string, callback: (sessions: any
     }));
     callback(sessions);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Chat Sessions] Firestore quota exceeded.');
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn('[Chat Sessions] Firestore quota/rate exceeded.');
       return;
     }
     handleFirestoreError(error, OperationType.GET, 'chat_sessions');
@@ -507,8 +524,8 @@ export const subscribeToAllSupportChats = (callback: (sessions: any[]) => void) 
     }));
     callback(sessions);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Support Chats] Firestore quota exceeded.');
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn('[Support Chats] Firestore quota/rate exceeded.');
       return;
     }
     handleFirestoreError(error, OperationType.GET, 'chat_sessions');
@@ -536,8 +553,8 @@ export const subscribeToMessages = (chatSessionId: string, callback: (messages: 
     } as unknown as SupportMessage));
     callback(messages);
   }, (error: any) => {
-    if (error?.message?.includes('Quota exceeded') || error?.code === 'resource-exhausted') {
-      console.warn('[Messages] Firestore quota exceeded.');
+    if (isRateOrQuotaExceeded(error)) {
+      console.warn('[Messages] Firestore quota/rate exceeded.');
       return;
     }
     handleFirestoreError(error, OperationType.GET, `chat_sessions/${chatSessionId}/messages`);

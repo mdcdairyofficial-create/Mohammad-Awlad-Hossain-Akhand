@@ -221,7 +221,8 @@ class OfflineSyncService {
 
     const remainingQueue: PendingOfflineChange[] = [];
 
-    for (const item of queue) {
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
       try {
         if (item.type === 'create') {
           // Exclude client-generated offline ID before sending to Firestore
@@ -236,10 +237,31 @@ class OfflineSyncService {
           await deleteCase(String(item.caseId));
           console.log(`[OfflineSync] Successfully synced deleted case ID: ${item.caseId}`);
         }
+        // Small delay between document writes to prevent Firestore "Rate exceeded" (1 write/sec/doc limit & burst limits)
+        if (i < queue.length - 1) {
+          await new Promise(r => setTimeout(r, 400));
+        }
       } catch (err: any) {
         console.error(`[OfflineSync] Failed to sync item ${item.id}:`, err);
+        const errMsg = (err?.message || String(err)).toLowerCase();
+        // If rate/quota limited, retain remaining queue and stop hammering Firestore
+        if (errMsg.includes('rate exceeded') || errMsg.includes('quota exceeded') || errMsg.includes('resource_exhausted')) {
+          remainingQueue.push(item);
+          // Push all remaining unattempted items as well
+          for (let j = i + 1; j < queue.length; j++) {
+            remainingQueue.push(queue[j]);
+          }
+          console.warn('[OfflineSync] Rate/quota limit hit. Pausing queue sync for 15 seconds.');
+          setTimeout(() => {
+            if (this.isOnline) {
+              this.processQueue();
+            }
+          }, 15000);
+          break;
+        }
+
         // Keep in queue for next retry if it failed due to network disruption
-        if (!err?.message?.includes('permission-denied')) {
+        if (!errMsg.includes('permission-denied')) {
           remainingQueue.push(item);
         }
       }

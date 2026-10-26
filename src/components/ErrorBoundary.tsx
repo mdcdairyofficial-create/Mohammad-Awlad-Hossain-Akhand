@@ -27,15 +27,26 @@ export default class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       let errorMessage = "দুঃখিত, একটি সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।";
+      const rawMsg = (this.state.error?.message || "").toLowerCase();
       
-      try {
-        // Try to parse FirestoreErrorInfo if it's a JSON string
-        const errorData = JSON.parse(this.state.error?.message || "");
-        if (errorData.error && errorData.error.includes("insufficient permissions")) {
-          errorMessage = "আপনার এই তথ্য দেখার অনুমতি নেই। দয়া করে এডমিনের সাথে যোগাযোগ করুন।";
+      if (
+        rawMsg.includes("rate exceeded") ||
+        rawMsg.includes("quota exceeded") ||
+        rawMsg.includes("resource_exhausted") ||
+        rawMsg.includes("resource-exhausted") ||
+        rawMsg.includes("too many requests")
+      ) {
+        errorMessage = "সার্ভারে অতিরিক্ত ট্রাফিকের কারণে সাময়িক বিলম্ব হচ্ছে। কয়েক সেকেন্ড পর স্বয়ংক্রিয়ভাবে স্বাভাবিক হয়ে যাবে।";
+      } else {
+        try {
+          // Try to parse FirestoreErrorInfo if it's a JSON string
+          const errorData = JSON.parse(this.state.error?.message || "");
+          if (errorData.error && errorData.error.includes("insufficient permissions")) {
+            errorMessage = "আপনার এই তথ্য দেখার অনুমতি নেই। দয়া করে এডমিনের সাথে যোগাযোগ করুন।";
+          }
+        } catch (e) {
+          // Not a JSON error, use default message
         }
-      } catch (e) {
-        // Not a JSON error, use default message
       }
 
       return this.props.fallback || (

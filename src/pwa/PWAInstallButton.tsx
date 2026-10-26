@@ -21,10 +21,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     }
   });
 
-  // If already installed on mobile/desktop, completely remove all install buttons & banners
-  if (isInstalled) {
-    return null;
-  }
+
 
   const handleClick = async () => {
     if (isInstallable) {
@@ -51,17 +48,17 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   };
 
   return (
-    <>
+    <div className="relative inline-block">
       {/* Variant: Header Button */}
       {variant === 'header' && (
         <button
           type="button"
           onClick={handleClick}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer shrink-0"
-          title={language === 'bn' ? 'ফোনে সরাসরি অ্যাপ হিসেবে ইনস্টল করুন' : 'Install as Native App'}
+          className={`flex items-center gap-1.5 px-3 py-1.5 ${isInstalled ? 'bg-gradient-to-r from-teal-700 to-emerald-700' : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'} text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer shrink-0`}
+          title={isInstalled ? (language === 'bn' ? 'অ্যাপটি ইতিমধ্যেই ইনস্টল করা আছে' : 'App is already installed') : (language === 'bn' ? 'ফোনে সরাসরি অ্যাপ হিসেবে ইনস্টল করুন' : 'Install as Native App')}
         >
-          <Download size={14} className="animate-bounce" />
-          <span>{language === 'bn' ? 'অ্যাপ ইনস্টল' : 'Install App'}</span>
+          {isInstalled ? <Check size={14} className="text-emerald-300" /> : <Download size={14} className="animate-bounce" />}
+          <span>{isInstalled ? (language === 'bn' ? 'ইনস্টলড' : 'Installed') : (language === 'bn' ? 'অ্যাপ ইনস্টল' : 'Install App')}</span>
         </button>
       )}
 
@@ -126,10 +123,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         </div>
       )}
 
-      {/* Instruction Modal for iOS / unsupported browsers */}
+      {/* Instruction Popover for iOS / unsupported browsers right below install button */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 text-slate-900 dark:text-white space-y-4">
+        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 z-50 rounded-2xl bg-white dark:bg-slate-900 p-5 shadow-2xl border border-slate-200 dark:border-slate-800 animate-in fade-in-50 zoom-in-95 text-slate-900 dark:text-white space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain" />
@@ -211,8 +207,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               </button>
             </div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+    </div>
   );
 };

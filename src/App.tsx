@@ -745,8 +745,6 @@ function AppContent() {
             </Routes>
           </Suspense>
         </div>
-
-
       </div>
     </ErrorBoundary>
   );
