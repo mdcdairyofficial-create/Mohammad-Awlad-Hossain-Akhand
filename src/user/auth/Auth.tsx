@@ -25,6 +25,7 @@ function cn(...inputs: ClassValue[]) {
 
 
 interface AuthProps {
+  initialMode?: 'login' | 'signup';
   onAuthSuccess: (profile: { 
     id?: number; 
     firebaseUid?: string;
@@ -37,8 +38,9 @@ interface AuthProps {
   }) => void;
 }
 
-export default function Auth({ onAuthSuccess }: AuthProps) {
+export default function Auth({ initialMode, onAuthSuccess }: AuthProps) {
   const urlParams = new URLSearchParams(window.location.search);
+  const modeParam = urlParams.get('mode');
   const refCodeFromUrl = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('referredBy') || urlParams.get('referred_by') || '';
   const initialRefCode = refCodeFromUrl || localStorage.getItem('pending_referral_code') || '';
   const roleFromUrl = urlParams.get('role');
@@ -47,9 +49,13 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   const isRegisterPath = typeof window !== 'undefined' && (
     window.location.pathname.includes('/register') || 
     window.location.pathname.includes('/join') || 
-    window.location.pathname.includes('/signup')
+    window.location.pathname.includes('/signup') ||
+    modeParam === 'signup' ||
+    modeParam === 'register'
   );
-  const [isLogin, setIsLogin] = useState(!initialRefCode && !isRegisterPath && !roleFromUrl);
+  const [isLogin, setIsLogin] = useState(
+    initialMode === 'signup' ? false : (!initialRefCode && !isRegisterPath && !roleFromUrl)
+  );
   const [resetMode, setResetMode] = useState(false);
   const [userType, setUserType] = useState<UserRole>(targetRole || 'lawyer');
   const [isFromTracking] = useState(targetRole === 'client' || !!localStorage.getItem('pending_claim_case'));
@@ -479,12 +485,54 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             <PWAInstallButton variant="header" language="bn" />
           </div>
           
-          <h2 className="text-2xl font-black text-center text-slate-950 mb-2 tracking-tight">
+          <h2 className="text-2xl font-black text-center text-slate-950 mb-1 tracking-tight">
             {resetMode ? 'পাসওয়ার্ড রিসেট' : (isLogin ? 'স্বাগতম!' : 'নতুন অ্যাকাউন্ট তৈরি করুন')}
           </h2>
-          <p className="text-center text-slate-800 mb-8 font-bold text-xs uppercase tracking-wider">
-            {resetMode ? 'আপনার মোবাইল নম্বর বা ইমেইল দিন' : (isLogin ? 'আপনার তথ্য দিয়ে লগইন করুন' : 'নিচে আপনার সঠিক তথ্য প্রদান করুন')}
+          <p className="text-center text-slate-700 mb-5 font-bold text-xs uppercase tracking-wider">
+            {resetMode ? 'আপনার মোবাইল নম্বর বা ইমেইল দিন' : (isLogin ? 'আপনার তথ্য দিয়ে লগইন করুন' : 'নিচে আপনার সঠিক তথ্য প্রদান করে সাইন আপ করুন')}
           </p>
+
+          {/* Top Segmented Tab Switcher: Login vs Sign Up (নতুন অ্যাকাউন্ট) */}
+          {!resetMode && (
+            <div className="flex p-1.5 mb-5 bg-slate-100 rounded-2xl border border-slate-300 shadow-inner">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(true);
+                  setError(null);
+                  setSuccess(null);
+                }}
+                className={cn(
+                  "flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                  isLogin
+                    ? "bg-white text-indigo-700 shadow-md border border-indigo-200 ring-2 ring-indigo-500/10"
+                    : "text-slate-600 hover:text-slate-950 hover:bg-white/50"
+                )}
+              >
+                <Lock size={15} />
+                <span>লগইন করুন</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(false);
+                  setError(null);
+                  setSuccess(null);
+                }}
+                className={cn(
+                  "flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                  !isLogin
+                    ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/25 ring-2 ring-emerald-500/20"
+                    : "text-slate-600 hover:text-slate-950 hover:bg-white/50"
+                )}
+              >
+                <User size={15} />
+                <span>নতুন অ্যাকাউন্ট (সাইন আপ)</span>
+              </button>
+            </div>
+          )}
+
+
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
@@ -753,14 +801,24 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 active:scale-[0.99] disabled:opacity-75 tracking-wide text-sm cursor-pointer"
+              id="auth-submit-btn"
+              className={cn(
+                "w-full text-white font-black py-4 rounded-xl transition-all flex items-center justify-center gap-2 shadow-xl active:scale-[0.99] disabled:opacity-75 tracking-wide text-sm sm:text-base cursor-pointer",
+                isLogin
+                  ? "bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 shadow-indigo-500/25"
+                  : "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-500/35 ring-4 ring-emerald-400/30"
+              )}
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  {resetMode ? 'পাসওয়ার্ড রিসেট করুন' : (isLogin ? 'লগইন করুন' : 'সাইন আপ করুন')}
-                  <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+                  {resetMode
+                    ? 'পাসওয়ার্ড রিসেট লিংক পাঠান'
+                    : isLogin
+                    ? 'লগইন করুন'
+                    : '✓ সম্পূর্ণ বিনামূল্যে নতুন অ্যাকাউন্ট তৈরি করুন (সাইন আপ)'}
+                  <ArrowRight size={18} className="transition-transform group-hover:translate-x-1 shrink-0" />
                 </>
               )}
             </button>
@@ -778,7 +836,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full bg-white hover:bg-slate-50 text-slate-950 font-bold py-3 rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70"
+              className="w-full bg-white hover:bg-slate-50 text-slate-950 font-bold py-3 rounded-xl border border-slate-300 transition-all flex items-center justify-center gap-3 shadow-sm disabled:opacity-70 cursor-pointer"
             >
               <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
               গুগল দিয়ে লগইন করুন
@@ -787,15 +845,21 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
 
           <div className="mt-8 text-center border-t border-slate-200 pt-6">
             <button
+              type="button"
               onClick={() => {
                 setIsLogin(!isLogin);
                 setResetMode(false);
                 setError(null);
                 setSuccess(null);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className="text-slate-950 font-black hover:text-indigo-600 hover:underline mb-4 block w-full text-sm"
+              className="text-indigo-700 font-black hover:text-indigo-900 hover:underline mb-4 block w-full text-sm cursor-pointer"
             >
-              {resetMode ? 'লগইন পেজে ফিরে যান' : (isLogin ? 'নতুন অ্যাকাউন্ট তৈরি করুন' : 'আগে থেকেই অ্যাকাউন্ট আছে? লগইন করুন')}
+              {resetMode
+                ? '← লগইন পেজে ফিরে যান'
+                : isLogin
+                ? 'নতুন অ্যাকাউন্ট নেই? এখানে ক্লিক করে সাইন আপ করুন'
+                : 'আগে থেকেই অ্যাকাউন্ট আছে? এখানে ক্লিক করে লগইন করুন'}
             </button>
             <div className="text-xs text-slate-700 space-x-2 font-semibold">
               <a href="/TermsOfService_BN.md" target="_blank" className="hover:text-indigo-600 font-bold text-slate-900">শর্তাবলী</a>
@@ -807,7 +871,6 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
           </div>
         </div>
       </motion.div>
-      <PWAInstallButton variant="banner" language="bn" />
     </div>
   );
 }

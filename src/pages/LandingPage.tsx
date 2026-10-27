@@ -264,25 +264,41 @@ export const LandingPage: React.FC<LandingPageProps> = ({ isLoggedIn = false }) 
 
               {/* Card 2: Smart Calendar */}
               <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 hover:border-blue-500/50 transition-all duration-300 group flex flex-col justify-between shadow-xl">
-                <div>
+                <div className="flex flex-col items-center text-center w-full">
                   <div className="w-full h-36 rounded-xl overflow-hidden bg-slate-950 border border-slate-800/80 mb-4 flex items-center justify-center relative">
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent z-10" />
                     <div className="w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400 flex items-center justify-center relative z-20 group-hover:scale-110 transition-transform">
                       <Calendar size={24} />
                     </div>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-1.5 flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-white mb-1.5 flex items-center justify-center gap-2 text-center">
                     <span>📅</span> স্মার্ট ক্যালেন্ডার
                   </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <p className="text-xs text-slate-400 leading-relaxed text-center">
                     দৈনিক শুনানির ডায়েরি ও মামলার তারিখ মনে রাখুন
                   </p>
                 </div>
-                <div className="pt-4 mt-4 border-t border-slate-800">
-                  <Link to="/login" className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                    <span>বিস্তারিত দেখুন</span>
-                    <ChevronRight size={14} />
-                  </Link>
+                <div 
+                  className="pt-4 mt-4 border-t border-slate-800 flex flex-col items-center justify-center relative mx-auto"
+                  style={{
+                    position: 'relative',
+                    left: '0px',
+                    marginLeft: 'auto',
+                    marginRight: 'auto',
+                    paddingLeft: '20px',
+                    paddingRight: '20px',
+                    paddingTop: '20px',
+                    paddingBottom: '20px',
+                    marginTop: '10px',
+                    marginBottom: '0px',
+                    textAlign: 'center',
+                    color: '#a2d236',
+                    width: '250px',
+                    height: '400px',
+                    backgroundColor: '#0f2a2b',
+                  }}
+                >
+                  <PWAInstallButton variant="header" language="bn" />
                 </div>
               </div>
 

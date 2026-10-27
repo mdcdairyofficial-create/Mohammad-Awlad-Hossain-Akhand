@@ -9,6 +9,18 @@
     <meta name="theme-color" content="#0f172a" />
     <script>
       (function() {
+        try {
+          var saved = localStorage.getItem('appTheme');
+          if (saved === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script>
+      (function() {
         if (typeof window === 'undefined') return;
         var OriginalWebSocket = window.WebSocket;
         if (OriginalWebSocket) {

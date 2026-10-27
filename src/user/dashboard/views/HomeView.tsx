@@ -1041,12 +1041,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </div>
                 {/* User Requested Bengali Referral Copy */}
                 <p className="text-xs sm:text-sm text-cyan-100/90 mt-1.5 leading-relaxed max-w-3xl">
-                  <span className="font-bold text-amber-300">
-                    বন্ধুদের রেফার করুন: प्रति সফল রেফারে ১০০ পয়েন্ট ও ২ টি সাদা বল জিতুন!
-                  </span>{' '}
-                  <span className="text-white/90">
-                    জয়েন করার ৭ দিনের মধ্যে মাত্র ৫জন আইনজীবী কিংবা মুহুরীকে রেফার করে জয়েন করালেই পাবে ৩ মাসের ডায়মন্ড প্যাকেজ সাবস্ক্রপিশন ফ্রি। অন্য সময় করালে পাবে ১ মাস।
-                  </span>
+                  {language === 'bn' ? (
+                    <>
+                      <span className="font-bold text-amber-300">
+                        রেফার করুন: প্রতি সফল রেফারে ১০০ পয়েন্ট ও ২ টি সাদা বল জিতুন!
+                      </span>{' '}
+                      <span className="text-white/90">
+                        জয়েন করার ৭ দিনের মধ্যে মাত্র ৫জন আইনজীবী কিংবা মুহুরীকে রেফার করে জয়েন করালেই পাবেন ৩ মাসের ডায়মন্ড প্যাকেজ সাবস্ক্রিপশন ফ্রি। অন্য সময় করালে পাবেন ১ মাস।
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-amber-300">
+                        Refer: Win 100 points & 2 white balls for every successful referral!
+                      </span>{' '}
+                      <span className="text-white/90">
+                        Refer and onboard just 5 lawyers or clerks within 7 days of joining to get a 3-month Diamond package subscription free. At other times, get 1 month.
+                      </span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>

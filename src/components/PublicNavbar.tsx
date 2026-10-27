@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, ArrowRight, BookOpen, Shield, FileText, Home, Sparkles, Scale, Smartphone } from 'lucide-react';
 import { Logo } from './Logo';
-import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface PublicNavbarProps {
   isLoggedIn?: boolean;
@@ -82,10 +81,8 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
             })}
           </nav>
 
-          {/* Right Action Buttons */}
+          {/* Right Action Button */}
           <div className="hidden sm:flex items-center gap-3">
-            <PWAInstallButton variant="header" language={language} />
-
             {isLoggedIn ? (
               <Link
                 to="/dashboard"
@@ -109,8 +106,6 @@ export const PublicNavbar: React.FC<PublicNavbarProps> = ({
 
           {/* Mobile Menu Hamburger Toggle */}
           <div className="flex items-center gap-2 md:hidden">
-            <PWAInstallButton variant="header" language={language} />
-
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

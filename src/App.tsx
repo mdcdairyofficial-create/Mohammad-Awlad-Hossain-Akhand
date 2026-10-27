@@ -76,6 +76,17 @@ function AppContent() {
     userRef.current = user;
   }, [user]);
 
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem("appTheme");
+      if (savedTheme === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    } catch (_) {}
+  }, []);
+
   const [youtubeCompleted, setYoutubeCompleted] = useState(() => {
     return localStorage.getItem("youtubeVerifiedCompleted") === "true";
   });
@@ -714,9 +725,60 @@ function AppContent() {
                   )
                 }
               />
-              <Route path="/register" element={<Navigate to="/login" replace />} />
-              <Route path="/signup" element={<Navigate to="/login" replace />} />
-              <Route path="/join" element={<Navigate to="/login" replace />} />
+              <Route
+                path="/register"
+                element={
+                  user ? (
+                    <Navigate to="/dashboard" replace />
+                  ) : (
+                    <div className="min-h-screen bg-slate-950 flex flex-col">
+                      <PublicNavbar
+                        isLoggedIn={false}
+                        onGoToPortal={() => navigate("/login")}
+                      />
+                      <main className="flex-1">
+                        <Auth initialMode="signup" onAuthSuccess={handleAuthSuccess} />
+                      </main>
+                    </div>
+                  )
+                }
+              />
+              <Route
+                path="/signup"
+                element={
+                  user ? (
+                    <Navigate to="/dashboard" replace />
+                  ) : (
+                    <div className="min-h-screen bg-slate-950 flex flex-col">
+                      <PublicNavbar
+                        isLoggedIn={false}
+                        onGoToPortal={() => navigate("/login")}
+                      />
+                      <main className="flex-1">
+                        <Auth initialMode="signup" onAuthSuccess={handleAuthSuccess} />
+                      </main>
+                    </div>
+                  )
+                }
+              />
+              <Route
+                path="/join"
+                element={
+                  user ? (
+                    <Navigate to="/dashboard" replace />
+                  ) : (
+                    <div className="min-h-screen bg-slate-950 flex flex-col">
+                      <PublicNavbar
+                        isLoggedIn={false}
+                        onGoToPortal={() => navigate("/login")}
+                      />
+                      <main className="flex-1">
+                        <Auth initialMode="signup" onAuthSuccess={handleAuthSuccess} />
+                      </main>
+                    </div>
+                  )
+                }
+              />
 
               {/* Protected Dashboards (Lawyer, Mohuri, Client, Advertiser) */}
               <Route

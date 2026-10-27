@@ -1120,6 +1120,14 @@ export default function Dashboard({
   }, [myAccounts, userType, isAdvertiser, userMobile]);
 
   const handleAccountSwitch = (selectedValue: string) => {
+    if (selectedValue === 'action_new_signup') {
+      const confirmLogout = window.confirm('নতুন অ্যাকাউন্ট তৈরি/সাইন আপ করতে বর্তমান সেশন থেকে লগআউট করতে হবে। আপনি কি এগিয়ে যেতে চান?');
+      if (confirmLogout) {
+        onLogout();
+        window.location.href = '/signup';
+      }
+      return;
+    }
     if (selectedValue.startsWith('account_')) {
       const accId = selectedValue.replace('account_', '');
       const acc = myAccounts.find(a => a.id === accId) || registeredAccounts.find(a => a.id === accId);
@@ -4111,10 +4119,7 @@ export default function Dashboard({
 
             {/* Top Dropdown List for Accounts and Dashboards (Lawyer, Clerk, Client, Advertiser) - Only displays dashboards signed up with this mobile number */}
             <div 
-              style={{
-                paddingTop: '350px'
-              }}
-              className="flex items-center gap-1.5 sm:gap-2 bg-indigo-50/90 dark:bg-slate-800/90 hover:bg-indigo-100/70 dark:hover:bg-slate-700/60 transition-all rounded-xl border border-indigo-200/90 dark:border-slate-700 shadow-sm"
+              className="flex items-center gap-1.5 sm:gap-2 px-2 py-0.5 bg-indigo-50/90 dark:bg-slate-800/90 hover:bg-indigo-100/70 dark:hover:bg-slate-700/60 transition-all rounded-xl border border-indigo-200/90 dark:border-slate-700 shadow-sm"
             >
               <Users size={16} className="text-indigo-600 dark:text-indigo-400 shrink-0 ml-1 hidden xs:block" />
               <div style={{ width: '250px', height: '35px', fontWeight: 'bold', fontSize: '19px', lineHeight: '30px' }} className="flex items-center">
@@ -4169,6 +4174,12 @@ export default function Dashboard({
                     ))}
                   </optgroup>
                 )}
+                {/* নতুন একাউন্ট খোলার অপশন */}
+                <optgroup label="➕ নতুন একাউন্ট তৈরি" className="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-bold">
+                  <option value="action_new_signup" className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-bold py-1">
+                    ➕ নতুন একাউন্ট সাইন আপ করুন
+                  </option>
+                </optgroup>
               </select>
               </div>
             </div>
@@ -5042,7 +5053,7 @@ export default function Dashboard({
               {activeTab === 'profile' && (
                 <div className="space-y-6">
                   <AdBanner theme={theme} isPremium={isAdFree} />
-                  <div className={`p-8 rounded-3xl border shadow-sm ${theme === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+                  <div className="p-6 sm:p-8 rounded-3xl border shadow-sm bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
                     <div className="flex flex-col md:flex-row items-center gap-8 mb-8">
                       <div className="relative">
                         <div className={`w-32 h-32 rounded-3xl bg-slate-100 dark:bg-slate-800 border-4 shadow-xl overflow-hidden flex items-center justify-center ${
@@ -5075,23 +5086,23 @@ export default function Dashboard({
                           )}
                         </h2>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3 mb-4">
-                          <div className="px-4 py-1.5 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-xl text-sm font-black flex items-center gap-2 border border-amber-200 dark:border-amber-800">
+                          <div className="px-4 py-1.5 bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 rounded-xl text-sm font-black flex items-center gap-2 border border-amber-300 dark:border-amber-700 shadow-xs">
                             <Shield size={16} />
                             {userPoints || 0} {t('points')}
                           </div>
-                          <div className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-black flex items-center gap-2 border border-indigo-200 dark:border-indigo-800">
+                          <div className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 rounded-xl text-sm font-black flex items-center gap-2 border border-indigo-300 dark:border-indigo-700 shadow-xs">
                             <Briefcase size={16} />
                             {language === 'bn' ? 'নিজের মামলা: ' : 'Own Cases: '}
                             {visibleCases.filter(c => c.user_id && String(c.user_id) === String(firebaseUid || userId)).length}
                           </div>
-                          <div className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-xl text-sm font-black flex items-center gap-2 border border-emerald-200 dark:border-emerald-800">
+                          <div className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 rounded-xl text-sm font-black flex items-center gap-2 border border-emerald-300 dark:border-emerald-700 shadow-xs">
                             <FileText size={16} />
                             {language === 'bn' ? 'মোট পরিচালিত মামলা: ' : 'Total Managed: '}
                             {visibleCases.length}
                           </div>
                         </div>
                         <div className="flex flex-wrap justify-center md:justify-start gap-3">
-                          <span className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-bold uppercase tracking-wider">
+                          <span className="px-4 py-1.5 bg-indigo-100 dark:bg-indigo-950/60 text-indigo-900 dark:text-indigo-200 rounded-xl text-sm font-bold uppercase tracking-wider border border-indigo-200 dark:border-indigo-800">
                             {currentViewMode === 'lawyer' ? t('role_lawyer') : 
                              currentViewMode === 'clerk' ? t('role_clerk') : 
                              currentViewMode === 'advertiser' ? t('role_advertiser') :
@@ -5101,15 +5112,15 @@ export default function Dashboard({
                              currentViewMode === 'client' ? t('role_client') :
                              t('role_general_user')}
                           </span>
-                          <span className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-xl text-sm font-bold">
+                          <span className="px-4 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-200 rounded-xl text-sm font-bold border border-emerald-200 dark:border-emerald-800">
                             {isEditingProfile ? editDistrict : userDistrict}
                           </span>
                           {(editThana || userThana) && (
-                            <span className="px-4 py-1.5 bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-400 rounded-xl text-sm font-bold">
+                            <span className="px-4 py-1.5 bg-sky-100 dark:bg-sky-950/60 text-sky-900 dark:text-sky-200 rounded-xl text-sm font-bold border border-sky-200 dark:border-sky-800">
                               {isEditingProfile ? editThana : userThana}
                             </span>
                           )}
-                          <span className="px-4 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl text-sm font-bold">
+                          <span className="px-4 py-1.5 bg-slate-800 text-white dark:bg-slate-700 dark:text-slate-100 rounded-xl text-sm font-bold border border-slate-700">
                             {isEditingProfile ? 'Bangladesh' : userCountry}
                           </span>
                         </div>
@@ -5117,50 +5128,50 @@ export default function Dashboard({
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{t('personal_info')}</p>
+                      <div className="p-6 rounded-2xl border shadow-sm bg-slate-50/70 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4">{t('personal_info')}</p>
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('name_label')}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('name_label')}</span>
                             {isEditingProfile ? (
                               <input 
                                 type="text" 
                                 value={editName} 
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                               />
                             ) : (
-                              <span className="font-bold text-slate-900 dark:text-white">{userName}</span>
+                              <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{userName}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('mobile_label')}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('mobile_label')}</span>
                             {isEditingProfile ? (
                               <input 
                                 type="text" 
                                 value={editMobile} 
                                 onChange={(e) => setEditMobile(e.target.value)}
-                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                               />
                             ) : (
-                              <span className="font-bold text-slate-900 dark:text-white">{userMobile}</span>
+                              <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{userMobile}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('email_address')}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('email_address')}</span>
                             {isEditingProfile ? (
                               <input 
                                 type="email" 
                                 value={editEmail} 
                                 onChange={(e) => setEditEmail(e.target.value)}
-                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                               />
                             ) : (
-                              <span className="font-bold text-slate-900 dark:text-white">{editEmail || userEmail || t('not_provided' as any)}</span>
+                              <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{editEmail || userEmail || t('not_provided' as any)}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('district_label')}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('district_label')}</span>
                             {isEditingProfile ? (
                               <select 
                                 value={editDistrict} 
@@ -5171,21 +5182,21 @@ export default function Dashboard({
                                   setChamberAddress(currentViewMode === 'clerk' ? `${newDist} মুহুরি সমিতি ভবন, ${newDist}` : `${newDist} আইনজীবী সমিতি ভবন, ${newDist}`);
                                   setBarAssociation(currentViewMode === 'clerk' ? `${newDist} মুহুরি সমিতি` : `${newDist} আইনজীবী সমিতি`);
                                 }}
-                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                               >
                                 {districts.map(d => <option key={d} value={d}>{d}</option>)}
                               </select>
                             ) : (
-                              <span className="font-bold text-slate-900 dark:text-white">{userDistrict}</span>
+                              <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{userDistrict}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('police_station_label' as any)}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('police_station_label' as any)}</span>
                             {isEditingProfile ? (
                               <select 
                                 value={editThana} 
                                 onChange={(e) => setEditThana(e.target.value)}
-                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                className="p-1 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                               >
                                 <option value="">{t('select_police_station' as any)}</option>
                                 {getPoliceStations(editDistrict, userCountry).map(ps => (
@@ -5193,123 +5204,123 @@ export default function Dashboard({
                                 ))}
                               </select>
                             ) : (
-                              <span className="font-bold text-slate-900 dark:text-white">{userThana}</span>
+                              <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{userThana}</span>
                             )}
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('country_label')}</span>
-                            <span className="font-bold text-slate-900 dark:text-white">{userCountry}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('country_label')}</span>
+                            <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{userCountry}</span>
                           </div>
                         </div>
                       </div>
 
-                      <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">{t('account_info')}</p>
+                      <div className="p-6 rounded-2xl border shadow-sm bg-slate-50/70 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700">
+                        <p className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4">{t('account_info')}</p>
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('user_type_label')}</span>
-                            <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase">{currentViewMode}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('user_type_label')}</span>
+                            <span className="font-black text-indigo-700 dark:text-indigo-400 uppercase">{currentViewMode}</span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('referral_code_label')}</span>
-                            <span className="font-bold text-slate-900 dark:text-white">
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('referral_code_label')}</span>
+                            <span className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">
                               {referralCode || '-'}
                             </span>
                           </div>
                           {currentViewMode !== 'client' ? (
                             <>
                               <div className="flex items-center justify-between">
-                                <span className="text-slate-500 font-medium">{t('subscription_expiry')}</span>
-                                <span className={`font-bold ${isExpired ? 'text-rose-500' : 'text-emerald-500'}`}>
+                                <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('subscription_expiry')}</span>
+                                <span className={`font-black ${isExpired ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                                   {subscriptionEndDate ? new Date(subscriptionEndDate).toLocaleDateString(language === 'bn' ? 'bn-BD' : 'en-US') : '-'}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between">
-                                <span className="text-slate-500 font-medium">{t('package_label')}</span>
-                                <span className="font-bold text-indigo-600 dark:text-indigo-400 uppercase">
+                                <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('package_label')}</span>
+                                <span className="font-black text-indigo-700 dark:text-indigo-400 uppercase">
                                   {subscriptionPackage}
                                 </span>
                               </div>
                             </>
                           ) : (
                             <div className="flex items-center justify-between">
-                              <span className="text-slate-500 font-medium">{language === 'bn' ? 'অ্যাকাউন্টের ধরন' : 'Account Type'}</span>
-                              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{language === 'bn' ? 'অ্যাকাউন্টের ধরন' : 'Account Type'}</span>
+                              <span className="font-black text-emerald-700 dark:text-emerald-400">
                                 {language === 'bn' ? 'আজীবন ফ্রি (মেয়াদমুক্ত)' : 'Lifetime Free (No Expiry)'}
                               </span>
                             </div>
                           )}
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-500 font-medium">{t('account_id_label')}</span>
-                            <span className="font-bold text-slate-900 dark:text-white">#{userId}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-bold text-xs sm:text-sm">{t('account_id_label')}</span>
+                            <span className="font-black text-slate-900 dark:text-white font-mono text-xs sm:text-sm">#{userId}</span>
                           </div>
                         </div>
                       </div>
 
                       {(currentViewMode === 'lawyer' || currentViewMode === 'clerk') && (
                         <>
-                          <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+                          <div className="p-6 rounded-2xl border shadow-sm bg-slate-50/70 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700">
                             <div className="flex items-center justify-between mb-4">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('chamber_address')}</p>
+                              <p className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">{t('chamber_address')}</p>
                               <Building2 size={16} className="text-indigo-500" />
                             </div>
                             <div className="space-y-4">
                               <div>
-                                <label className="text-xs text-slate-500 block mb-1">{t('chamber_address')}</label>
+                                <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('chamber_address')}</label>
                                 {isEditingProfile ? (
                                   <input 
                                     type="text" 
                                     value={chamberAddress} 
                                     onChange={(e) => setChamberAddress(e.target.value)}
-                                    className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                    className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                                   />
                                 ) : (
-                                  <p className="font-bold text-slate-900 dark:text-white text-sm">{chamberAddress}</p>
+                                  <p className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{chamberAddress}</p>
                                 )}
                               </div>
                               <div className="flex items-center justify-between">
                                 <div>
-                                  <label className="text-xs text-slate-500 block mb-1">{t('office_hours')}</label>
+                                  <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('office_hours')}</label>
                                   {isEditingProfile ? (
                                     <input 
                                       type="text" 
                                       value={officeHours} 
                                       onChange={(e) => setOfficeHours(e.target.value)}
-                                      className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                      className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                                     />
                                   ) : (
-                                    <p className="font-bold text-slate-900 dark:text-white text-sm">{officeHours}</p>
+                                    <p className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{officeHours}</p>
                                   )}
                                 </div>
-                                <a href={mapLink} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg hover:scale-110 transition-transform">
+                                <a href={mapLink} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg hover:scale-110 transition-transform">
                                   <MapPin size={20} />
                                 </a>
                               </div>
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                  <label className="text-xs text-slate-500 block mb-1">{t('bar_association')}</label>
+                                  <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('bar_association')}</label>
                                   {isEditingProfile ? (
                                     <input 
                                       type="text" 
                                       value={barAssociation} 
                                       onChange={(e) => setBarAssociation(e.target.value)}
-                                      className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                      className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                                     />
                                   ) : (
-                                    <p className="font-bold text-slate-900 dark:text-white text-sm">{barAssociation}</p>
+                                    <p className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{barAssociation}</p>
                                   )}
                                 </div>
                                 <div>
-                                  <label className="text-xs text-slate-500 block mb-1">{t('membership_id')}</label>
+                                  <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('membership_id')}</label>
                                   {isEditingProfile ? (
                                     <input 
                                       type="text" 
                                       value={membershipId} 
                                       onChange={(e) => setMembershipId(e.target.value)}
-                                      className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                      className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                                     />
                                   ) : (
-                                    <p className="font-bold text-slate-900 dark:text-white text-sm">{membershipId}</p>
+                                    <p className="font-black text-slate-900 dark:text-white text-xs sm:text-sm font-mono">{membershipId}</p>
                                   )}
                                 </div>
                               </div>
@@ -5317,29 +5328,29 @@ export default function Dashboard({
                               {currentViewMode === 'clerk' && (
                                 <div className="grid grid-cols-2 gap-4">
                                   <div>
-                                    <label className="text-xs text-slate-500 block mb-1">{t('sponsor_lawyer')}</label>
+                                    <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('sponsor_lawyer')}</label>
                                     {isEditingProfile ? (
                                       <input 
                                         type="text" 
                                         value={sponsorName} 
                                         onChange={(e) => setSponsorName(e.target.value)}
-                                        className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                                       />
                                     ) : (
-                                      <p className="font-bold text-slate-900 dark:text-white text-sm">{sponsorName}</p>
+                                      <p className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{sponsorName}</p>
                                     )}
                                   </div>
                                   <div>
-                                    <label className="text-xs text-slate-500 block mb-1">{t('sponsor_mobile')}</label>
+                                    <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('sponsor_mobile')}</label>
                                     {isEditingProfile ? (
                                       <input 
                                         type="text" 
                                         value={sponsorMobile} 
                                         onChange={(e) => setSponsorMobile(e.target.value)}
-                                        className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                        className="w-full p-2 text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-900 dark:text-white"
                                       />
                                     ) : (
-                                      <p className="font-bold text-slate-900 dark:text-white text-sm">{sponsorMobile}</p>
+                                      <p className="font-black text-slate-900 dark:text-white text-xs sm:text-sm">{sponsorMobile}</p>
                                     )}
                                   </div>
                                 </div>
@@ -5539,24 +5550,24 @@ export default function Dashboard({
                             </div>
                           </div>
 
-                          <div className={`p-6 rounded-2xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+                          <div className="p-6 rounded-2xl border shadow-sm bg-slate-50/70 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700">
                             <div className="flex items-center justify-between mb-4">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('professional_docs_social')}</p>
+                              <p className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">{t('professional_docs_social')}</p>
                               <Shield size={16} className="text-emerald-500" />
                             </div>
                             <div className="space-y-4">
                               <div>
-                                <label className="text-xs text-slate-500 block mb-1">{t('certificates')}</label>
+                                <label className="text-xs text-slate-700 dark:text-slate-300 block mb-1 font-bold">{t('certificates')}</label>
                                 <div className="flex gap-2 overflow-x-auto pb-2">
                                   {certificates.length > 0 ? certificates.map((cert, idx) => (
                                     <div key={idx} className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-lg flex-shrink-0 flex items-center justify-center">
-                                      <FileText size={20} className="text-slate-500" />
+                                      <FileText size={20} className="text-slate-700 dark:text-slate-300" />
                                     </div>
                                   )) : (
-                                    <p className="text-xs text-slate-400 italic">{t('no_doc_uploaded')}</p>
+                                    <p className="text-xs text-slate-700 dark:text-slate-300 font-bold">{t('no_doc_uploaded')}</p>
                                   )}
                                   <label className="w-12 h-12 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-center cursor-pointer hover:border-indigo-500 transition-colors">
-                                    <Plus size={16} className="text-slate-400" />
+                                    <Plus size={16} className="text-slate-700 dark:text-slate-300" />
                                     <input type="file" className="hidden" onChange={(e) => {
                                       const file = e.target.files?.[0];
                                       if (file) {
@@ -5569,10 +5580,10 @@ export default function Dashboard({
                                 </div>
                               </div>
                               <div className="flex gap-3">
-                                <a href={socialLinks.facebook || "#"} target="_blank" rel="noopener noreferrer" className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 rounded-lg hover:scale-110 transition-transform">
+                                <a href={socialLinks.facebook || "#"} target="_blank" rel="noopener noreferrer" className="p-2 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-lg hover:scale-110 transition-transform">
                                   <Facebook size={20} />
                                 </a>
-                                <a href={socialLinks.linkedin || "#"} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg hover:scale-110 transition-transform">
+                                <a href={socialLinks.linkedin || "#"} target="_blank" rel="noopener noreferrer" className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded-lg hover:scale-110 transition-transform">
                                   <Linkedin size={20} />
                                 </a>
                                 {isEditingProfile && (
@@ -5582,14 +5593,14 @@ export default function Dashboard({
                                       placeholder="Facebook Link" 
                                       value={socialLinks.facebook}
                                       onChange={(e) => setSocialLinks({...socialLinks, facebook: e.target.value})}
-                                      className="w-full p-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                                      className="w-full p-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none font-bold text-slate-900 dark:text-white"
                                     />
                                     <input 
                                       type="text" 
                                       placeholder="Linkedin Link" 
                                       value={socialLinks.linkedin}
                                       onChange={(e) => setSocialLinks({...socialLinks, linkedin: e.target.value})}
-                                      className="w-full p-2 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                                      className="w-full p-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none font-bold text-slate-900 dark:text-white"
                                     />
                                   </div>
                                 )}
@@ -5597,30 +5608,30 @@ export default function Dashboard({
                             </div>
                           </div>
 
-                          <div className={`p-6 rounded-2xl border col-span-1 md:col-span-2 ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+                          <div className="p-6 rounded-2xl border shadow-sm col-span-1 md:col-span-2 bg-slate-50/70 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700">
                             <div className="flex items-center justify-between mb-6">
-                              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('referral_point_status')}</p>
-                              <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">
+                              <p className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">{t('referral_point_status')}</p>
+                              <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 rounded-full text-xs font-black border border-amber-300 dark:border-amber-700">
                                 <DollarSign size={14} />
                                 {referralHistory.length * 50} {t('points')}
                               </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <p className="text-2xl font-black text-indigo-600">{referralHistory.length}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('total_referral')}</p>
+                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <p className="text-2xl font-black text-indigo-700 dark:text-indigo-400">{referralHistory.length}</p>
+                                <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">{t('total_referral')}</p>
                               </div>
-                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <p className="text-2xl font-black text-emerald-600">{referralHistory.length}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('successful_referral')}</p>
+                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400">{referralHistory.length}</p>
+                                <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">{t('successful_referral')}</p>
                               </div>
-                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <p className="text-2xl font-black text-amber-600">{referralHistory.length * 50}</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('earned_points')}</p>
+                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <p className="text-2xl font-black text-amber-700 dark:text-amber-400">{referralHistory.length * 50}</p>
+                                <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">{t('earned_points')}</p>
                               </div>
-                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                              <div className="text-center p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
                                 <p className="text-2xl font-black text-rose-600">0</p>
-                                <p className="text-[10px] font-bold text-slate-500 uppercase">{t('spent_points')}</p>
+                                <p className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">{t('spent_points')}</p>
                               </div>
                             </div>
                           </div>
